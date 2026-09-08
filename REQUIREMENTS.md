@@ -547,8 +547,8 @@ supersede the struck items they name.
 24.19. MUST remove the "How the projection adds up" breakdown and the "Public holidays used" box.
 24.20. MUST remove the pacing-day override editor; the idea is worth revisiting, but it was not asked for and it crowds the screen.
 24.21. MUST NOT show the configured monthly target on the pacing screen; it is configuration and it does not change.
-24.22. MUST keep "Worked so far", and MUST compare it against where the month should be by now — the pro-rated target for the scheduled time already elapsed.
-24.23. MUST make that "actual against expected so far" comparison the more prominent of the two readings, ahead of the end-of-month projection.
+24.22. ~~MUST keep "Worked so far", and MUST compare it against where the month should be by now — the pro-rated target for the scheduled time already elapsed.~~ (superseded: 24.40)
+24.23. ~~MUST make that "actual against expected so far" comparison the more prominent of the two readings, ahead of the end-of-month projection.~~ (superseded: 24.41)
 24.24. MUST keep the per-day calendar at the foot of the pacing screen.
 
 ### Invoices
@@ -574,3 +574,14 @@ supersede the struck items they name.
 
 24.38. MUST detect that `crypto.subtle` is unavailable — a page served over plain HTTP from anything but localhost is not a secure context — and say so, rather than failing inside the first signature.
 24.39. SHOULD document that the static frontend needs HTTPS or localhost, and SHOULD serve the development build accordingly.
+
+### Pacing, corrected
+
+24.22 and 24.23 asked for "actual against where you should be by now" as a number, and the number
+does not exist. A month with 176 scheduled hours and a 160-hour target has 16 hours of slack, so
+staying on track means "should be" opens the month at −16 hours and only becomes positive part-way
+through. That is a worse thing to read than the projection it was meant to replace.
+
+24.40. MUST keep the ahead/behind figure as it is: projected month total against the monthly target.
+24.41. MUST show the same comparison as two bars instead of as a second number — one for progress through the month's available scheduled hours, one for hours worked against the target — so being ahead or behind is the offset between them and no negative quantity has to be explained.
+24.42. MUST validate the holiday region by asking the holiday source whether it yields any holidays, and MUST reject a region that yields none; 24.32's picker is declined — the field stays free text, because the country list needs the network and the subdivision codes are only discoverable by fetching a year of a country's holidays anyway.
