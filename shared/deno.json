@@ -1,0 +1,11 @@
+{
+  "name": "@worklog/shared",
+  "version": "0.0.0",
+  "exports": {
+    "./dates": "./dates.ts",
+    "./schedule": "./schedule.ts",
+    "./pacing": "./pacing.ts",
+    "./invoice": "./invoice.ts",
+    "./types": "./types.ts"
+  }
+}
