@@ -237,6 +237,93 @@ async function main() {
     await desktop.page.getByRole("button", { name: "Rebuild draft" }).isDisabled(),
   );
 
+  // ---------------------------------------------------------------- editing what was recorded
+  console.log("\nediting:");
+  await nav(desktop.page, "History");
+  const beforeEdit = await monthTotal(desktop.page);
+
+  // The row this run created. 2.12's "drop the times" turns a timed entry into a duration-only
+  // one, which is the branch `entry-update` carries a `null` for and nothing else exercises.
+  const row = desktop.page.getByRole("row").filter({ hasText: TAG }).first();
+  await row.getByRole("button", { name: "Edit" }).click();
+  await desktop.page.getByRole("checkbox").first().check();
+  await desktop.page.getByRole("button", { name: "Save", exact: true }).click();
+
+  check(
+    "an edited entry keeps its hours and loses its times",
+    await until(
+      "duration only",
+      desktop.page,
+      async (p) => {
+        const r = p.getByRole("row").filter({ hasText: TAG }).first();
+        return (await r.getByText("duration only").count()) > 0;
+      },
+    ),
+  );
+  check(
+    "and the month total did not move",
+    Math.abs((await monthTotal(desktop.page)) - beforeEdit) < 0.02,
+    `${beforeEdit}h -> ${await monthTotal(desktop.page)}h`,
+  );
+
+  await desktop.page.getByRole("row").filter({ hasText: "Phone entry" }).first()
+    .getByRole("button", { name: "Delete" }).click();
+  check(
+    "deleting takes its hours out of the month",
+    await until(
+      "deleted",
+      desktop.page,
+      async (p) => {
+        const now = await monthTotal(p);
+        return now !== undefined && Math.abs(now - (beforeEdit - 2.5)) < 0.05;
+      },
+    ),
+    `expected ${beforeEdit - 2.5}h`,
+  );
+
+  // ---------------------------------------------------------------- a work note
+  console.log("\nwork note:");
+  await nav(desktop.page, "Timer");
+  await desktop.page.getByRole("button", { name: "New work note" }).click();
+  await desktop.page.getByRole("textbox").first().fill("Wrote the journey harness.");
+  await desktop.page.getByRole("button", { name: "Save note" }).click();
+  check(
+    "a note written on one device is readable on it",
+    await until(
+      "note saved",
+      desktop.page,
+      (p) => p.getByText("Wrote the journey harness.").isVisible(),
+    ),
+  );
+  await nav(mobile.page, "Timer");
+  check(
+    "and reaches the other one",
+    await until(
+      "note on phone",
+      mobile.page,
+      (p) => p.getByText("Wrote the journey harness.").isVisible(),
+    ),
+  );
+
+  // ---------------------------------------------------------------- revoking, while connected
+  //
+  // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there
+  // rather than at its next reload, because "next reload" on a tab left open is never.
+  console.log("\nrevocation:");
+  await nav(desktop.page, "Admin");
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
+  await desktop.page.getByRole("row", { name: /Pixel Phone/ })
+    .getByRole("button", { name: "Revoke" }).click();
+
+  check(
+    "a revoked device finds out while it is still connected",
+    await until(
+      "phone locked out",
+      mobile.page,
+      async (p) => (await p.getByRole("button", { name: /Ask for/ }).count()) > 0,
+    ),
+  );
+
   await rig.close();
 
   const pageErrors = rig.errors.length;

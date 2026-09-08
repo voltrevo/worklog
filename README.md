@@ -124,7 +124,11 @@ by `deno task shots`.
 ## Two browser harnesses, and what each is for
 
 `deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
-works. They share `tools/harness.mjs` and run on different ports, so both can run at once.
+works — nineteen checks across two concurrent browsers: run a timer and watch the other device
+learn about it unasked, record time from the phone, edit an entry down to duration-only, delete
+one, write a work note and see it arrive, invoice a month, take delivery of the PDF, issue it, and
+revoke the phone while it is still holding an open subscription. They share `tools/harness.mjs`
+and run on different ports, so both can run at once.
 
 The distinction earned itself. The screenshots were green for a fortnight while **"Generate PDF"
 rendered a document onto the server's disk and handed the person who pressed it nothing** — the
