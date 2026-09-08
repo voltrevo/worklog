@@ -347,6 +347,21 @@ async function main() {
     ),
   );
 
+  // 1.12 again, on the other list that used to load once: an invoice issued on this device must
+  // reach a second one without it being told to look. The phone is still authorised at this point,
+  // which is the only reason this check can be made before the revocation below.
+  await nav(mobile.page, "Invoices");
+  check(
+    "an invoice issued on the desktop shows as issued on the phone",
+    await until(
+      "issued on phone",
+      mobile.page,
+      async (p) => (await p.getByText("Issued", { exact: true }).count()) > 0,
+    ),
+  );
+
+  await nav(desktop.page, "Admin");
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("button", { name: "Revoke" }).click();
 

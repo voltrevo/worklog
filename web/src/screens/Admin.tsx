@@ -337,6 +337,8 @@ function Logs() {
   const [minLevel, setMinLevel] = useState<LogLevel>("info");
   const [sinceHours, setSinceHours] = useState(24);
 
+  const [loadedAt, setLoadedAt] = useState<number>();
+
   const load = async (level: LogLevel, since: number) => {
     setEntries(
       await call<LogEntry[]>({
@@ -346,8 +348,22 @@ function Logs() {
         limit: 300,
       }),
     );
+    setLoadedAt(Date.now());
   };
-  if (entries === undefined) void load(minLevel, sinceHours);
+
+  /**
+   * Loaded once, and re-loaded on request — deliberately unlike the other screens.
+   *
+   * Everything else here follows the store's snapshot, but a log is appended to constantly and a
+   * list that reorders itself while somebody is reading a line is worse than one that is a minute
+   * stale. What it must not be is *silently* stale with no way out, which is what this was: no
+   * refresh control existed at all, so the only way to see a newer line was to leave the screen and
+   * come back. Hence the button, and hence saying when this was fetched.
+   */
+  useEffect(() => {
+    void load(minLevel, sinceHours);
+    // Mount only: the filters call `load` themselves, and the button is the other way in.
+  }, []);
 
   return (
     <div className="card">
@@ -378,8 +394,20 @@ function Logs() {
             <option value={168}>Last 7 days</option>
             <option value={720}>Last 30 days</option>
           </select>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => void load(minLevel, sinceHours)}
+          >
+            Refresh
+          </button>
         </div>
       </div>
+      {loadedAt !== undefined && (
+        <p className="faint" style={{ fontSize: 12, marginTop: -4 }}>
+          As at {dateTime(loadedAt)}. This view does not follow along by itself.
+        </p>
+      )}
       <div className="scroll-x">
         <table>
           <thead>

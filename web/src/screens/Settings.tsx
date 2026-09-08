@@ -48,6 +48,17 @@ export function Settings() {
   const [cfg, setCfg] = useState<ConfigWire>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
+  /**
+   * Loaded once, unlike History, Invoices and Admin, which follow the store's snapshot.
+   *
+   * This is the exception on purpose. Each card below seeds `useState` from what it is handed, so
+   * re-fetching on every event would either leave the fields showing the old values while the
+   * pills showed the new ones, or — if the cards were keyed to force a remount — throw away what
+   * somebody was halfway through typing. An editing surface that is a minute stale is better than
+   * one that overwrites the person using it.
+   *
+   * Saving reloads (see `save`), so this device is never wrong about its own edits.
+   */
   useEffect(() => {
     void call<ConfigWire>({ t: "config-get" }).then(setCfg);
   }, [call]);

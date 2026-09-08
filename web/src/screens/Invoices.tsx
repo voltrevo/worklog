@@ -15,7 +15,7 @@
  * right below both.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
@@ -54,7 +54,15 @@ export function Invoices() {
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   const load = async () => setInvoices(await call<StoredInvoiceWire[]>({ t: "invoices" }));
-  if (invoices === undefined) void load();
+
+  // 1.12 — follow the store, rather than loading once on mount. An invoice issued or marked paid
+  // on another device broadcasts `changed/invoices`, and this list has to show it: two people
+  // looking at the same month and disagreeing about whether it has been billed is the exact
+  // confusion 11.5's one-invoice-per-month rule exists to prevent.
+  useEffect(() => {
+    void load();
+    // `load` is redefined every render; the snapshot is the signal.
+  }, [snapshot]);
 
   const act = async (body: () => Promise<unknown>) => {
     setBusy(true);
