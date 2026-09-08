@@ -29,27 +29,6 @@ const HTTP_PORT = 5400;
 const TAG = "Journey work";
 
 /**
- * A Monday in the month the app will be showing, in the timezone the harness pins its browsers to.
- *
- * A Monday specifically, because the override check needs a day that *is* scheduled before it can
- * prove that marking it off lowers the capacity. "The 15th" would silently be a no-op in the months
- * where the 15th is a Sunday, and the check would pass in eleven months of the year.
- */
-const FIRST_MONDAY = (() => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Australia/Sydney",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const at = (t) => parts.find((p) => p.type === t).value;
-  const first = new Date(Date.UTC(Number(at("year")), Number(at("month")) - 1, 1));
-  // getUTCDay: 0 is Sunday, so 1 is Monday and this is how far the first of the month is from one.
-  const day = first.getUTCDate() + ((8 - first.getUTCDay()) % 7);
-  return `${at("year")}-${at("month")}-${String(day).padStart(2, "0")}`;
-})();
-
-/**
  * A minimal but real Ogg page, so `setInputFiles` hands the app something a browser will accept as
  * audio rather than a text file with an audio MIME type.
  *
