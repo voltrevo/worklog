@@ -209,6 +209,20 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 8.16. MUST allow repeated draft generation/regeneration safely.
 8.17. MUST include every work entry whose date falls within the invoice's period, without filtering.
 8.18. MUST restrict an invoice's period to one whole calendar month in v1.
+8.19. MUST render the monthly bonus in its own table, above the work table, with its own subtotal row. Supersedes the reading of 9.11 as a first row of the work table.
+8.20. MUST label the bonus row's Date cell with the period it covers rather than with a single date.
+8.21. MUST give the bonus row its own Team/Project value, separate from the work rows'.
+8.22. MUST end the work table with a Total row carrying the summed hours and the summed amount.
+8.23. MUST show the sender's name, postal address, telephone number and email address in the header.
+8.24. MUST show the invoice number and the invoice date at the top right, as labelled fields.
+8.25. MUST show the bill-to block as a distinct, visually set-apart block.
+8.26. MUST show the invoiced time period as a labelled field of its own.
+8.27. MUST head the table section "Description of work performed".
+8.28. MUST show the currency the hourly rate is in, and the work approver, below the tables.
+8.29. MUST show sub-total, VAT (if applicable) and TOTAL right-aligned below the tables, with TOTAL emphasised.
+8.30. MUST include a "Method of payment" block giving the payment method and the account fields as labelled rows.
+8.31. MUST show the payment due date as a labelled field at the foot.
+8.32. MAY include a note beneath the totals, such as one about currency conversion, when configured.
 
 ## 9. Invoice configuration
 
@@ -228,6 +242,13 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 9.14. MUST default the invoice number to `INV-YYYY-MM`, derived from the period.
 9.15. MUST allow the invoice number to be edited while the invoice is a draft.
 9.16. MUST require invoice numbers to be unique among issued invoices.
+9.17. MUST obtain the sender's telephone number from configuration, for 8.23.
+9.18. MUST hold payment details as labelled fields -- account name, BSB, account number, bank -- rather than as free text, so that 8.30 can render them as rows.
+9.19. MUST treat every payment field of 9.18 as sensitive under 20.1, and withhold all of them from read responses.
+9.20. MUST allow the payment method wording, such as "Wire Transfer", to be configured.
+9.21. MUST allow the bonus line's Team/Project to be configured, defaulting to "General".
+9.22. MUST allow an optional note to be configured for 8.32.
+9.23. MUST record an invoice date, distinct from both the period and the due date, defaulting to the day the invoice is prepared and frozen at issuance.
 
 ## 10. Invoice due date
 

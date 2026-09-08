@@ -269,7 +269,7 @@ Deno.test("20.3 -- payment details never come back on a read", async () => {
   await call(ctx, a, {
     t: "config-set",
     section: "invoice",
-    value: { paymentDetails: "Fictional Bank BSB 000-000 Acct 00000000" },
+    value: { payBank: "Bank of Nowhere", payAccountNumber: "00000000" },
   });
 
   const cfg = await call(ctx, a, { t: "config-get" }) as {

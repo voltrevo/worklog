@@ -26,7 +26,10 @@ function fresh(): Db {
     rateMinor: 7500,
     taxRate: 0.1,
     teamProject: "Protocol Research",
-    paymentDetails: "Fictional Bank, BSB 000-000, Acct 00000000",
+    payName: "Wren & Co",
+    payBsb: "000-000",
+    payAccountNumber: "00000000",
+    payBank: "Bank of Nowhere",
   }, T0);
   return db;
 }
@@ -65,7 +68,7 @@ Deno.test("9.8/9.10/9.13 -- Team/Project and bonus default from the previous per
   const sept = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(sept.draft.teamProject, "Client Onboarding");
   assertEquals(sept.draft.bonusMinor, 25_000);
-  assertEquals(sept.draft.lines[0]?.description, "Monthly bonus", "9.11 -- and it leads");
+  assertEquals(sept.draft.bonusLine?.description, "Monthly bonus", "8.19 -- in its own table");
   db.close();
 });
 

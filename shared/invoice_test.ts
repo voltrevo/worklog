@@ -72,20 +72,56 @@ Deno.test("rows aggregate per date and tag, but several tags on a day stay sever
   ]);
 });
 
-Deno.test("9.11 -- the bonus is its own line and comes before the time", () => {
+Deno.test("8.19-8.21 -- the bonus is its own table, not the first row of the work one", () => {
+  // The supplied format puts it above the work table with its own subtotal, so it is a separate
+  // field rather than a line with a flag: the two tables fill in different columns, and a renderer
+  // that had to re-derive which rows were which is one `filter` away from adding the bonus into
+  // the hours total.
   const entries = [entry("a", "2026-09-01", 8)];
-  const lines = buildLines({ ...BASE, period: "2026-09", entries, bonusMinor: 10_000 });
-  assertEquals(lines.length, 2);
-  assertEquals(lines[0]?.description, "Monthly bonus");
-  assertEquals(lines[0]?.date, null, "a bonus is not attached to a day");
-  assertEquals(lines[0]?.hours, null);
-  assertEquals(lines[0]?.amountMinor, 10_000);
-  assertEquals(lines[1]?.date, "2026-09-01");
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries, bonusMinor: 10_000 });
+
+  assertEquals(draft.lines.length, 1, "the work table holds only work");
+  assertEquals(draft.lines[0]?.date, "2026-09-01");
+
+  assertEquals(draft.bonusLine?.description, "Monthly bonus");
+  assertEquals(draft.bonusLine?.date, null, "8.20 -- it covers a period, not a day");
+  assertEquals(draft.bonusLine?.hours, null);
+  assertEquals(draft.bonusLine?.rateMinor, null);
+  assertEquals(draft.bonusLine?.amountMinor, 10_000);
+  assertEquals(draft.bonusLine?.teamProject, "General", "8.21 -- and its own Team/Project");
+
+  // 8.22 -- the work table's own Total row excludes the bonus; the invoice total includes it.
+  assertEquals(draft.workSubtotalMinor, 60_000);
+  assertEquals(draft.workHours, 8);
+  assertEquals(draft.subtotalMinor, 70_000);
 });
 
-Deno.test("a zero bonus produces no line at all", () => {
-  const lines = buildLines({ ...BASE, period: "2026-09", entries: [entry("a", "2026-09-01", 8)] });
-  assertEquals(lines.length, 1);
+Deno.test("the bonus Team/Project is configurable and defaults to General", () => {
+  const draft = buildDraft({
+    ...BASE,
+    period: "2026-09",
+    entries: [],
+    bonusMinor: 5_000,
+    bonusTeamProject: "Retainer",
+  });
+  assertEquals(draft.bonusLine?.teamProject, "Retainer");
+});
+
+Deno.test("a zero bonus produces no bonus table at all", () => {
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: [entry("a", "2026-09-01", 8)] });
+  assertEquals(draft.bonusLine, null);
+  assertEquals(draft.lines.length, 1);
+  assertEquals(
+    buildLines({ ...BASE, period: "2026-09", entries: [entry("a", "2026-09-01", 8)] }).length,
+    1,
+  );
+});
+
+Deno.test("9.23 -- the invoice date, the period and the due date are three different things", () => {
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: [], preparedOn: "2026-10-01" });
+  assertEquals(draft.period, "2026-09");
+  assertEquals(draft.invoiceDate, "2026-10-01");
+  assertEquals(draft.dueDate, "2026-11-02");
 });
 
 Deno.test("amounts are integer minor units and the totals add up", () => {
@@ -97,7 +133,8 @@ Deno.test("amounts are integer minor units and the totals add up", () => {
     bonusMinor: 10_000,
     taxRate: 0.1,
   });
-  assertEquals(draft.lines.map((l) => l.amountMinor), [10_000, 56_250, 60_000]);
+  assertEquals(draft.bonusLine?.amountMinor, 10_000);
+  assertEquals(draft.lines.map((l) => l.amountMinor), [56_250, 60_000]);
   assertEquals(draft.subtotalMinor, 126_250);
   assertEquals(draft.taxMinor, 12_625);
   assertEquals(draft.totalMinor, 138_875);

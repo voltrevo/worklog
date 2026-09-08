@@ -190,6 +190,20 @@ export interface SnapshotResult {
   pacingConfig: PacingConfig;
 }
 
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+/** 12.1-12.3, as the log viewer receives it. Context is already redacted for the reader (12.17). */
+export interface LogEntry {
+  id: number;
+  at: Instant;
+  level: LogLevel;
+  source: string;
+  message: string;
+  context?: Record<string, unknown>;
+  /** 12.7 — a fingerprint rather than a key, because the viewer only needs to tell devices apart. */
+  deviceFingerprint?: string;
+}
+
 export interface StoredInvoiceWire {
   id: string;
   period: string;

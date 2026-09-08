@@ -12,23 +12,13 @@
  */
 
 import type { Instant } from "@worklog/shared/types";
+// The shapes live in the protocol because they cross the wire; the storage rules live here.
+import type { LogEntry, LogLevel } from "@worklog/shared/protocol";
 import type { Db } from "./db.ts";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type { LogEntry, LogLevel };
 
 const RANK: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
-
-export interface LogEntry {
-  id: number;
-  at: Instant;
-  level: LogLevel;
-  /** 12.3 — which subsystem, e.g. `timer`, `invoice`, `access`, `holidays`, `client`. */
-  source: string;
-  message: string;
-  context?: Record<string, unknown>;
-  /** 12.7 — the authenticated device this came from, as a fingerprint rather than a raw key. */
-  deviceFingerprint?: string;
-}
 
 /**
  * Keys whose values never appear in a log, at any level, for anyone.

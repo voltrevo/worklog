@@ -11,3 +11,6 @@ kps-key.pem
 *.sqlite-journal
 *.sqlite-wal
 data/
+
+# Vite output and the seeded databases the screenshot harness makes.
+web/dist/

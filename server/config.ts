@@ -19,6 +19,8 @@ export interface InvoiceConfig {
   fromAddress: string;
   fromEmail: string;
   fromAbn: string;
+  /** 9.17, 8.23 */
+  fromPhone: string;
   /** 9.2 — who is being billed. */
   clientName: string;
   clientAddress: string;
@@ -30,13 +32,33 @@ export interface InvoiceConfig {
   taxLabel: string;
   /** 8.12 — omitted from the PDF when empty. */
   approver: string;
-  /** 8.13 — likewise. Sensitive (20.1), so it never leaves the server except onto the PDF. */
-  paymentDetails: string;
   /** 9.7, 9.8 — the seed for the first invoice; later ones default from the previous. */
   teamProject: string;
   /** 9.9, 9.10 — same. */
   bonusMinor: number;
+  /** 9.21, 8.21 — the bonus row is not work on the project, so it carries its own. */
+  bonusTeamProject: string;
+  /** 9.22, 8.32 — an optional line under the totals, e.g. about currency conversion. */
+  note: string;
+
+  // 9.18, 9.19, 8.30 — the payment block, as labelled fields rather than a blob, because the
+  // format renders them as rows. Every one of these is sensitive under 20.1 and none of them
+  // comes back on a read; see `publicInvoiceConfig`.
+  payMethod: string;
+  payName: string;
+  payBsb: string;
+  payAccountNumber: string;
+  payBank: string;
 }
+
+/** Which fields never travel back to a frontend. Named once, so the read path cannot miss one. */
+export const SENSITIVE_INVOICE_FIELDS = [
+  "payMethod",
+  "payName",
+  "payBsb",
+  "payAccountNumber",
+  "payBank",
+] as const satisfies readonly (keyof InvoiceConfig)[];
 
 /** 5.7 — how often a work-detail prompt should fire, on average. */
 export interface PromptConfig {
@@ -61,6 +83,7 @@ export const DEFAULTS: Config = {
     fromAddress: "",
     fromEmail: "",
     fromAbn: "",
+    fromPhone: "",
     clientName: "",
     clientAddress: "",
     currency: "AUD",
@@ -68,9 +91,15 @@ export const DEFAULTS: Config = {
     taxRate: 0,
     taxLabel: "GST",
     approver: "",
-    paymentDetails: "",
     teamProject: "",
     bonusMinor: 0,
+    bonusTeamProject: "General",
+    note: "",
+    payMethod: "Wire Transfer",
+    payName: "",
+    payBsb: "",
+    payAccountNumber: "",
+    payBank: "",
   },
   prompt: {
     meanIntervalMs: 45 * 60_000,
@@ -121,18 +150,32 @@ export function allConfig(db: Db): Config {
   };
 }
 
+export type PublicInvoiceConfig =
+  & Omit<InvoiceConfig, typeof SENSITIVE_INVOICE_FIELDS[number]>
+  & { paymentDetailsSet: boolean };
+
 /**
- * The invoice configuration with everything sensitive removed (20.1, 20.3).
+ * The invoice configuration with the payment block removed (20.1, 20.3, 9.19).
  *
- * Payment details are the one field that never needs to reach a frontend to be *shown* — only to be
- * edited — so the read path drops it and the settings screen asks for it explicitly. That keeps
- * bank details out of every ordinary response, and out of anything that later logs one.
+ * Those fields never need to reach a frontend in order to be *shown* — only to be edited — so the
+ * read path drops them and the settings screen asks for them explicitly. That keeps bank details
+ * out of every ordinary response, and therefore out of anything that later logs one.
+ *
+ * Built by deleting from a copy rather than by listing what to keep: a field added to
+ * `InvoiceConfig` should appear in the UI by default, and a field added to
+ * `SENSITIVE_INVOICE_FIELDS` should disappear from the wire without anything else being edited.
  */
-export function publicInvoiceConfig(cfg: InvoiceConfig): Omit<InvoiceConfig, "paymentDetails"> & {
-  paymentDetailsSet: boolean;
-} {
-  const { paymentDetails, ...rest } = cfg;
-  return { ...rest, paymentDetailsSet: paymentDetails.length > 0 };
+export function publicInvoiceConfig(cfg: InvoiceConfig): PublicInvoiceConfig {
+  const rest = { ...cfg } as Record<string, unknown>;
+  let anySet = false;
+  for (const field of SENSITIVE_INVOICE_FIELDS) {
+    if (field !== "payMethod" && String(cfg[field] ?? "").length > 0) anySet = true;
+    delete rest[field];
+  }
+  return {
+    ...(rest as Omit<InvoiceConfig, typeof SENSITIVE_INVOICE_FIELDS[number]>),
+    paymentDetailsSet: anySet,
+  };
 }
 
 /** Anything missing that would make an invoice wrong rather than merely plain (20.9). */
@@ -142,6 +185,6 @@ export function invoiceConfigGaps(cfg: InvoiceConfig): string[] {
   if (!cfg.clientName) gaps.push("the client's name");
   if (cfg.rateMinor <= 0) gaps.push("an hourly rate");
   if (!cfg.currency) gaps.push("a currency");
-  if (!cfg.paymentDetails) gaps.push("payment details");
+  if (!cfg.payName || !cfg.payAccountNumber) gaps.push("payment details");
   return gaps;
 }
