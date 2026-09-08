@@ -244,6 +244,56 @@ async function main() {
     `was ${before}h`,
   );
 
+  // ---------------------------------------------------------------- refusals, not defaults
+  //
+  // 24.1 is the principle behind most of this review, and its two sharpest cases are here. Both
+  // are unit-tested; what is not is that the refusal *reaches the person*, which is the whole
+  // difference between a rule and a silently-swallowed promise rejection.
+  console.log("\nrefusals:");
+  await nav(desktop.page, "Settings");
+
+  // 24.42 — a region that no holiday in the country names. It used to save happily and then drop
+  // every state holiday from the pacing arithmetic with nothing on screen to say why.
+  const region = desktop.page.getByLabel("Holiday region");
+  const goodRegion = await region.inputValue();
+  await region.fill("AU-XYZ");
+  await desktop.page.getByRole("button", { name: "Save", exact: true }).first().click();
+  check(
+    "a nonsense holiday region is refused, on screen, saying why",
+    await until(
+      "region refused",
+      desktop.page,
+      async (p) => (await p.getByText(/AU-XYZ/).count()) > 0,
+    ),
+  );
+  await region.fill(goodRegion);
+  await desktop.page.getByRole("button", { name: "Save", exact: true }).first().click();
+  await desktop.page.waitForTimeout(600);
+
+  // 24.31 — an invoice cannot be produced from an incomplete configuration, and the refusal names
+  // what is missing rather than rendering a document with holes in it.
+  const clientName = desktop.page.getByLabel("Client name");
+  const goodClient = await clientName.inputValue();
+  await clientName.fill("");
+  await desktop.page.getByRole("button", { name: "Save invoice details" }).click();
+  await desktop.page.waitForTimeout(600);
+
+  await nav(desktop.page, "Invoices");
+  await desktop.page.getByRole("button", { name: /^Prepare / }).first().click();
+  check(
+    "an incomplete invoice configuration is refused, naming the field",
+    await until(
+      "config refused",
+      desktop.page,
+      async (p) => (await p.getByText(/client's name/).count()) > 0,
+    ),
+  );
+
+  await nav(desktop.page, "Settings");
+  await desktop.page.getByLabel("Client name").fill(goodClient);
+  await desktop.page.getByRole("button", { name: "Save invoice details" }).click();
+  await desktop.page.waitForTimeout(600);
+
   // ---------------------------------------------------------------- invoicing, and the PDF
   //
   // 24.25–24.31. One list, actions on the rows, dialogs for the two that cannot be undone by
