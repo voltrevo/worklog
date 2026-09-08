@@ -62,7 +62,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 2.9. MUST support duration-only entries without fake start/end times.
 2.10. MUST allow simple entries such as a duration attributed to yesterday.
 2.11. MUST allow timed and duration-only entries on the same day.
-2.12. MUST allow conversion between timed and duration-only forms.
+2.12. ~~MUST allow conversion between timed and duration-only forms.~~ (superseded: 24.11)
 2.13. MUST use recorded duration identically for reporting and billing regardless of representation.
 2.14. SHOULD present work history primarily by day.
 2.15. SHOULD make adding past time fast and obvious.
@@ -106,7 +106,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 5.2. MUST allow a work-detail note to contain text.
 5.3. MUST allow a work-detail note to contain a voice recording.
 5.4. MUST allow work-detail notes to be created manually at any time appropriate to the UI.
-5.5. MUST provide a manual “new work note” action from the main workflow.
+5.5. ~~MUST provide a manual “new work note” action from the main workflow.~~ (superseded: 24.4)
 5.6. MUST support random work-detail prompts only while the authoritative timer is active.
 5.7. MUST allow configuration of the average prompt interval.
 5.8. MUST have the server evaluate prompt timing.
@@ -154,8 +154,8 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.16. ~~MUST calculate monthly nominal capacity as workdays multiplied by expected daily hours.~~ Superseded by 6.30.
 6.17. MUST calculate monthly slack as nominal capacity minus monthly target.
 6.18. SHOULD expose capacity/slack context in pacing details.
-6.19. SHOULD allow future per-day pacing overrides such as leave or intentional weekend work.
-6.20. MUST keep pacing-day overrides separate from billable work records.
+6.19. ~~SHOULD allow future per-day pacing overrides such as leave or intentional weekend work.~~ (superseded: 24.20)
+6.20. ~~MUST keep pacing-day overrides separate from billable work records.~~ (superseded: 24.20)
 6.21. MUST allow configuration of a weekly work schedule as one time interval per weekday.
 6.22. MUST allow a weekday's interval to be empty, meaning that weekday is not a workday.
 6.23. MUST default the schedule to empty on Saturday and Sunday. Supersedes 6.3.
@@ -172,7 +172,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.34. MUST ship a checked-in holiday snapshot, used when the source is unreachable.
 6.35. MUST NOT let a failed holiday fetch silently change a month's workday count.
 6.36. MUST log a warning when holiday data falls back to cache or to the shipped snapshot.
-6.37. SHOULD show which holidays a month's pacing used, so a wrong or missing one is visible rather than only shifting the pace.
+6.37. ~~SHOULD show which holidays a month's pacing used, so a wrong or missing one is visible rather than only shifting the pace.~~ (superseded: 24.19)
 6.38. MUST interpret the schedule's times as local to the viewing device.
 
 ## 7. Reports
@@ -439,7 +439,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 19.6. MUST distinguish duration-only entries visually from timed intervals.
 19.7. MUST make manual past-time entry require minimal interaction.
 19.8. MUST make manual work-note creation easy to reach.
-19.9. MUST make invoice preview/generation clearly separate from issuance.
+19.9. ~~MUST make invoice preview/generation clearly separate from issuance.~~ (superseded: 24.26)
 19.10. MUST make “Mark as issued” an explicit action.
 19.11. MUST make “Mark as paid” an explicit action.
 19.12. MUST provide a device-access administration screen for admins.
@@ -506,3 +506,71 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 23.5. MUST validate both presentations with Playwright screenshots.
 23.6. SHOULD keep every v1 capability reachable in the mobile presentation, except where a section explicitly excludes it, as 14.25 does.
 23.7. MUST validate the write path end to end from two concurrent devices, because a screenshot proves a screen renders and not that pressing anything on it works.
+
+## 24. Review feedback, first pass
+
+Everything in this section comes from a review of `ef34c75` driving the running app. Items here
+supersede the struck items they name.
+
+### Principles
+
+24.1. MUST NOT substitute a default for a missing required value; the action MUST be rejected instead, naming the field that is missing.
+24.2. MUST reduce the timer screen to two boxes: today's total against the day's scheduled hours with its progress bar, and the current session with its start/stop control and billing tag.
+24.3. MUST make destructive and state-changing actions reversible from the UI wherever the record is not inherently append-only; server logs are append-only, invoices are not.
+
+### Work notes
+
+24.4. MUST give work notes their own tab rather than a card on the timer screen.
+24.5. MUST show live capture feedback — a waveform or level meter — while a voice note is recording, so silence or a dead microphone is visible before five minutes have been spoken into it.
+24.6. MUST allow a work note to be deleted.
+24.7. MUST render a voice-only note as something better than the words "a recording"; the note list must read as a list of notes whether they are spoken or written.
+
+### The timer screen
+
+24.8. MUST remove "Today's entries" from the timer screen outright; History already shows them, and shows them editable.
+24.9. MUST reject starting a timer with no billing tag rather than defaulting it to "Work".
+24.10. MUST allow the billing tag of a *running* timer to be corrected without stopping it.
+
+### History
+
+24.11. MUST allow a past entry to be added either as a duration on a date or with explicit start and end times; 2.9's duration-only form stays, and is no longer the only form.
+24.12. MUST allow the start and end times of an existing timed entry to be edited, rather than only dropped.
+24.13. MUST confirm before deleting a work entry.
+24.14. MUST keep the month navigation controls in fixed positions, so a control does not move out from under the pointer when a neighbouring one appears.
+24.15. MUST show the month summary for an empty month as zeros rather than hiding it, so an empty month reads as the same screen with nothing in it.
+24.16. MUST NOT show invoice state on the History screen; invoicing belongs to the invoices screen.
+
+### Pacing
+
+24.17. MUST reduce the pacing headline to two figures: how far ahead or behind, prominently, and the projected month total beside it. No title, no explanatory paragraph, no target comparison in that box.
+24.18. MUST move the explanation of how the projection is computed out of the screen and into help or documentation.
+24.19. MUST remove the "How the projection adds up" breakdown and the "Public holidays used" box.
+24.20. MUST remove the pacing-day override editor; the idea is worth revisiting, but it was not asked for and it crowds the screen.
+24.21. MUST NOT show the configured monthly target on the pacing screen; it is configuration and it does not change.
+24.22. MUST keep "Worked so far", and MUST compare it against where the month should be by now — the pro-rated target for the scheduled time already elapsed.
+24.23. MUST make that "actual against expected so far" comparison the more prominent of the two readings, ahead of the end-of-month projection.
+24.24. MUST keep the per-day calendar at the foot of the pacing screen.
+
+### Invoices
+
+24.25. MUST present invoices as a single list with no notion of a "current" invoice: drafts and issued-but-unpaid first, paid ones below.
+24.26. MUST remove the inline invoice preview; the list carries the number, the period, the status, the hours and the amount, and the PDF carries the rest.
+24.27. MUST offer every lifecycle action — issue, mark paid, revert, delete — per row from that list.
+24.28. MUST allow an invoice to be deleted.
+24.29. MUST present the issuance warning as a dialog rather than inline.
+24.30. MUST freeze the rendered PDF when an invoice is issued, and serve that stored file thereafter rather than re-rendering from data.
+24.31. MUST refuse to generate an invoice while required invoice configuration is missing, naming what is missing, rather than rendering a document with blanks in it.
+
+### Settings
+
+24.32. MUST validate the holiday region before accepting it, and SHOULD offer a picker rather than a free-text field.
+24.33. MUST NOT default the holiday region; Mon–Fri 09:00–17:00 and a 160-hour monthly target are good defaults and stay.
+24.34. MUST treat the ABN as optional; the supplied invoice format does not carry one.
+24.35. MUST NOT default the tax label to "GST", or to anything else.
+24.36. MUST NOT invent any invoice identity, address, contact or tax detail as a default.
+24.37. MUST NOT default the payment method wording.
+
+### Serving the frontend
+
+24.38. MUST detect that `crypto.subtle` is unavailable — a page served over plain HTTP from anything but localhost is not a secure context — and say so, rather than failing inside the first signature.
+24.39. SHOULD document that the static frontend needs HTTPS or localhost, and SHOULD serve the development build accordingly.
