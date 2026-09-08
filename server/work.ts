@@ -178,12 +178,35 @@ export interface StartInput {
  */
 export function startTimer(db: Db, input: StartInput): ActiveTimer {
   const now = input.now ?? Date.now();
+  // 24.1, 24.9 — refused rather than defaulted. The frontend used to fall back through the last
+  // tag used to the invented word "Work", so a fresh server recorded work against a tag nobody
+  // had chosen. The rule is the same everywhere: a missing required value is a refusal.
+  const billingTag = input.billingTag.trim();
+  if (!billingTag) throw new Refused("no-billing-tag", "a timer needs a billing tag");
   return transact(db, () => {
     const running = activeTimer(db);
     if (running) throw new Refused("timer-already-running", "a timer is already running");
     db.prepare("INSERT INTO active_timer (id, started_at, date, billing_tag) VALUES (1, ?, ?, ?)")
-      .run(now, input.date, input.billingTag);
-    return { startedAt: now, date: input.date, billingTag: input.billingTag };
+      .run(now, input.date, billingTag);
+    return { startedAt: now, date: input.date, billingTag };
+  });
+}
+
+/**
+ * 24.10 — correct a running timer's tag without stopping it.
+ *
+ * The alternative was stop, edit in History, start again, which loses the running session's
+ * continuity to fix a label. Only the tag can change: the start time and the date are what the
+ * timer *is*, and 2.19 fixes the date at the start on purpose.
+ */
+export function retagTimer(db: Db, billingTag: string): ActiveTimer {
+  const wanted = billingTag.trim();
+  if (!wanted) throw new Refused("no-billing-tag", "a timer needs a billing tag");
+  return transact(db, () => {
+    const running = activeTimer(db);
+    if (!running) throw new Refused("no-timer-running", "no timer is running");
+    db.prepare("UPDATE active_timer SET billing_tag = ? WHERE id = 1").run(wanted);
+    return { ...running, billingTag: wanted };
   });
 }
 

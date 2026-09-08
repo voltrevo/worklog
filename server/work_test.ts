@@ -11,6 +11,7 @@ import {
   getEntry,
   recentBillingTags,
   Refused,
+  retagTimer,
   runningMs,
   startTimer,
   stopTimer,
@@ -191,5 +192,48 @@ Deno.test("4.5 -- recent billing tags come back newest first, without duplicates
   addEntry(db, { date: "2026-09-02", durationMs: HOUR, billingTag: "Research" }, T0 + 1000);
   addEntry(db, { date: "2026-09-03", durationMs: HOUR, billingTag: "Admin" }, T0 + 2000);
   assertEquals(recentBillingTags(db), ["Admin", "Research"]);
+  db.close();
+});
+
+Deno.test("24.9 -- a timer will not start without a billing tag", () => {
+  // It used to accept whatever the frontend sent, and the frontend sent `tag || last || "Work"`.
+  // The refusal belongs here: a rule enforced only in the UI is a rule that holds until somebody
+  // writes a second UI, or a script.
+  const db = fresh();
+  for (const billingTag of ["", "   ", "\t"]) {
+    assertThrows(
+      () => startTimer(db, { billingTag, date: "2026-09-08", now: T0 }),
+      Refused,
+      "needs a billing tag",
+    );
+  }
+  assertEquals(activeTimer(db), undefined, "a refused start left a timer behind");
+  db.close();
+});
+
+Deno.test("24.10 -- a running timer can be retagged, and nothing else about it moves", () => {
+  const db = fresh();
+  startTimer(db, {
+    billingTag: "  Feature development  ",
+    date: "2026-09-08",
+    now: 1_788_000_000_000,
+  });
+  const before = activeTimer(db)!;
+  assertEquals(before.billingTag, "Feature development", "the tag is stored trimmed");
+
+  const after = retagTimer(db, "Code review");
+  assertEquals(after.billingTag, "Code review");
+  // 2.19 — the date is decided at the start and nothing later moves it, retagging included.
+  assertEquals(after.startedAt, before.startedAt);
+  assertEquals(after.date, before.date);
+
+  assertThrows(() => retagTimer(db, "  "), Refused, "needs a billing tag");
+  assertEquals(activeTimer(db)?.billingTag, "Code review", "a refused retag changed it anyway");
+  db.close();
+});
+
+Deno.test("retagging when nothing is running is refused", () => {
+  const db = fresh();
+  assertThrows(() => retagTimer(db, "Anything"), Refused, "no timer is running");
   db.close();
 });

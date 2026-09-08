@@ -16,7 +16,7 @@ const dataDir = join(root, ".screenshots-data");
 const PORT = 41777;
 const HTTP_PORT = 5399;
 
-const SCREENS = ["timer", "history", "pacing", "invoices", "admin", "settings"];
+const SCREENS = ["timer", "notes", "history", "pacing", "invoices", "admin", "settings"];
 
 async function main() {
   const rig = await startRig({ dataDir, port: PORT, httpPort: HTTP_PORT });

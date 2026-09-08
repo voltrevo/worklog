@@ -59,6 +59,7 @@ import {
   entriesOn,
   recentBillingTags,
   Refused,
+  retagTimer,
   runningMs,
   startTimer,
   stopTimer,
@@ -327,6 +328,25 @@ export async function handle(
       return { audioBase64: toBase64(bytes) };
     }
 
+    case "note-delete": {
+      const row = db.prepare("SELECT audio_path FROM work_note WHERE id = ?").get(req.id) as
+        | { audio_path: string | null }
+        | undefined;
+      if (!row) throw new Refused("no-such-note", "no note with that id");
+
+      // The row goes first. A file that outlives its row is litter; a row that outlives its file
+      // is a Play button that fails, and 24.6 is about the note being *gone*.
+      db.prepare("DELETE FROM work_note WHERE id = ?").run(req.id);
+      if (row.audio_path && ctx.dataDir) {
+        await Deno.remove(`${ctx.dataDir}/${row.audio_path}`).catch(() => {
+          // Already gone, or never written. Not a reason to fail a delete that has happened.
+        });
+      }
+      ctx.log("info", "notes", "deleted a note");
+      broadcast(ctx, { e: "changed", area: "notes" });
+      return { deleted: true };
+    }
+
     case "logs":
       return queryLogs(db, {
         ...(req.minLevel ? { minLevel: req.minLevel } : {}),
@@ -341,6 +361,13 @@ export async function handle(
     case "timer-start": {
       const timer = startTimer(db, { billingTag: req.billingTag, date: req.date, now });
       ctx.log("info", "timer", "started", { billingTag: req.billingTag, date: req.date });
+      broadcast(ctx, { e: "timer", timer: timerState(ctx) });
+      return timer;
+    }
+
+    case "timer-retag": {
+      const timer = retagTimer(db, req.billingTag);
+      ctx.log("info", "timer", "retagged", { billingTag: timer.billingTag });
       broadcast(ctx, { e: "timer", timer: timerState(ctx) });
       return timer;
     }

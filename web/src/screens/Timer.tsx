@@ -9,36 +9,34 @@
  * from the start instant the server gave — never from a clock the frontend started.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "../state.tsx";
-import { WorkNote } from "./WorkNote.tsx";
 import { clock, duration, hours, pace } from "../format.ts";
 import { today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
-interface NoteWire {
-  id: string;
-  createdAt: number;
-  body?: string;
-  audioMs?: number;
-  audioType?: string;
-  prompted: boolean;
-}
-
 export function Timer() {
   const { snapshot, call, refresh, phase, lastError, clearError } = useStore();
   const [tag, setTag] = useState("");
+  const [tagProblem, setTagProblem] = useState<string>();
+  /**
+   * 24.9 — the last tag used is *prefilled*, not defaulted.
+   *
+   * It used to be the input's placeholder while the value stayed empty, and `startStop` then read
+   * `tag || recentTags[0] || "Work"`. Two things were wrong with that. Grey placeholder text looks
+   * like an empty field, so starting a timer produced "Working on Feature development" out of what
+   * appeared to be nothing; and on a fresh server with no history at all the chain fell through to
+   * the invented word "Work", which is 24.1's whole complaint. Now the box holds a real value that
+   * can be seen and edited, and an empty one is refused.
+   */
+  const [prefilled, setPrefilled] = useState(false);
+  const running = snapshot?.timer.active?.billingTag;
+  if (!prefilled && (running ?? snapshot?.recentTags[0])) {
+    setPrefilled(true);
+    setTag(running ?? snapshot!.recentTags[0]!);
+  }
   const [busy, setBusy] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [notes, setNotes] = useState<NoteWire[]>([]);
   const canWrite = phase.k === "ready" && phase.role !== "read";
-
-  // Reloaded whenever anything changed, which the store signals by replacing the snapshot.
-  useEffect(() => {
-    void call<NoteWire[]>({ t: "notes", limit: 5 }).then(setNotes).catch(
-      () => {},
-    );
-  }, [call, snapshot]);
 
   if (!snapshot) return <p className="muted">Loading…</p>;
 
@@ -57,14 +55,37 @@ export function Timer() {
   const progress = targetMs > 0 ? Math.min(1, todayMs / targetMs) : 0;
   const paced = pace(snapshot.pacing.paceHours);
 
+  const retag = async () => {
+    const wanted = tag.trim();
+    if (!wanted) {
+      setTagProblem("A billing tag is needed.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await call({ t: "timer-retag", billingTag: wanted });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startStop = async () => {
+    // Refused here as well as on the server (24.1, 24.9). The server's refusal is the one that
+    // counts; this one exists so the message appears beside the field rather than in the
+    // connection-error strip at the top of the screen.
+    if (!active && !tag.trim()) {
+      setTagProblem("A billing tag is needed before the timer can start.");
+      return;
+    }
+    setTagProblem(undefined);
     setBusy(true);
     try {
       if (active) await call({ t: "timer-stop" });
       else {
         await call({
           t: "timer-start",
-          billingTag: tag || snapshot.recentTags[0] || "Work",
+          billingTag: tag.trim(),
           // 2.19 — this device's calendar date, decided here and fixed by the server.
           date: today(),
         });
@@ -153,24 +174,45 @@ export function Timer() {
           </button>
         </div>
 
-        {!active && (
-          <div className="row" style={{ marginTop: 16 }}>
-            <label className="field" style={{ flex: 1 }}>
-              Billing tag
-              <input
-                list="recent-tags"
-                value={tag}
-                onChange={(e) => setTag(e.target.value)}
-                placeholder={snapshot.recentTags[0] ?? "Product Development"}
-                disabled={!canWrite}
-              />
-            </label>
-            {/* 4.6 — autocomplete from what has been used, with no tag-management screen (4.7). */}
-            <datalist id="recent-tags">
-              {snapshot.recentTags.map((t: string) => <option key={t} value={t} />)}
-            </datalist>
-          </div>
-        )}
+        {
+          /*
+          24.10 — the same field whether the timer is running or not.
+          Realising at three o'clock that the morning has been filed under the wrong tag used to
+          mean stopping the timer, editing the entry in History and starting a new one. It is the
+          same value either way, so it is the same input either way; while a timer runs it saves
+          against the running timer.
+        */
+        }
+        <div className="row wrap" style={{ marginTop: 16, alignItems: "flex-end" }}>
+          <label className="field" style={{ flex: 1, minWidth: 200 }}>
+            Billing tag
+            <input
+              list="recent-tags"
+              value={tag}
+              onChange={(e) => {
+                setTag(e.target.value);
+                setTagProblem(undefined);
+              }}
+              placeholder="Product Development"
+              disabled={!canWrite}
+            />
+          </label>
+          {/* 4.6 — autocomplete from what has been used, with no tag-management screen (4.7). */}
+          <datalist id="recent-tags">
+            {snapshot.recentTags.map((t: string) => <option key={t} value={t} />)}
+          </datalist>
+          {active && canWrite && tag.trim() !== active.billingTag && (
+            <button
+              className="btn"
+              type="button"
+              disabled={busy || !tag.trim()}
+              onClick={() => void retag()}
+            >
+              Retag this session
+            </button>
+          )}
+        </div>
+        {tagProblem && <div className="notice warn" style={{ marginTop: 10 }}>{tagProblem}</div>}
 
         {snapshot.timer.implausible && (
           // 2.16, 2.17 — said out loud, and nothing is corrected on anyone's behalf.
@@ -181,145 +223,6 @@ export function Timer() {
           </div>
         )}
       </div>
-
-      {
-        /* 5.1, 5.4, 5.5, 19.8 — a work note is not billable time, so it has its own card and its
-          own action, reachable from the screen a person is already on. */
-      }
-      <div className="card">
-        <div className="row between">
-          <h3>Work notes</h3>
-          {canWrite && (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setNoteOpen(true)}
-            >
-              New work note
-            </button>
-          )}
-        </div>
-        {notes.length === 0
-          ? (
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              Nothing noted lately.
-            </p>
-          )
-          : (
-            <div className="entries" style={{ marginTop: 6 }}>
-              {notes.map((n) => <NoteRow key={n.id} note={n} />)}
-            </div>
-          )}
-      </div>
-
-      {noteOpen && <WorkNote onClose={() => setNoteOpen(false)} />}
-
-      <div className="card">
-        <h3>Today's entries</h3>
-        {snapshot.today.length === 0
-          ? (
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              Nothing recorded yet today.
-            </p>
-          )
-          : (
-            <div className="scroll-x">
-              <table>
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Billing tag</th>
-                    <th style={{ textAlign: "right" }}>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshot.today.map((e: WorkEntry) => (
-                    <tr key={e.id}>
-                      <td>
-                        {/* 19.6 — a duration-only entry says so rather than showing invented times. */}
-                        {e.timing
-                          ? <span className="tabular">{timeRange(e)}</span>
-                          : <span className="pill">duration only</span>}
-                      </td>
-                      <td>{e.billingTag}</td>
-                      <td className="tabular" style={{ textAlign: "right" }}>
-                        {duration(e.durationMs)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </div>
     </div>
   );
-}
-
-/** 5.28 — the recording is fetched only when somebody asks to hear it. */
-function NoteRow({ note }: { note: NoteWire }) {
-  const { call } = useStore();
-  const [url, setUrl] = useState<string>();
-  const [loading, setLoading] = useState(false);
-
-  const play = async () => {
-    setLoading(true);
-    try {
-      const { audioBase64 } = await call<{ audioBase64: string }>({
-        t: "note-audio",
-        id: note.id,
-      });
-      const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
-      setUrl(
-        URL.createObjectURL(
-          new Blob([bytes], { type: note.audioType ?? "audio/webm" }),
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="entry">
-      <div className="what">
-        <span>{note.body ?? <em className="faint">a recording</em>}</span>
-        <span className="faint">
-          {new Intl.DateTimeFormat(undefined, {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-            .format(new Date(note.createdAt))}
-          {note.prompted ? " · prompted" : ""}
-        </span>
-      </div>
-      {note.audioMs !== undefined && (
-        <div className="how-long">
-          {url ? <audio controls src={url} style={{ height: 30 }} /> : (
-            <button
-              className="link"
-              type="button"
-              disabled={loading}
-              onClick={() => void play()}
-            >
-              ▶ {Math.round(note.audioMs / 1000)}s
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function timeRange(e: WorkEntry): string {
-  if (!e.timing) return "";
-  const f = (n: number) =>
-    new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-      .format(new Date(n));
-  return `${f(e.timing.startedAt)} – ${f(e.timing.endedAt)}`;
 }

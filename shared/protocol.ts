@@ -100,6 +100,8 @@ export type Request =
   | { t: "snapshot"; month: string; clock: Clock }
   | { t: "timer-start"; billingTag: string; date: DateString }
   | { t: "timer-stop" }
+  /** 24.10 — correct a running timer's tag without stopping it. */
+  | { t: "timer-retag"; billingTag: string }
   | { t: "timer-discard" }
   | { t: "entries"; month: string }
   | {
@@ -138,6 +140,8 @@ export type Request =
   | { t: "notes"; limit?: number }
   /** 5.28 — the recording back, for playing. */
   | { t: "note-audio"; id: string }
+  /** 24.6 — a note is deletable; the recording goes with it. */
+  | { t: "note-delete"; id: string }
   | { t: "invoices" }
   | {
     t: "invoice-save";
@@ -336,11 +340,13 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
 
   "timer-start": "write",
   "timer-stop": "write",
+  "timer-retag": "write",
   "timer-discard": "write",
   "entry-add": "write",
   "entry-update": "write",
   "entry-delete": "write",
   "note-add": "write",
+  "note-delete": "write",
   "invoice-save": "write",
   "invoice-issue": "write",
   "invoice-mark-paid": "write",

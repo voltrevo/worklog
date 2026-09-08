@@ -16,6 +16,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { StoreProvider, useStore } from "./state.tsx";
 import { Connect } from "./screens/Connect.tsx";
 import { Timer } from "./screens/Timer.tsx";
+import { Notes } from "./screens/Notes.tsx";
 import { History } from "./screens/History.tsx";
 import { Pacing } from "./screens/Pacing.tsx";
 import { Invoices } from "./screens/Invoices.tsx";
@@ -26,6 +27,7 @@ import { LoopPlayback } from "./screens/LocalAudio.tsx";
 
 export type ScreenId =
   | "timer"
+  | "notes"
   | "history"
   | "pacing"
   | "invoices"
@@ -56,6 +58,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { id: "timer", label: "Timer", glyph: "◷" },
+  { id: "notes", label: "Notes", glyph: "✎" },
   { id: "history", label: "History", glyph: "☰" },
   { id: "pacing", label: "Pacing", glyph: "◑" },
   { id: "invoices", label: "Invoices", glyph: "▤" },
@@ -81,6 +84,8 @@ function Screen({ id }: { id: ScreenId }) {
   switch (id) {
     case "timer":
       return <Timer />;
+    case "notes":
+      return <Notes />;
     case "history":
       return <History />;
     case "pacing":
