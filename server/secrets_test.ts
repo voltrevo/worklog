@@ -251,3 +251,91 @@ Deno.test({
     assertEquals(offenders, [], "a device-local setting is named somewhere the server can reach");
   },
 });
+
+Deno.test("13.38 -- a device name is a label, and two devices may wear the same one", async () => {
+  // The reason this is worth a test rather than a comment: the name is the *only* part of an
+  // access request an unauthorized stranger controls (13.12). If anything downstream ever treats
+  // it as an identity — a lookup key, a uniqueness constraint, a way to tell two devices apart —
+  // then choosing a name becomes a way to act on another device's behalf.
+  const ctx = context();
+  const admin = session(ctx, "admin");
+  await claimAdmin(ctx, admin, await device());
+
+  const impersonator = "Studio Desktop"; // Exactly the admin's name, deliberately.
+  for (const dev of [await device(), await device()]) {
+    const hello = await call(ctx, session(ctx, `s${toBase64(dev.publicKey).slice(0, 6)}`), {
+      t: "hello",
+    }) as HelloResult;
+    const claim = {
+      purpose: "request" as const,
+      deviceName: impersonator,
+      role: "write" as const,
+      publicKey: dev.publicKey,
+      timestamp: NOW,
+      challenge: fromBase64(hello.challenge),
+      serverCertHash: CERT,
+    };
+    const signature = toBase64(await signClaim(claim, dev.pair.privateKey));
+    await call(ctx, session(ctx, `r${toBase64(dev.publicKey).slice(0, 6)}`), {
+      t: "request-access",
+      claim: toWireClaim(claim),
+      signature,
+    });
+  }
+
+  const pending = await call(ctx, admin, { t: "access-pending" }) as {
+    publicKey: string;
+    name: string;
+  }[];
+  assertEquals(pending.length, 2, "two requests with one name collapsed into one");
+  assertEquals(pending[0]!.name, impersonator);
+  assertEquals(pending[1]!.name, impersonator);
+  assertNotEquals(pending[0]!.publicKey, pending[1]!.publicKey);
+
+  // Approving by key touches exactly one of them, which is the property that matters: the admin's
+  // click lands on a device, not on a string that two devices share.
+  await call(ctx, admin, { t: "access-approve", publicKey: pending[0]!.publicKey, role: "read" });
+  const after = await call(ctx, admin, { t: "access-pending" }) as { publicKey: string }[];
+  assertEquals(after.length, 1);
+  assertEquals(after[0]!.publicKey, pending[1]!.publicKey);
+
+  // And the admin's own row is untouched by a stranger having taken its name.
+  const devices = await call(ctx, admin, { t: "access-devices" }) as {
+    name: string;
+    role: string;
+  }[];
+  assertEquals(devices.filter((d) => d.role === "admin").length, 1);
+
+  ctx.db.close();
+});
+
+Deno.test("13.38 -- and a name is stored exactly as sent, markup and all", async () => {
+  // Not sanitised on the way in. React escapes on the way out, which is the right place for it:
+  // a name mangled at rest is wrong for every reader forever, and one escaped at render is wrong
+  // for nobody. This pins the decision so a future "sanitise on input" does not pass silently.
+  const ctx = context();
+  const admin = session(ctx, "admin");
+  await claimAdmin(ctx, admin, await device());
+
+  const nasty = `<img src=x onerror="alert(1)"> & 'quoted' "double"`;
+  const dev = await device();
+  const hello = await call(ctx, session(ctx, "n"), { t: "hello" }) as HelloResult;
+  const claim = {
+    purpose: "request" as const,
+    deviceName: nasty,
+    role: "write" as const,
+    publicKey: dev.publicKey,
+    timestamp: NOW,
+    challenge: fromBase64(hello.challenge),
+    serverCertHash: CERT,
+  };
+  await call(ctx, session(ctx, "n2"), {
+    t: "request-access",
+    claim: toWireClaim(claim),
+    signature: toBase64(await signClaim(claim, dev.pair.privateKey)),
+  });
+
+  const pending = await call(ctx, admin, { t: "access-pending" }) as { name: string }[];
+  assertEquals(pending[0]!.name, nasty);
+  ctx.db.close();
+});
