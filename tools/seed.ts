@@ -48,7 +48,17 @@ setConfig(db, "invoice", {
 }, now);
 
 setConfig(db, "pacing", { monthlyTargetHours: 160, region: "AU-NSW" }, now);
-setConfig(db, "prompt", { enabled: true, meanIntervalMs: 45 * 60_000 }, now);
+/**
+ * 45 minutes is the realistic figure; `WORKLOG_SEED_PROMPT_MS` shortens it for the journey.
+ *
+ * The prompt process is memoryless (5.14): each poll asks "given the elapsed time, should one fire
+ * now?", and 5.31 caps that probability at 1. So a mean below the ten-second poll interval makes
+ * the first poll after a timer starts certain, which turns an unobservable feature into a
+ * fifteen-second check. The knob is on the *seeder* rather than the server because it is a property
+ * of the fixture, not a mode the product has.
+ */
+const promptMs = Number(Deno.env.get("WORKLOG_SEED_PROMPT_MS")) || 45 * 60_000;
+setConfig(db, "prompt", { enabled: true, meanIntervalMs: promptMs }, now);
 
 /** Enough variety that the invoice's Description column is not one word repeated. */
 const TAGS = [

@@ -90,7 +90,14 @@ async function until(label, page, predicate, timeout = 20_000) {
 const nav = (page, name) => page.getByRole("button", { name, exact: true }).first().click();
 
 async function main() {
-  const rig = await startRig({ dataDir, port: PORT, httpPort: HTTP_PORT });
+  // A one-second mean makes the first ten-second poll after a timer starts a certainty (5.31's
+  // cap), which is the only way a memoryless process becomes something a test can wait for.
+  const rig = await startRig({
+    dataDir,
+    port: PORT,
+    httpPort: HTTP_PORT,
+    seedEnv: { WORKLOG_SEED_PROMPT_MS: "1000" },
+  });
   const { desktop, mobile } = await claimAndApprove(rig);
 
   // ---------------------------------------------------------------- a timer, and a second device
@@ -167,6 +174,51 @@ async function main() {
       mobile.page,
       async (p) => (await p.getByText(TAG).count()) > 0,
     ),
+  );
+
+  // ---------------------------------------------------------------- the prompt
+  //
+  // 5.6–5.20, and 1.13's "the server controls globally coordinated events". This is the one feature
+  // where the *server* starts something and every connected frontend has to present it — not a
+  // response to a request, and not a broadcast that merely invalidates a cache. Nothing else in
+  // this file or the unit tests exercises `PromptHub` end to end.
+  //
+  // It only fires while a timer runs (5.13), so this section runs one of its own.
+  console.log("\nprompt:");
+  await nav(desktop.page, "Timer");
+  await desktop.page.getByLabel("Billing tag").fill("Prompted work");
+  await desktop.page.getByRole("button", { name: /Start/ }).click();
+
+  const asked = "What are you working on?";
+  check(
+    "the server asks, without being asked",
+    await until("prompt on desktop", desktop.page, (p) => p.getByText(asked).isVisible(), 40_000),
+  );
+  // 5.17 — *each* notified frontend presents it. A prompt only one device sees is a prompt the
+  // person answers once and is then asked again on the other.
+  check(
+    "and asks the phone too",
+    await until("prompt on phone", mobile.page, (p) => p.getByText(asked).isVisible(), 40_000),
+  );
+
+  await desktop.page.getByRole("textbox").first().fill("Answering the prompt.");
+  await desktop.page.getByRole("button", { name: "Save note" }).click();
+  check(
+    "answering closes it",
+    await until(
+      "prompt gone",
+      desktop.page,
+      async (p) => (await p.getByText(asked).count()) === 0,
+    ),
+  );
+  // 5.21 — the other device's copy is dismissible and costs nothing; it is not left blocking.
+  await mobile.page.getByRole("button", { name: "Not now" }).click();
+
+  await desktop.page.getByRole("button", { name: /Stop/ }).click();
+  await until(
+    "timer stopped",
+    desktop.page,
+    async (p) => (await p.getByText("Not working").count()) > 0,
   );
 
   // ---------------------------------------------------------------- recording time from the phone
@@ -319,6 +371,71 @@ async function main() {
       (p) => p.getByText("Wrote the journey harness.").isVisible(),
     ),
   );
+
+  // ---------------------------------------------------------------- a voice note
+  //
+  // 5.3, 5.23–5.29. The longest untested path in the product: MediaRecorder in the tab, base64 up
+  // the wire, a *file on the server's disk* (17.10) rather than a row, and `note-audio` reading it
+  // back on request. The disk write in particular has nothing else that touches it.
+  //
+  // The browser has a synthetic microphone (see `harness.mjs`); without one this whole feature is
+  // unreachable from a test, which is most of why it had never been run.
+  console.log("\nvoice note:");
+  await nav(desktop.page, "Timer");
+  await desktop.page.getByRole("button", { name: "New work note" }).click();
+
+  const record = desktop.page.getByRole("button", { name: /Record$/ });
+  if (await record.count() === 0) {
+    check("the browser offers recording", false, await visibleText(desktop.page));
+  } else {
+    await record.click();
+    check(
+      "recording starts",
+      await until(
+        "recording",
+        desktop.page,
+        (p) => p.getByText(/● recording/).isVisible(),
+      ),
+    );
+    // Long enough to be a real Opus frame rather than an empty container.
+    await desktop.page.waitForTimeout(1_500);
+    await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // 5.28 — playable before it is even saved.
+    check(
+      "and the recording can be heard back before saving",
+      await until(
+        "player",
+        desktop.page,
+        async (p) => (await p.locator("audio").count()) > 0,
+      ),
+    );
+
+    await desktop.page.getByRole("button", { name: "Save note" }).click();
+
+    // 5.24 — retained. The list shows a duration only when the server kept the audio, and the
+    // duration comes back from the row while the bytes come back from the file.
+    check(
+      "the saved note comes back with its recording",
+      await until(
+        "audio note listed",
+        desktop.page,
+        async (p) => (await p.getByRole("button", { name: /▶ \d+s/ }).count()) > 0,
+      ),
+    );
+
+    // 5.28 again, but the round trip that matters: this fetches `note-audio`, which reads the file
+    // the server wrote. A row with a duration and no file behind it would pass everything above.
+    await desktop.page.getByRole("button", { name: /▶ \d+s/ }).first().click();
+    check(
+      "and the bytes come back off the server's disk",
+      await until(
+        "playback",
+        desktop.page,
+        async (p) => (await p.locator("audio[src^='blob:']").count()) > 0,
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------- surviving reloads
   //

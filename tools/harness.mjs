@@ -151,7 +151,16 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
 
   const browser = await chromium.launch({
     executablePath,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args: [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      // A synthetic microphone, and no permission dialog in front of it. 5.23's voice notes are
+      // otherwise unreachable from a headless browser: `getUserMedia` either prompts, with nobody
+      // to answer, or rejects — and either way the path from MediaRecorder through base64 to the
+      // file the server writes has never once been run.
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+    ],
   });
 
   /** Page errors are collected rather than thrown: a run should report all of them, not the first. */
@@ -176,6 +185,9 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
       // Fixed, so a run in Sydney and a run in CI see the same clock and the same dates.
       timezoneId: "Australia/Sydney",
       locale: "en-AU",
+      // Granted here as well as at the command line: the fake-UI flag answers the dialog, and this
+      // is what stops Playwright's own permission state from refusing before the dialog appears.
+      permissions: ["microphone"],
     });
     const page = await context.newPage();
     page.on("pageerror", (e) => {

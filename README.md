@@ -124,9 +124,10 @@ by `deno task shots`.
 ## Two browser harnesses, and what each is for
 
 `deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
-works — thirty-four checks across three concurrent browsers: run a timer and watch the other device
+works — forty-one checks across three concurrent browsers: run a timer and watch the other device
 learn about it unasked, record time from the phone, edit an entry down to duration-only, delete
-one, write a work note and see it arrive, invoice a month, take delivery of the PDF, issue it, and
+one, write a work note and see it arrive, record a voice note through a synthetic microphone and play
+it back off the server's disk, wait for a server-initiated prompt to reach both devices, invoice a month, take delivery of the PDF, issue it, and
 change the schedule and watch the projection move on another device, revoke the phone while it is
 still holding an open subscription, and confirm a `read` device is shown none of the controls it
 would be refused. They share `tools/harness.mjs` and run on different
