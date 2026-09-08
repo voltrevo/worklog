@@ -16,6 +16,7 @@
  */
 
 import { gainFor } from "./gain.ts";
+import { deviceStorage } from "./desktop.ts";
 
 const DB_NAME = "worklog";
 const STORE = "audio";
@@ -32,15 +33,22 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, 2);
     req.onupgradeneeded = () => {
       // Version 2 adds this store beside the device key's, which version 1 created.
-      if (!req.result.objectStoreNames.contains("device")) req.result.createObjectStore("device");
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+      if (!req.result.objectStoreNames.contains("device")) {
+        req.result.createObjectStore("device");
+      }
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE);
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-function run<T>(mode: IDBTransactionMode, body: (s: IDBObjectStore) => IDBRequest): Promise<T> {
+function run<T>(
+  mode: IDBTransactionMode,
+  body: (s: IDBObjectStore) => IDBRequest,
+): Promise<T> {
   return openDb().then((db) =>
     new Promise<T>((resolve, reject) => {
       const tx = db.transaction(STORE, mode);
@@ -78,20 +86,20 @@ export async function clearLoop(): Promise<void> {
 }
 
 export function loadEnabled(): boolean {
-  return localStorage.getItem(ENABLED_KEY) === "1";
+  return deviceStorage().get(ENABLED_KEY) === "1";
 }
 
 export function saveEnabled(on: boolean): void {
-  localStorage.setItem(ENABLED_KEY, on ? "1" : "0");
+  deviceStorage().set(ENABLED_KEY, on ? "1" : "0");
 }
 
 export function loadVolume(): number {
-  const raw = Number(localStorage.getItem(VOLUME_KEY));
+  const raw = Number(deviceStorage().get(VOLUME_KEY));
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0.6;
 }
 
 export function saveVolume(position: number): void {
-  localStorage.setItem(VOLUME_KEY, String(position));
+  deviceStorage().set(VOLUME_KEY, String(position));
 }
 
 // ------------------------------------------------------------------ playing it
@@ -118,7 +126,9 @@ export class LoopPlayer {
     this.#audio = undefined;
     if (!loop) return;
 
-    this.#url = URL.createObjectURL(new Blob([loop.bytes], { type: loop.type }));
+    this.#url = URL.createObjectURL(
+      new Blob([loop.bytes], { type: loop.type }),
+    );
     const audio = new Audio(this.#url);
     audio.loop = true; // 14.12 — continuously, with no gap and nothing to press
     audio.preload = "auto";
@@ -130,7 +140,11 @@ export class LoopPlayer {
     this.#position = position;
     if (this.#gain && this.#context) {
       // Ramped rather than stepped, because a jump in gain is an audible click.
-      this.#gain.gain.setTargetAtTime(gainFor(position), this.#context.currentTime, 0.02);
+      this.#gain.gain.setTargetAtTime(
+        gainFor(position),
+        this.#context.currentTime,
+        0.02,
+      );
     }
   }
 
@@ -147,7 +161,8 @@ export class LoopPlayer {
 
     if (!this.#context) {
       const Ctx = globalThis.AudioContext ??
-        (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        (globalThis as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
       if (!Ctx) return;
       this.#context = new Ctx();
       this.#gain = this.#context.createGain();

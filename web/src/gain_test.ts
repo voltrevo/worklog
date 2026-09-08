@@ -3,7 +3,11 @@ import { decibelsFor, gainFor, labelFor, RANGE_DB } from "./gain.ts";
 
 Deno.test("14.22 -- zero is silence, exactly, and not a small number", () => {
   assertEquals(gainFor(0), 0);
-  assertEquals(gainFor(-1), 0, "and below zero is still silence rather than an error");
+  assertEquals(
+    gainFor(-1),
+    0,
+    "and below zero is still silence rather than an error",
+  );
   assertEquals(labelFor(0), "off");
 });
 
@@ -32,16 +36,29 @@ Deno.test("14.19/14.20 -- equal movement is equal change, everywhere on the slid
   }
   const first = ratios[0]!;
   for (const [i, r] of ratios.entries()) {
-    assertAlmostEquals(r, first, 1e-9, `step ${i} changed by a different factor`);
+    assertAlmostEquals(
+      r,
+      first,
+      1e-9,
+      `step ${i} changed by a different factor`,
+    );
   }
 });
 
 Deno.test("14.21 -- there is no floor: the bottom of the travel keeps getting quieter", () => {
   // The failure this guards against is a control that bottoms out at a few percent amplitude and
   // calls it quiet. A tenth of the way up should be far below a hundredth of full scale.
-  assertEquals(gainFor(0.1) < 0.002, true, `${gainFor(0.1)} is not quiet enough`);
+  assertEquals(
+    gainFor(0.1) < 0.002,
+    true,
+    `${gainFor(0.1)} is not quiet enough`,
+  );
   assertEquals(gainFor(0.02) < gainFor(0.05), true);
-  assertEquals(gainFor(0.001) > 0, true, "and it is still audible, not silently clamped to zero");
+  assertEquals(
+    gainFor(0.001) > 0,
+    true,
+    "and it is still audible, not silently clamped to zero",
+  );
 });
 
 Deno.test("gain rises monotonically across the whole slider", () => {

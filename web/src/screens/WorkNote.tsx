@@ -78,7 +78,12 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
   };
 
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label="Work note">
+    <div
+      className="sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Work note"
+    >
       <div className="card stack" style={{ gap: 14 }}>
         <div className="row between">
           <h2>{prompted ? "What are you working on?" : "Work note"}</h2>
@@ -119,8 +124,14 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
             : recorder.state === "recording"
             ? (
               <div className="row">
-                <span className="pill bad">● recording {clock(recorder.elapsedMs)}</span>
-                <button className="btn" type="button" onClick={() => void recorder.stop()}>
+                <span className="pill bad">
+                  ● recording {clock(recorder.elapsedMs)}
+                </span>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void recorder.stop()}
+                >
                   Stop
                 </button>
               </div>
@@ -129,15 +140,27 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
             ? (
               <div className="row wrap">
                 {/* 5.28 — played back before it is even saved. */}
-                <audio controls src={recorder.recording.url} style={{ height: 34 }} />
-                <button className="link" type="button" onClick={recorder.discard}>
+                <audio
+                  controls
+                  src={recorder.recording.url}
+                  style={{ height: 34 }}
+                />
+                <button
+                  className="link"
+                  type="button"
+                  onClick={recorder.discard}
+                >
                   Record again
                 </button>
               </div>
             )
             : (
               <div className="row">
-                <button className="btn" type="button" onClick={() => void recorder.start()}>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void recorder.start()}
+                >
                   ● Record
                 </button>
                 <span className="faint" style={{ fontSize: 12 }}>
@@ -160,7 +183,9 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
           >
             Save note
           </button>
-          <button className="btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -199,7 +224,10 @@ function useRecorder() {
 
   useEffect(() => {
     if (state !== "recording") return;
-    const id = setInterval(() => setElapsed(Date.now() - startedRef.current), 200);
+    const id = setInterval(
+      () => setElapsed(Date.now() - startedRef.current),
+      200,
+    );
     return () => clearInterval(id);
   }, [state]);
 
@@ -208,7 +236,11 @@ function useRecorder() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         // 5.26 — mono, and with the processing that makes speech intelligible rather than pretty.
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
       });
       streamRef.current = stream;
       const mimeType = pickMimeType();

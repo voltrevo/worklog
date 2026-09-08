@@ -21,6 +21,7 @@ import {
   memoryKeyStore,
   ServerRefusal,
   type Transport,
+  webCryptoSigner,
   WorklogClient,
 } from "@worklog/shared/client";
 import { open } from "./db.ts";
@@ -95,7 +96,7 @@ function client(ctx: ServerContext, id: string, deviceName: string) {
   const transport = loopback(ctx, id);
   const c = new WorklogClient({
     transport,
-    keys: memoryKeyStore(),
+    signer: webCryptoSigner(memoryKeyStore()),
     deviceName,
     onEvent: (e) => events.push(e),
   });
@@ -121,35 +122,62 @@ Deno.test("first run: the device makes a key, claims admin, and is authenticated
 
 Deno.test("13.2 -- the key is reused across connections, so the device stays the same one", async () => {
   const ctx = server();
+  // One store, two clients: the second is a reload, and has to be the same device.
   const keys = memoryKeyStore();
   const first = new WorklogClient({
     transport: loopback(ctx, "a"),
-    keys,
+    signer: webCryptoSigner(keys),
     deviceName: "MacBook Pro",
   });
   await first.claimAdmin();
-  const firstKey = toBase64((await first.deviceKey()).publicKey);
+  const firstKey = toBase64(await first.publicKey());
 
-  // A reload: new connection, new client object, same store.
   const second = new WorklogClient({
     transport: loopback(ctx, "b"),
-    keys,
+    signer: webCryptoSigner(keys),
     deviceName: "MacBook Pro",
   });
-  assertEquals(toBase64((await second.deviceKey()).publicKey), firstKey);
+  assertEquals(toBase64(await second.publicKey()), firstKey);
   assertEquals((await second.hello()).offer, "auth", "recognised without being told");
   assertEquals((await second.authenticate()).role, "admin");
   ctx.db.close();
 });
 
-Deno.test("13.4/20.5 -- the private key cannot be exported, by us or by anything else", async () => {
-  const ctx = server();
-  const { client: a } = client(ctx, "a", "MacBook Pro");
-  const { pair } = await a.deviceKey();
+Deno.test("13.4/20.5 -- the browser's device key cannot be exported, by us or by anything else", async () => {
+  // The client itself no longer holds a key -- it holds a `Signer` -- so this reaches past it to
+  // the store the browser signer uses, which is where the guarantee actually lives.
+  const keys = memoryKeyStore();
+  const signer = webCryptoSigner(keys);
+  await signer.publicKey();
+  const pair = (await keys.load())!;
+
   assertEquals(pair.privateKey.extractable, false);
   await assertRejects(() => crypto.subtle.exportKey("pkcs8", pair.privateKey));
   // ...while the public half still exports, which is what makes a non-extractable pair usable.
   assertEquals(pair.publicKey.extractable, true);
+});
+
+Deno.test("a client can be given any signer, which is how the desktop keeps its key in a file", async () => {
+  // The desktop's signer is the shell, over an IPC binding. Nothing about `WorklogClient` knows
+  // that, and this proves it by handing it a signer made of two plain functions.
+  const ctx = server();
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ]) as CryptoKeyPair;
+  const elsewhere = {
+    publicKey: async () => new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)),
+    sign: async (m: Uint8Array) =>
+      new Uint8Array(
+        await crypto.subtle.sign({ name: "Ed25519" }, pair.privateKey, m as BufferSource),
+      ),
+  };
+  const c = new WorklogClient({
+    transport: loopback(ctx, "a"),
+    signer: elsewhere,
+    deviceName: "Studio Desktop",
+  });
+  assertEquals((await c.claimAdmin()).outcome, "admin-granted");
   ctx.db.close();
 });
 

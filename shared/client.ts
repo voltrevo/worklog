@@ -5,19 +5,20 @@
  * connection in a browser and a direct function call in a test — which is how the handshake below
  * gets exercised without a socket. `kps-transport.ts` supplies the real one.
  *
- * **The device private key is never extractable.** It is generated with `extractable: false`, which
- * Ed25519 honours for the private half while still allowing the public half to be exported. So
- * 13.4 and 20.5 are not rules this code follows — they are things the key cannot do. It signs; its
- * bytes cannot be read back by any script on the page, ours included.
+ * **Signing is an interface, not a key.** In a browser tab the signer is a non-extractable
+ * `CryptoKey` — Ed25519 honours `extractable: false` for the private half while still letting the
+ * public half out, so 13.4 and 20.5 are things the key *cannot do* rather than rules this code
+ * follows. In the desktop window it is a file the operating system protects, and the page asks the
+ * shell to sign rather than holding anything. Either way `WorklogClient` never sees key material.
  */
 
 import {
   type AccessRole,
   type AuthClaim,
+  authMessage,
   type AuthPurpose,
   exportPublicKey,
   generateDeviceKey,
-  signClaim,
 } from "./auth.ts";
 import {
   decodeJson,
@@ -44,6 +45,43 @@ export interface DeviceKeyStore {
   load(): Promise<CryptoKeyPair | undefined>;
   save(pair: CryptoKeyPair): Promise<void>;
   clear(): Promise<void>;
+}
+
+/**
+ * Something that can prove it is this device (13.2, 13.30).
+ *
+ * The whole of what the client needs: a public key to name itself by, and the ability to sign. It
+ * deliberately cannot hand back a private key, which is what lets the desktop keep one in a file
+ * and the browser keep one the page cannot read.
+ */
+export interface Signer {
+  publicKey(): Promise<Uint8Array>;
+  sign(message: Uint8Array): Promise<Uint8Array>;
+}
+
+/** The browser's: a non-extractable Ed25519 pair, made once and kept (13.2, 13.3). */
+export function webCryptoSigner(keys: DeviceKeyStore): Signer {
+  let pair: CryptoKeyPair | undefined;
+  const load = async () => {
+    if (pair) return pair;
+    pair = await keys.load() ?? await (async () => {
+      const made = await generateDeviceKey();
+      await keys.save(made);
+      return made;
+    })();
+    return pair;
+  };
+  return {
+    publicKey: async () => await exportPublicKey(await load()),
+    sign: async (message) =>
+      new Uint8Array(
+        await crypto.subtle.sign(
+          { name: "Ed25519" },
+          (await load()).privateKey,
+          message as BufferSource,
+        ),
+      ),
+  };
 }
 
 /** A refusal from the server, carrying the code the UI branches on. */
@@ -82,7 +120,7 @@ export function memoryKeyStore(): DeviceKeyStore {
 
 export interface ClientOptions {
   transport: Transport;
-  keys: DeviceKeyStore;
+  signer: Signer;
   /** 13.12 — what this device calls itself. An untrusted display string at the far end (13.38). */
   deviceName: string;
   onEvent?: (event: Event) => void;
@@ -97,8 +135,7 @@ export interface ConnectionState {
 
 export class WorklogClient {
   #transport: Transport;
-  #keys: DeviceKeyStore;
-  #pair?: CryptoKeyPair;
+  #signer: Signer;
   #publicKey?: Uint8Array;
   #deviceName: string;
   #onEvent?: (event: Event) => void;
@@ -106,7 +143,7 @@ export class WorklogClient {
 
   constructor(opts: ClientOptions) {
     this.#transport = opts.transport;
-    this.#keys = opts.keys;
+    this.#signer = opts.signer;
     this.#deviceName = opts.deviceName;
     if (opts.onEvent) this.#onEvent = opts.onEvent;
   }
@@ -115,17 +152,10 @@ export class WorklogClient {
     return this.#state;
   }
 
-  /** 13.2 — made once and kept; every later visit is the same device. */
-  async deviceKey(): Promise<{ pair: CryptoKeyPair; publicKey: Uint8Array }> {
-    if (this.#pair && this.#publicKey) return { pair: this.#pair, publicKey: this.#publicKey };
-    let pair = await this.#keys.load();
-    if (!pair) {
-      pair = await generateDeviceKey();
-      await this.#keys.save(pair);
-    }
-    this.#pair = pair;
-    this.#publicKey = await exportPublicKey(pair);
-    return { pair, publicKey: this.#publicKey };
+  /** 13.2 — the same key on every visit, whoever is holding it. */
+  async publicKey(): Promise<Uint8Array> {
+    this.#publicKey ??= await this.#signer.publicKey();
+    return this.#publicKey;
   }
 
   /** One round trip. Throws `ServerRefusal` for a refusal, rather than returning a union. */
@@ -138,8 +168,10 @@ export class WorklogClient {
 
   /** Fetch a fresh challenge and find out what this device should be offered (13.7 vs 13.11). */
   async hello(): Promise<HelloResult> {
-    const { publicKey } = await this.deviceKey();
-    const hello = await this.call<HelloResult>({ t: "hello", publicKey: toBase64(publicKey) });
+    const hello = await this.call<HelloResult>({
+      t: "hello",
+      publicKey: toBase64(await this.publicKey()),
+    });
     this.#state = {
       serverCertHash: hello.serverCertHash,
       version: hello.version,
@@ -153,7 +185,7 @@ export class WorklogClient {
     claim: AuthClaim;
     signature: string;
   }> {
-    const { pair, publicKey } = await this.deviceKey();
+    const publicKey = await this.publicKey();
     const claim: AuthClaim = {
       purpose,
       deviceName: this.#deviceName,
@@ -164,7 +196,8 @@ export class WorklogClient {
       // 13.23 -- bound to the server that issued the challenge, so this proof is useless elsewhere.
       serverCertHash: hello.serverCertHash,
     };
-    return { claim, signature: toBase64(await signClaim(claim, pair.privateKey)) };
+    // The bytes are built here and signed elsewhere, so nothing in this file ever holds a key.
+    return { claim, signature: toBase64(await this.#signer.sign(authMessage(claim))) };
   }
 
   /**

@@ -35,7 +35,9 @@ export function Timer() {
 
   // Reloaded whenever anything changed, which the store signals by replacing the snapshot.
   useEffect(() => {
-    void call<NoteWire[]>({ t: "notes", limit: 5 }).then(setNotes).catch(() => {});
+    void call<NoteWire[]>({ t: "notes", limit: 5 }).then(setNotes).catch(
+      () => {},
+    );
   }, [call, snapshot]);
 
   if (!snapshot) return <p className="muted">Loading…</p>;
@@ -188,13 +190,21 @@ export function Timer() {
         <div className="row between">
           <h3>Work notes</h3>
           {canWrite && (
-            <button className="btn" type="button" onClick={() => setNoteOpen(true)}>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setNoteOpen(true)}
+            >
               New work note
             </button>
           )}
         </div>
         {notes.length === 0
-          ? <p className="muted" style={{ margin: "8px 0 0" }}>Nothing noted lately.</p>
+          ? (
+            <p className="muted" style={{ margin: "8px 0 0" }}>
+              Nothing noted lately.
+            </p>
+          )
           : (
             <div className="entries" style={{ marginTop: 6 }}>
               {notes.map((n) => <NoteRow key={n.id} note={n} />)}
@@ -260,7 +270,11 @@ function NoteRow({ note }: { note: NoteWire }) {
         id: note.id,
       });
       const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
-      setUrl(URL.createObjectURL(new Blob([bytes], { type: note.audioType ?? "audio/webm" })));
+      setUrl(
+        URL.createObjectURL(
+          new Blob([bytes], { type: note.audioType ?? "audio/webm" }),
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -271,20 +285,27 @@ function NoteRow({ note }: { note: NoteWire }) {
       <div className="what">
         <span>{note.body ?? <em className="faint">a recording</em>}</span>
         <span className="faint">
-          {new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
+          {new Intl.DateTimeFormat(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
             .format(new Date(note.createdAt))}
           {note.prompted ? " · prompted" : ""}
         </span>
       </div>
       {note.audioMs !== undefined && (
         <div className="how-long">
-          {url
-            ? <audio controls src={url} style={{ height: 30 }} />
-            : (
-              <button className="link" type="button" disabled={loading} onClick={() => void play()}>
-                ▶ {Math.round(note.audioMs / 1000)}s
-              </button>
-            )}
+          {url ? <audio controls src={url} style={{ height: 30 }} /> : (
+            <button
+              className="link"
+              type="button"
+              disabled={loading}
+              onClick={() => void play()}
+            >
+              ▶ {Math.round(note.audioMs / 1000)}s
+            </button>
+          )}
         </div>
       )}
     </div>

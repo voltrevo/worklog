@@ -11,6 +11,7 @@
  */
 
 import type { DeviceKeyStore } from "@worklog/shared/client";
+import { deviceStorage } from "./desktop.ts";
 
 const DB_NAME = "worklog";
 const STORE = "device";
@@ -57,31 +58,31 @@ export function indexedDbKeyStore(): DeviceKeyStore {
 /**
  * 22.3, 22.4 — the address lives in device-local storage, and never in the URL.
  *
- * `localStorage` is right for this one: it is a short string, it must survive a reload, and unlike
- * the key there is nothing to protect — the address is a capability, but it is a capability this
- * device already holds by definition.
+ * `deviceStorage` rather than `localStorage` directly: in a browser tab those are the same thing,
+ * and in the desktop window it is the shell's settings file, because a `file://` page has no
+ * dependable storage of its own. Either way it stays on the device (16.1, 22.3).
  */
 const ADDRESS_KEY = "worklog.serverAddress";
 const NAME_KEY = "worklog.deviceName";
 
 export function loadAddress(): string | null {
-  return localStorage.getItem(ADDRESS_KEY);
+  return deviceStorage().get(ADDRESS_KEY);
 }
 
 export function saveAddress(address: string): void {
-  localStorage.setItem(ADDRESS_KEY, address.trim());
+  deviceStorage().set(ADDRESS_KEY, address.trim());
 }
 
 export function clearAddress(): void {
-  localStorage.removeItem(ADDRESS_KEY);
+  deviceStorage().remove(ADDRESS_KEY);
 }
 
 export function loadDeviceName(): string {
-  return localStorage.getItem(NAME_KEY) ?? guessDeviceName();
+  return deviceStorage().get(NAME_KEY) ?? guessDeviceName();
 }
 
 export function saveDeviceName(name: string): void {
-  localStorage.setItem(NAME_KEY, name.trim());
+  deviceStorage().set(NAME_KEY, name.trim());
 }
 
 /** A starting point for the name field, which the person can and should change (13.12). */

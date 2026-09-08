@@ -14,3 +14,5 @@ data/
 
 # Vite output and the seeded databases the screenshot harness makes.
 web/dist/
+Worklog/
+Worklog.app/

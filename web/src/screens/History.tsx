@@ -95,10 +95,16 @@ export function History() {
                               : "duration only"}
                           </span>
                         </div>
-                        <div className="how-long tabular">{duration(e.durationMs)}</div>
+                        <div className="how-long tabular">
+                          {duration(e.durationMs)}
+                        </div>
                         {canWrite && (
                           <div className="acts">
-                            <button className="link" type="button" onClick={() => setEditing(e.id)}>
+                            <button
+                              className="link"
+                              type="button"
+                              onClick={() => setEditing(e.id)}
+                            >
                               Edit
                             </button>
                             <button
@@ -153,7 +159,11 @@ export function History() {
                                         {timeOfDay(e.timing.endedAt)}
                                       </span>
                                     )
-                                    : <span className="pill">duration only</span>}
+                                    : (
+                                      <span className="pill">
+                                        duration only
+                                      </span>
+                                    )}
                                 </td>
                                 {/* 19.5 — the tag is visible while reviewing, not hidden behind an edit. */}
                                 <td>{e.billingTag}</td>

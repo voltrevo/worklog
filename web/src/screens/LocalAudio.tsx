@@ -123,7 +123,10 @@ export function LocalAudioCard() {
               saveVolume(next);
             }}
           />
-          <span className="tabular faint" style={{ fontSize: 12, minWidth: 52 }}>
+          <span
+            className="tabular faint"
+            style={{ fontSize: 12, minWidth: 52 }}
+          >
             {labelFor(volume)}
           </span>
         </label>

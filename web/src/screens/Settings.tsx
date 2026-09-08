@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours } from "../format.ts";
+import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
 import { LocalAudioCard } from "./LocalAudio.tsx";
 import { WEEKDAY_NAMES } from "@worklog/shared/schedule";
 import type { DayInterval, PacingConfig, Weekday } from "@worklog/shared/types";
@@ -74,6 +75,8 @@ export function Settings() {
           to decide what its own speakers do. */
       }
       <LocalAudioCard />
+      {/* 15.1, 15.5 — renders nothing outside the desktop window. */}
+      <AlwaysOnTopCard />
 
       <div className="card">
         {/* 18.2, 18.3 */}

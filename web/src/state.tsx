@@ -21,11 +21,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { memoryKeyStore, ServerRefusal, WorklogClient } from "@worklog/shared/client";
+import {
+  memoryKeyStore,
+  ServerRefusal,
+  type Signer,
+  webCryptoSigner,
+  WorklogClient,
+} from "@worklog/shared/client";
 import type { Event, HelloResult, Request, SnapshotResult } from "@worklog/shared/protocol";
 import type { AccessRole, AuthPurpose } from "@worklog/shared/auth";
 import { minutesSinceMidnight, monthOf, today } from "@worklog/shared/dates";
 import { connect } from "./kpsTransport.ts";
+import { desktopSigner, isDesktop, primeDeviceStorage } from "./desktop.ts";
 import {
   indexedDbKeyStore,
   loadAddress,
@@ -160,7 +167,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const transport = await connect(address);
       const client = new WorklogClient({
         transport,
-        keys: safeKeyStore(),
+        signer: chooseSigner(),
         deviceName: name,
         onEvent,
       });
@@ -258,8 +265,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
-    const address = loadAddress();
-    if (address) void connectTo(address, loadDeviceName());
+    // The desktop's settings live in a file, so they have to be in hand before anything reads the
+    // stored address — otherwise the first render decides there is none and shows the setup screen
+    // to somebody who set it up last week.
+    void primeDeviceStorage().then(() => {
+      const address = loadAddress();
+      setNameState(loadDeviceName());
+      if (address) void connectTo(address, loadDeviceName());
+      else setPhase({ k: "no-address" });
+    });
   }, [connectTo]);
 
   useEffect(() => {
@@ -314,18 +328,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * IndexedDB where it exists, memory where it does not.
+ * Who signs for this device.
  *
- * A private window with storage blocked should still be able to connect and work; it just becomes
- * a new device every time, which is honest — nothing was kept, so nothing is remembered.
+ * In the desktop window, the shell — its key is a file the operating system protects and the page
+ * never holds it. In a tab, a non-extractable `CryptoKey` in IndexedDB. And where storage is
+ * blocked entirely, a key in memory: a private window should still be able to connect and work, it
+ * just becomes a new device each time, which is honest — nothing was kept, so nothing is
+ * remembered.
  */
-function safeKeyStore() {
+function chooseSigner(): Signer {
+  if (isDesktop()) return desktopSigner();
   try {
-    if (typeof indexedDB !== "undefined") return indexedDbKeyStore();
+    if (typeof indexedDB !== "undefined") {
+      return webCryptoSigner(indexedDbKeyStore());
+    }
   } catch {
     // Blocked by the browser's storage settings.
   }
-  return memoryKeyStore();
+  return webCryptoSigner(memoryKeyStore());
 }
 
 /**
@@ -338,7 +358,8 @@ function safeKeyStore() {
 function chime(): void {
   try {
     const Ctx = globalThis.AudioContext ??
-      (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (globalThis as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!Ctx) return;
     const audio = new Ctx();
     const gain = audio.createGain();
