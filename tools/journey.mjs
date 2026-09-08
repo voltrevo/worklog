@@ -27,6 +27,27 @@ const HTTP_PORT = 5400;
 
 const TAG = "Journey work";
 
+/**
+ * A Monday in the month the app will be showing, in the timezone the harness pins its browsers to.
+ *
+ * A Monday specifically, because the override check needs a day that *is* scheduled before it can
+ * prove that marking it off lowers the capacity. "The 15th" would silently be a no-op in the months
+ * where the 15th is a Sunday, and the check would pass in eleven months of the year.
+ */
+const FIRST_MONDAY = (() => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Australia/Sydney",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const at = (t) => parts.find((p) => p.type === t).value;
+  const first = new Date(Date.UTC(Number(at("year")), Number(at("month")) - 1, 1));
+  // getUTCDay: 0 is Sunday, so 1 is Monday and this is how far the first of the month is from one.
+  const day = first.getUTCDate() + ((8 - first.getUTCDay()) % 7);
+  return `${at("year")}-${at("month")}-${String(day).padStart(2, "0")}`;
+})();
+
 let checks = 0;
 const failures = [];
 
@@ -322,6 +343,77 @@ async function main() {
     );
   }
 
+  // ---------------------------------------------------------------- configuration, and its effect
+  //
+  // 6.x and 1.12. The point is not that a number was stored -- it is that changing the *schedule*
+  // moves the projection on another device, which is what 6.21's "expected working hours, not a
+  // number of hours" means in practice. A config screen whose values nothing downstream reads is
+  // exactly the shape of `a-value-nothing-reads-is-untestable`.
+  console.log("\nconfiguration:");
+  await nav(desktop.page, "Pacing");
+  const capacityBefore = await figure(desktop.page, "Capacity this month");
+  check("the pacing figures can be read at all", capacityBefore !== undefined, `${capacityBefore}`);
+
+  await nav(desktop.page, "Settings");
+  await desktop.page.getByLabel("Monthly target (hours)").fill("120");
+  // Saturday off -> on. The capacity is the sum of the scheduled intervals, so adding a sixth
+  // workday must raise it; a target change alone would not, which is why both are exercised.
+  await desktop.page.getByRole("checkbox").nth(5).check();
+  await desktop.page.getByRole("button", { name: "Save", exact: true }).first().click();
+
+  await nav(mobile.page, "Pacing");
+  check(
+    "a target set on the desktop is the target the phone projects against",
+    await until(
+      "target on phone",
+      mobile.page,
+      async (p) => (await p.getByText("120h 0m").count()) > 0,
+    ),
+  );
+
+  await nav(desktop.page, "Pacing");
+  check(
+    "and adding a workday to the week raises the month's capacity",
+    await until(
+      "capacity up",
+      desktop.page,
+      async (p) => {
+        const now = await figure(p, "Capacity this month");
+        return now !== undefined && capacityBefore !== undefined && now > capacityBefore;
+      },
+    ),
+    `was ${capacityBefore}h`,
+  );
+
+  // 6.19, 6.20 — an override is not a work record. It changes what the month is expected to hold,
+  // so the capacity moves and the recorded hours do not.
+  const capacityWithSaturday = await figure(desktop.page, "Capacity this month");
+  const workedBefore = await figure(desktop.page, "Worked so far");
+  await desktop.page.getByLabel("Date").last().fill(FIRST_MONDAY);
+  await desktop.page.getByRole("button", { name: "Add", exact: true }).click();
+
+  check(
+    "marking a day off lowers the capacity",
+    await until(
+      "capacity down",
+      desktop.page,
+      async (p) => {
+        const now = await figure(p, "Capacity this month");
+        return now !== undefined && capacityWithSaturday !== undefined &&
+          now < capacityWithSaturday;
+      },
+    ),
+    `was ${capacityWithSaturday}h`,
+  );
+  // `workedBefore !== undefined` is not padding: without it a locator that matched nothing makes
+  // this `undefined === undefined`, and the check passes by having read neither figure.
+  const workedAfter = await figure(desktop.page, "Worked so far");
+  check(
+    "and changes no recorded work at all",
+    workedBefore !== undefined && workedAfter === workedBefore,
+    `${workedBefore}h -> ${workedAfter}h`,
+  );
+
   // ---------------------------------------------------------------- revoking, while connected
   //
   // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there
@@ -431,6 +523,20 @@ async function main() {
   );
   for (const f of failures) console.log(`  failed: ${f}`);
   process.exit(failures.length === 0 && pageErrors === 0 ? 0 : 1);
+}
+
+/**
+ * One of the Pacing screen's labelled figures, in hours.
+ *
+ * Read by its label rather than by position: the cards are a flex row, and a check that says
+ * "the third card went up" stops meaning anything the moment a fourth is added.
+ */
+async function figure(page, label) {
+  const text = await page.locator(".card", { hasText: label }).first()
+    .locator(".big").first().textContent().catch(() => null);
+  if (!text) return undefined;
+  const m = /(\d+)h\s*(\d+)m/.exec(text);
+  return m ? Number(m[1]) + Number(m[2]) / 60 : undefined;
 }
 
 /** The month figure on the History screen, in hours, as the browser renders it. */
