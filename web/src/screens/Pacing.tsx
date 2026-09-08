@@ -9,12 +9,15 @@
  * visible, a bug in it is visible too.
  */
 
+import { useState } from "react";
 import { useStore } from "../state.tsx";
-import { hours, monthName, pace, shortDate } from "../format.ts";
+import { hours, longDate, monthName, pace, shortDate } from "../format.ts";
 import { shiftMonth, today } from "@worklog/shared/dates";
+import type { PacingOverride } from "@worklog/shared/types";
 
 export function Pacing() {
-  const { snapshot, month, setMonth } = useStore();
+  const { snapshot, month, setMonth, phase } = useStore();
+  const canWrite = phase.k === "ready" && phase.role !== "read";
   if (!snapshot) return <p className="muted">Loading…</p>;
 
   const p = snapshot.pacing;
@@ -150,6 +153,9 @@ export function Pacing() {
           )}
       </div>
 
+      {/* 6.19, 6.20 — leave, and days worked on purpose that the schedule does not have. */}
+      <Overrides canWrite={canWrite} />
+
       <div className="card">
         <h3>Days</h3>
         <div className="daygrid" style={{ marginTop: 10 }}>
@@ -193,6 +199,132 @@ export function Pacing() {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pacing-day overrides (6.19, 6.20).
+ *
+ * **These are not work.** They live in their own table on the server precisely so that nothing
+ * reporting or billing can pick them up, and the wording here says so: a day off changes what the
+ * month is expected to hold, not what was done in it.
+ *
+ * An override outranks a public holiday, which is the point of "intentional weekend work" — a
+ * holiday you have decided to work is the same case.
+ */
+function Overrides({ canWrite }: { canWrite: boolean }) {
+  const { snapshot, month, call, refresh } = useStore();
+  const [date, setDate] = useState(`${month}-01`);
+  const [kind, setKind] = useState<"off" | "on">("off");
+  const [start, setStart] = useState("09:00");
+  const [end, setEnd] = useState("17:00");
+
+  if (!snapshot) return null;
+  const overrides = snapshot.overrides ?? [];
+
+  const add = async () => {
+    await call({
+      t: "override-set",
+      date,
+      interval: kind === "off" ? null : { start, end },
+      reason: kind === "off" ? "not working" : "working",
+    });
+    await refresh();
+  };
+
+  return (
+    <div className="card">
+      <h3>Days that differ from the schedule</h3>
+      <p className="muted" style={{ margin: "4px 0 12px", maxWidth: 620 }}>
+        Leave, or a day worked on purpose that the week does not normally include. These change what
+        the month is expected to hold — they are not work records, and nothing invoices them.
+      </p>
+
+      {overrides.length === 0
+        ? (
+          <p className="faint" style={{ margin: 0 }}>
+            None in {monthName(month)}.
+          </p>
+        )
+        : (
+          <div className="entries">
+            {overrides.map((o: PacingOverride) => (
+              <div className="entry" key={o.date}>
+                <div className="what">
+                  <strong>{longDate(o.date)}</strong>
+                  <span className="faint">
+                    {o.interval ? `working ${o.interval.start} – ${o.interval.end}` : "not working"}
+                    {o.reason ? ` · ${o.reason}` : ""}
+                  </span>
+                </div>
+                {canWrite && (
+                  <div className="how-long">
+                    <button
+                      className="link"
+                      type="button"
+                      onClick={async () => {
+                        await call({ t: "override-delete", date: o.date });
+                        await refresh();
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+      {canWrite && (
+        <div
+          className="row wrap"
+          style={{ marginTop: 14, alignItems: "flex-end" }}
+        >
+          <label className="field">
+            Date
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            This day is
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as "off" | "on")}
+            >
+              <option value="off">not a workday</option>
+              <option value="on">worked</option>
+            </select>
+          </label>
+          {kind === "on" && (
+            <>
+              <label className="field">
+                From
+                <input
+                  type="time"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                To
+                <input
+                  type="time"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+          <button className="btn" type="button" onClick={() => void add()}>
+            Add
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -188,7 +188,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // 12.6, 12.16 — only an authenticated device may report, so the sender is wired up here
       // rather than at startup, and it is what drains anything held while there was no server.
       const send: Sender = (r) =>
-        client.call({ t: "client-error", message: r.message, context: r.context });
+        client.call({
+          t: "client-error",
+          message: r.message,
+          context: r.context,
+        });
       senderRef.current = send;
 
       const hello: HelloResult = await client.hello();

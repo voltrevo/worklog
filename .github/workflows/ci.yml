@@ -1,0 +1,66 @@
+# The same gate a laptop runs, and then the Pages deploy.
+#
+# `deno task gate` is the whole check — format, lint, types, tests, and the browser build. Nothing
+# here knows how to check this project; if CI and a laptop ever disagree, the disagreement is in the
+# environment rather than in two descriptions of the same steps that have drifted apart.
+#
+# Enable the deploy once under Settings → Pages → Source → GitHub Actions.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it: a half-published site is worse than a
+# slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # `deno task deps` and the frontend's own install. Both are npm rather than Deno because
+      # Deno's resolver cannot install the KPS listener — see the README.
+      - name: Install dependencies
+        run: |
+          deno task deps
+          npm --prefix web install --no-audit --no-fund
+
+      - run: deno task gate
+
+      # 1.18 — the Pages artefact is `web/dist`, which `gate` has just built.
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: web/dist
+
+  deploy:
+    needs: gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

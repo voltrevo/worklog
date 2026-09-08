@@ -11,22 +11,42 @@ import {
 /**
  * A stand-in for `localStorage`, because these functions are about what survives a failure and
  * that is exactly what a real one would make hard to observe.
+ *
+ * **`globalThis.localStorage = …` does not work**, which is how this was written first. Deno
+ * defines it as a getter with no setter, so the assignment is a silent no-op outside strict mode
+ * and every test then read Deno's *real* localStorage — a file on disk that persists between runs.
+ * The tests passed, then failed a run later with counts that had climbed. Hence `defineProperty`,
+ * and hence the assertion below: an instrument that can fail to install has to say so.
  */
 function fakeStorage(): void {
   const held = new Map<string, string>();
-  (globalThis as { localStorage?: unknown }).localStorage = {
-    getItem: (k: string) => held.get(k) ?? null,
-    setItem: (k: string, v: string) => held.set(k, v),
-    removeItem: (k: string) => held.delete(k),
-    clear: () => held.clear(),
-  };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: {
+      getItem: (k: string) => held.get(k) ?? null,
+      setItem: (k: string, v: string) => held.set(k, v),
+      removeItem: (k: string) => held.delete(k),
+      clear: () => held.clear(),
+    },
+  });
+  localStorage.setItem("worklog.storageProbe", "1");
+  assertEquals(
+    held.get("worklog.storageProbe"),
+    "1",
+    "the fake did not take, so the rest of this test would measure the real store",
+  );
+  held.clear();
 }
 
 const ok: Sender = () => Promise.resolve();
 const broken: Sender = () => Promise.reject(new Error("not connected"));
 
 Deno.test("12.8/16.4 -- the report carries the failure and nothing about the device", () => {
-  const described = describeError(new TypeError("cannot read property"), "render:Invoices");
+  const described = describeError(
+    new TypeError("cannot read property"),
+    "render:Invoices",
+  );
   assertEquals(described.message, "TypeError: cannot read property");
   assertEquals(described.context.where, "render:Invoices");
   assertEquals(typeof described.context.uptimeMs, "number");
@@ -46,7 +66,10 @@ Deno.test("something thrown that is not an Error still describes as something", 
 
 Deno.test("a long stack is trimmed to the part that says where the fault is", () => {
   const err = new Error("deep");
-  err.stack = ["Error: deep", ...Array.from({ length: 40 }, (_, i) => `    at frame${i}`)].join(
+  err.stack = [
+    "Error: deep",
+    ...Array.from({ length: 40 }, (_, i) => `    at frame${i}`),
+  ].join(
     "\n",
   );
   const lines = String(describeError(err, "x").context.stack).split("\n");

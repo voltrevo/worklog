@@ -270,6 +270,7 @@ export async function handle(
 
       const entries = entriesInMonth(db, req.month);
       const invoices = listInvoices(db);
+      const overrides = overridesFrom(db);
       const result: SnapshotResult = {
         timer: timerState(ctx),
         today: entriesOn(db, req.clock.today),
@@ -280,7 +281,7 @@ export async function handle(
           cal: {
             schedule: pacingConfig.schedule,
             holidays: new Map(holidays.holidays.map((h: Holiday) => [h.date, h])),
-            overrides: overridesFrom(db),
+            overrides,
           },
           monthlyTargetHours: pacingConfig.monthlyTargetHours,
           entries,
@@ -291,6 +292,7 @@ export async function handle(
         recentTags: recentBillingTags(db),
         invoiceWarnings: invoiceWarnings(allEntries(db), invoices),
         pacingConfig,
+        overrides: [...overrides.values()].filter((o) => o.date.startsWith(req.month)),
       };
       return result;
     }

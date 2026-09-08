@@ -697,3 +697,54 @@ input[type="range"] {
   border: 0;
   background: transparent;
 }
+
+/* 7.6 — a tag, a bar for its share, and the numbers. The bar is the point: the ordering is by
+ * hours, and a reader wants "how much of the month" without doing the division. */
+.tagrow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(60px, 2fr) auto auto;
+  gap: var(--s-3);
+  align-items: center;
+  font-size: 14px;
+}
+
+.tagrow .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagrow .track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.tagrow .track > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.tagrow .figure {
+  font-weight: 650;
+  min-width: 62px;
+  text-align: right;
+}
+
+.tagrow .days {
+  font-size: 12px;
+  min-width: 52px;
+  text-align: right;
+}
+
+.app.mobile .tagrow {
+  grid-template-columns: 1fr auto;
+}
+
+.app.mobile .tagrow .track,
+.app.mobile .tagrow .days {
+  display: none;
+}

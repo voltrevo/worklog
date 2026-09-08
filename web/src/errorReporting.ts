@@ -73,7 +73,10 @@ function writeQueue(queue: ReportedError[]): void {
  * Never throws. A reporter that can raise is a reporter that turns one error into two, and the
  * second one arrives from inside the error handler.
  */
-export async function report(send: Sender, error: ReportedError): Promise<void> {
+export async function report(
+  send: Sender,
+  error: ReportedError,
+): Promise<void> {
   try {
     await send(error);
   } catch {

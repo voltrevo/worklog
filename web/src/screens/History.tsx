@@ -7,11 +7,13 @@
  * repeat.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
-import { duration, longDate, monthName, parseDuration, timeOfDay } from "../format.ts";
+import { duration, hours, longDate, monthName, parseDuration, timeOfDay } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
+import { monthReport } from "@worklog/shared/reports";
+import type { StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { WorkEntry } from "@worklog/shared/types";
 
 export function History() {
@@ -63,6 +65,8 @@ export function History() {
           )}
         </div>
       </div>
+
+      <MonthTotals />
 
       {canWrite && <AddEntry onAdded={() => void refresh()} />}
 
@@ -215,6 +219,64 @@ export function History() {
             </div>
           );
         })}
+    </div>
+  );
+}
+
+/**
+ * 7.1, 7.2, 7.5, 7.6, 7.8 — the month in one card.
+ *
+ * On the history screen rather than a screen of its own, because "what did this month come to" is
+ * the question somebody has *while* looking at the days, and a report they have to navigate to is
+ * a report they check once a quarter.
+ */
+function MonthTotals() {
+  const { snapshot, month, call } = useStore();
+  const [invoices, setInvoices] = useState<StoredInvoiceWire[]>([]);
+
+  useEffect(() => {
+    void call<StoredInvoiceWire[]>({ t: "invoices" }).then(setInvoices).catch(
+      () => {},
+    );
+  }, [call, snapshot]);
+
+  if (!snapshot) return null;
+  const report = monthReport(month, snapshot.entries, invoices);
+  if (report.totalHours === 0) return null;
+
+  return (
+    <div className="card">
+      <div className="row between wrap">
+        <div>
+          <h3>{monthName(month)}</h3>
+          <div className="big tabular">{hours(report.totalHours)}</div>
+        </div>
+        {/* 7.8 — and 11.3's reason for it: a draft is not a bill, so its month is still unbilled. */}
+        <span
+          className={`pill ${
+            report.state === "paid" ? "good" : report.state === "invoiced" ? "warn" : ""
+          }`}
+        >
+          {report.state === "uninvoiced"
+            ? "not invoiced"
+            : `${report.state} — ${report.invoiceNumber}`}
+        </span>
+      </div>
+
+      <div className="stack" style={{ gap: 6, marginTop: 14 }}>
+        {report.byTag.map((t) => (
+          <div className="tagrow" key={t.tag}>
+            <span className="name">{t.tag}</span>
+            <span className="track">
+              <span style={{ width: `${Math.round(t.share * 100)}%` }} />
+            </span>
+            <span className="tabular figure">{hours(t.hours)}</span>
+            <span className="faint days">
+              {t.days} day{t.days === 1 ? "" : "s"}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
