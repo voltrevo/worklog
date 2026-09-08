@@ -4,7 +4,8 @@
     "./server"
   ],
   "tasks": {
-    "check": "deno check shared/ web/src/gain.ts web/src/errorReporting.ts $(ls server/*.ts | grep -v main.ts)",
+    "check": "deno check --node-modules-dir=manual shared/ server/ desktop/ tools/ web/src/gain.ts web/src/errorReporting.ts",
+    "//check": "Everything Deno can type. It used to exclude `server/main.ts` — the KPS wiring, which needs `--node-modules-dir=manual` and had a `check:serve` of its own that the gate never ran — and it never mentioned `desktop/` or `tools/` at all. The rest of `web/src` is browser code and is checked by `tsc` in `web:build`, which is in the gate.",
     "test": "deno test --allow-read=. --allow-run=git shared/ server/ web/src/ tools/repo_test.ts",
     "//test": "`--allow-read=.` is for the two guards in web/src/idb_test.ts, which read the sources they are asserting about. It is the process floor; those tests narrow it again with their own `permissions` block, and every other test still runs with nothing.",
     "fmt": "deno fmt",
@@ -12,7 +13,6 @@
     "lint": "deno lint",
     "gate": "deno fmt --check && deno lint && deno task check && deno task test && deno task web:build && deno task test:bundle",
     "serve": "deno run -A --node-modules-dir=manual server/main.ts",
-    "check:serve": "deno check --node-modules-dir=manual server/main.ts",
     "deps": "npm install --no-audit --no-fund",
     "seed": "deno run -A --node-modules-dir=manual tools/seed.ts",
     "web": "cd web && npm run dev",
