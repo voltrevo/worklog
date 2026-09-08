@@ -52,7 +52,7 @@ import {
   publicInvoiceConfig,
   setConfig,
 } from "./config.ts";
-import { loadHolidays } from "./holidays.ts";
+import { checkRegion, loadHolidays } from "./holidays.ts";
 import type { Logger } from "./logs.ts";
 import { prune, query as queryLogs } from "./logs.ts";
 import { PromptHub } from "./prompts.ts";
@@ -604,6 +604,23 @@ export async function handle(
 
     // ---------------------------------------------------------------- config
     case "config-set": {
+      // 24.42 — validated before it is stored, not after it has quietly flattened a month's
+      // holidays. Only when the region is actually changing: re-saving an unrelated pacing setting
+      // should not fail because the holiday API happens to be unreachable this minute.
+      if (req.section === "pacing") {
+        const wanted = (req.value as { region?: unknown }).region;
+        const current = getConfig(db, "pacing").region;
+        if (typeof wanted === "string" && wanted.trim() !== current) {
+          const verdict = await checkRegion({
+            db,
+            region: wanted,
+            year: Number(req.clock?.today.slice(0, 4) ?? new Date(now).getFullYear()),
+            now,
+            offline: ctx.offlineHolidays ?? false,
+          });
+          if (!verdict.ok) throw new Refused("bad-region", verdict.reason);
+        }
+      }
       const updated = setConfig(db, req.section, req.value as never, now);
       ctx.log("info", "config", `${req.section} updated`);
       broadcast(ctx, { e: "changed", area: "config" });

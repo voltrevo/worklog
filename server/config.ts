@@ -76,7 +76,9 @@ export const DEFAULTS: Config = {
   pacing: {
     monthlyTargetHours: 160,
     schedule: defaultSchedule(),
-    region: "AU-NSW", // 6.32
+    // 24.33 — no default. Mon–Fri 09:00–17:00 and 160 hours are sensible for anyone; a *place*
+    // is not, and AU-NSW was a guess that silently decided which public holidays applied.
+    region: "",
   },
   invoice: {
     fromName: "",

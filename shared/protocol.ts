@@ -152,7 +152,13 @@ export type Request =
   | { t: "invoice-delete"; id: string }
   | { t: "invoice-pdf"; id: string }
   | { t: "config-get" }
-  | { t: "config-set"; section: "pacing" | "invoice" | "prompt"; value: Record<string, unknown> }
+  | {
+    t: "config-set";
+    section: "pacing" | "invoice" | "prompt";
+    value: Record<string, unknown>;
+    /** 24.42 — which year to check a new holiday region against. */
+    clock?: { today: DateString };
+  }
   | { t: "override-set"; date: DateString; interval: DayInterval; reason?: string }
   | { t: "override-delete"; date: DateString }
   | {

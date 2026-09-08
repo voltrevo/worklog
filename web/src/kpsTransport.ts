@@ -32,6 +32,25 @@ export interface KpsTransport extends Transport {
  * the desktop window, where there is no console to look at and the only thing the person sees is
  * whatever this throw becomes.
  */
+/**
+ * 24.38 — say why a plain-HTTP page cannot work, before anything tries to sign.
+ *
+ * `crypto.subtle` is only defined in a secure context, which means HTTPS or localhost. Served over
+ * plain HTTP from any other host it is simply `undefined`, and the first thing to notice is
+ * `generateDeviceKey`, deep inside the connect flow, throwing about a property of undefined. The
+ * cause — the URL you typed — is nowhere in that message.
+ *
+ * Checked here rather than at startup because it is only fatal when connecting: the page renders
+ * fine, and a banner on a screen that works is its own kind of noise.
+ */
+function requireSecureContext(): void {
+  if (typeof crypto !== "undefined" && crypto.subtle) return;
+  throw new Error(
+    "this page has no Web Crypto, so it cannot hold a device key. Browsers only provide it over " +
+      "HTTPS or on localhost — serve the frontend over HTTPS, or open it at 127.0.0.1.",
+  );
+}
+
 function requireWebRTC(): void {
   if (typeof RTCPeerConnection !== "undefined") return;
   throw new Error(
@@ -44,6 +63,7 @@ export async function connect(
   address: string,
   signal?: AbortSignal,
 ): Promise<KpsTransport> {
+  requireSecureContext();
   requireWebRTC();
   const conn: Conn = await dial(address.trim(), signal ? { signal } : {});
   let closedResolve!: () => void;

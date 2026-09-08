@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { type Db, open } from "./db.ts";
 import {
+  checkRegion,
   countryOf,
   type Fetcher,
   loadHolidays,
@@ -213,4 +214,51 @@ Deno.test("the snapshot covers the years a build is likely to be asked about", (
   const years = snapshotYears();
   assertEquals(years.length >= 4, true);
   assertEquals(years.includes(2026), true);
+});
+
+Deno.test("24.42 -- a region that yields no holidays is refused", async () => {
+  const db = fresh();
+  // The snapshot is Australia's, so AU-NSW is real and AU-XYZ is the shape of a state code that
+  // does not exist — which is exactly the input that used to save happily and then flatten the
+  // month's holidays with nothing on screen to explain the shifted pace.
+  const good = await checkRegion({ db, region: "AU-NSW", year: 2026, offline: true, now: NOW });
+  assertEquals(good.ok, true);
+  assertEquals(good.ok && good.holidays > 0, true);
+
+  const bad = await checkRegion({ db, region: "AU-XYZ", year: 2026, offline: true, now: NOW });
+  assertEquals(bad.ok, false);
+  assertEquals(bad.ok === false && bad.reason.includes("AU-XYZ"), true, "the reason names it");
+  db.close();
+});
+
+Deno.test("a country on its own is a legitimate answer", async () => {
+  // National holidays only. Rejecting this would force everyone to name a subdivision.
+  const db = fresh();
+  const verdict = await checkRegion({ db, region: "AU", year: 2026, offline: true, now: NOW });
+  assertEquals(verdict.ok, true);
+  db.close();
+});
+
+Deno.test("garbage is refused on shape, before anything is fetched", async () => {
+  const db = fresh();
+  for (const region of ["", "   ", "garbage", "A", "AUSTRALIA", "AU-TOOLONG", "12-34"]) {
+    const verdict = await checkRegion({ db, region, year: 2026, offline: true, now: NOW });
+    assertEquals(verdict.ok, false, `${JSON.stringify(region)} was accepted`);
+  }
+  db.close();
+});
+
+Deno.test("an unreachable source is not a rejection", async () => {
+  // Refusing to save because the network is down would be worse than the problem: the region may
+  // be perfectly right, and 6.36 already says on screen when the pace is built from a snapshot.
+  const db = fresh();
+  const verdict = await checkRegion({
+    db,
+    region: "GB-ENG",
+    year: 2026,
+    now: NOW,
+    fetcher: () => Promise.reject(new Error("network is down")),
+  });
+  assertEquals(verdict.ok, true);
+  db.close();
 });

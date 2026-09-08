@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { today } from "@worklog/shared/dates";
 import { useStore } from "../state.tsx";
 import { hours } from "../format.ts";
 import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
@@ -63,19 +64,38 @@ export function Settings() {
     void call<ConfigWire>({ t: "config-get" }).then(setCfg);
   }, [call]);
 
+  const [problem, setProblem] = useState<string>();
+  const [saved, setSaved] = useState(false);
+
+  /**
+   * 24.42 — a refusal has to be visible.
+   *
+   * The holiday region is now checked against the holiday source before it is stored, and a check
+   * whose failure disappears into a promise is the free-text field it replaced. `clock` goes with
+   * it so the year checked is the caller's, like every other dated request.
+   */
   const save = async (
     section: "pacing" | "invoice" | "prompt",
     value: Record<string, unknown>,
   ) => {
-    await call({ t: "config-set", section, value });
-    setCfg(await call<ConfigWire>({ t: "config-get" }));
-    await refresh();
+    setProblem(undefined);
+    setSaved(false);
+    try {
+      await call({ t: "config-set", section, value, clock: { today: today() } });
+      setCfg(await call<ConfigWire>({ t: "config-get" }));
+      await refresh();
+      setSaved(true);
+    } catch (err) {
+      setProblem((err as Error).message);
+    }
   };
 
   if (!cfg) return <p className="muted">Loading…</p>;
 
   return (
     <div className="stack" style={{ gap: 16 }}>
+      {problem && <div className="notice bad">{problem}</div>}
+      {saved && !problem && <div className="notice good">Saved.</div>}
       <h1>Settings</h1>
 
       <ScheduleCard cfg={cfg.pacing} canWrite={canWrite} save={save} />

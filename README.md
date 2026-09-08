@@ -19,6 +19,12 @@ deno task deps          # npm install, once — see "Why there is a package.json
 deno task serve         # prints the address a frontend needs
 ```
 
+**Serve it over HTTPS, or open it on localhost.** `crypto.subtle` — which is where the device key
+lives — is only defined in a secure context, so a build served over plain HTTP from anything but
+localhost cannot connect at all (24.38, 24.39). The app says so now instead of failing inside its
+first signature. GitHub Pages is HTTPS, and `deno task web` binds to `127.0.0.1`, so both of the
+intended ways in are fine; it is copying `web/dist` onto a plain HTTP server that is not.
+
 ```sh
 deno task web           # the frontend, on http://127.0.0.1:5273
 deno task web:build     # or a static bundle in web/dist
