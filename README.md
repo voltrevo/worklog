@@ -62,10 +62,12 @@ is enforced twice: by `canIssue`, so the caller gets a sentence, and by a partia
 race cannot get past. Drafts are invisible to the index, so any number may coexist, and reverting an
 issuance frees the month with no code of its own.
 
-**The device private key cannot be read.** It is generated non-extractable, which Ed25519 honours
-for the private half while still allowing the public half to be exported, and it is kept in
-IndexedDB *as a `CryptoKey`* rather than as bytes. So the requirement that it never leave the device
-is a property of the key rather than a rule this code follows.
+**Signing is an interface, not a key.** In a browser tab it is a non-extractable `CryptoKey` kept
+in IndexedDB *as a key* rather than as bytes — Ed25519 honours `extractable: false` for the private
+half while still letting the public half out, so "never leaves the device" is something the key
+cannot do rather than a rule this code follows. In the desktop window it is a file the operating
+system protects and the page asks the shell to sign. Either way the client never sees key material,
+which a test proves by handing it a signer made of two plain functions.
 
 **Payment details never come back from the server.** They are needed to edit and to render a PDF,
 never to display, so the read path deletes them. `SENSITIVE_INVOICE_FIELDS` names them in one place,
