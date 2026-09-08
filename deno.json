@@ -21,7 +21,7 @@
     "//test:bundle": "Runs *after* web:build in the gate, never as part of `test`. It reads web/dist, so running it first checks whichever bundle happened to be lying around -- and on a fresh clone there is none, and it would skip in silence.",
     "journey": "cd web && npm run build && cd .. && node tools/journey.mjs",
     "shots": "cd web && npm run build && cd .. && node tools/screenshots.mjs",
-    "desktop:check": "deno desktop --backend webview --allow-read --allow-write --allow-env -o .desktop-selftest desktop/selftest.ts && ./.desktop-selftest/.desktop-selftest",
+    "desktop:check": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist -o worklog-check desktop/selftest.ts && ./worklog-check/worklog-check",
     "//desktop:check": "Needs a display: `xvfb-run -a deno task desktop:check` on a headless box. It verifies the bridge in `desktop/bridge.ts`, which is the only thing standing between the desktop window and a shell that silently does nothing.",
     "desktop": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist -o worklog-dev desktop/main.ts && ./worklog-dev/worklog-dev",
     "//desktop": "`deno desktop <entry>` *builds*, it does not run. Without the `&& ./worklog-dev/worklog-dev` this task compiled an app, printed a bundle summary and exited, which reads exactly like having run it. On a headless box: `xvfb-run -a deno task desktop`.",

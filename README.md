@@ -95,6 +95,11 @@ leaves the device" than a browser can offer, where the key at least lives in the
 against its public half, a settings round trip, a file written, and handler failures that reject
 rather than hang. On a headless box, `xvfb-run -a deno task desktop:check`.
 
+Its tenth check is the one that earns the rest: it loads the **real bundle** and asserts the app
+mounts. Every other browser test in this repo drives Chromium, so a Chromium-only API in the
+frontend is invisible to all of them — which is exactly how `Temporal` got in and kept the window
+blank. Verified by putting `Temporal` back: the check goes red.
+
 **It did not work at all until that check existed.** Four faults, stacked, none of which printed
 anything:
 

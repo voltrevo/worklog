@@ -161,6 +161,23 @@ async function waitFor<T>(what: string, read: () => Promise<T | undefined>, ms =
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/** `web/dist/desktop.html`, from a checkout or from the files embedded in a packaged app. */
+async function findApp(): Promise<Uint8Array | undefined> {
+  for (
+    const candidate of [
+      new URL("../web/dist/desktop.html", import.meta.url).pathname,
+      `${Deno.cwd()}/web/dist/desktop.html`,
+    ]
+  ) {
+    try {
+      return await Deno.readFile(candidate);
+    } catch {
+      // Try the next.
+    }
+  }
+  return undefined;
+}
+
 const MESSAGE = new TextEncoder().encode("worklog selftest message");
 const FILE = new TextEncoder().encode("%PDF-1.7 selftest\n");
 
@@ -233,6 +250,57 @@ try {
   check("an unknown call rejects", out.unknown.startsWith("rejected:"), out.unknown);
 } catch (err) {
   check("the selftest ran", false, (err as Error).message);
+}
+
+// ---------------------------------------------------------------- the real app, in this engine
+//
+// Everything above tests the bridge against a fixture. This loads the *actual* bundle, because the
+// fault that kept the desktop window blank was not in the bridge at all — `shared/dates.ts` used
+// `Temporal`, which is Chromium-only, and the app threw on its first render. Every other test in
+// this repo that opens a browser opens Chromium, so nothing could see it.
+//
+// One assertion, and it is the one that matters: does the app mount in a second engine.
+try {
+  const appHtml = await findApp();
+  if (!appHtml) {
+    check(
+      "the built app is present to check",
+      false,
+      "run `deno task web:build` first, or build this with --include web/dist",
+    );
+  } else {
+    const copied = `${dir}/desktop.html`;
+    await Deno.writeFile(copied, appHtml);
+    if (window.loadUrl) window.loadUrl(`file://${copied}`);
+    else window.navigate(`file://${copied}`);
+
+    const mounted = await waitFor(
+      "the app to mount",
+      async () => {
+        const n = await js("document.getElementById('root')?.children.length ?? -1");
+        return Number(n) > 0 ? true : undefined;
+      },
+      25_000,
+    ).catch(() => false);
+
+    // Composed from several probes rather than one, because an empty `#root` is the symptom of a
+    // parse error, a render throw, a page that never loaded and a bundle that was never built —
+    // and those want different fixes.
+    const detail = await js(
+      "JSON.stringify({" +
+        "ready: document.readyState," +
+        "root: document.getElementById('root')?.children.length ?? -1," +
+        "marked: !!globalThis.__worklogDesktopBuild," +
+        "boot: globalThis.__worklogBoot ?? null})",
+    ).catch((e) => `could not be read: ${(e as Error).message}`);
+    check(
+      "the real app mounts in this engine, not only in Chromium",
+      mounted === true,
+      String(detail).slice(0, 500),
+    );
+  }
+} catch (err) {
+  check("the real app could be loaded", false, (err as Error).message);
 }
 
 stop();
