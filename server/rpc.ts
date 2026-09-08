@@ -63,6 +63,7 @@ import {
   stopTimer,
   updateEntry,
 } from "./work.ts";
+import { renderInvoicePdf } from "./pdf.ts";
 import {
   attachPdf,
   getInvoice,
@@ -96,6 +97,8 @@ export interface ServerContext {
   serverCertHash: string;
   version: string;
   sessions: Map<string, Session>;
+  /** Where generated PDFs and audio notes go (17.10, 17.11). Absent in tests, which write none. */
+  dataDir?: string;
   /** Injected so tests can drive the calendar without a network. */
   now?: () => number;
   offlineHolidays?: boolean;
@@ -434,11 +437,26 @@ export async function handle(
     case "invoice-pdf": {
       const invoice = getInvoice(db, req.id);
       if (!invoice) throw new Refused("no-such-invoice", `no invoice ${req.id}`);
-      // 8.15, 11.4 -- generating changes no accounting state. The renderer lives in `pdf.ts`;
-      // this records where the file went and hands the path back.
-      const path = `invoices/${invoice.number}.pdf`;
-      attachPdf(db, invoice.id, path, now);
-      return { path, invoice: getInvoice(db, req.id) };
+      if (!ctx.dataDir) {
+        throw new Refused(
+          "no-data-dir",
+          "this server was started without somewhere to write files",
+        );
+      }
+
+      // 8.15, 11.4 -- generating changes no accounting state. An issued invoice renders from its
+      // frozen snapshot and a draft from the current draft, so a PDF of an issued invoice is the
+      // document that was issued rather than a fresh look at today's work.
+      const source = invoice.snapshot ?? invoice.draft;
+      const bytes = await renderInvoicePdf(source, getConfig(db, "invoice"));
+
+      // 17.11 -- the file lives on disk and the row holds a path.
+      const name = `${invoice.number.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+      const relative = `invoices/${name}`;
+      await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
+      attachPdf(db, invoice.id, relative, now);
+      ctx.log("info", "invoice", "rendered a PDF", { number: invoice.number, bytes: bytes.length });
+      return { path: relative, bytes: bytes.length, invoice: getInvoice(db, req.id) };
     }
 
     // ---------------------------------------------------------------- config

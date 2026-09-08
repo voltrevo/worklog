@@ -1,0 +1,183 @@
+/**
+ * The invoice's words, asserted exactly; its geometry, asserted only where a failure is silent.
+ *
+ * A PDF cannot be read back — `pdf-lib` compresses its content streams, so scanning the bytes for a
+ * string finds nothing and a test built that way passes whatever it is asked. The first version of
+ * this file did exactly that and "proved" the page contained no placeholders. `invoiceContent`
+ * exists so that the words can be checked without the renderer, and what remains here about the PDF
+ * itself is the page count, because drawing below the margin does not throw.
+ */
+
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
+import { PDFDocument } from "pdf-lib";
+import { buildDraft } from "@worklog/shared/invoice";
+import { DEFAULTS, type InvoiceConfig } from "./config.ts";
+import { allText, formatDate, invoiceContent, money, periodRange } from "./invoiceContent.ts";
+import { renderInvoicePdf } from "./pdf.ts";
+
+const HOUR = 3_600_000;
+
+const CONFIG: InvoiceConfig = {
+  ...DEFAULTS.invoice,
+  fromName: "Wren & Co",
+  fromAddress: "12 Fictional Way, Nowhere NSW 2000, Australia",
+  fromEmail: "hello@example.invalid",
+  fromPhone: "+61 400 000 000",
+  fromAbn: "00 000 000 000",
+  clientName: "Kestrel Labs Pty Ltd",
+  clientAddress: "1 Imaginary Street, Level 9\nMelbourne VIC 3000\nAustralia",
+  currency: "AUD",
+  rateMinor: 12_000,
+  approver: "Robin Fairweather",
+  teamProject: "Product Development",
+  payName: "Wren & Co",
+  payBsb: "000-000",
+  payAccountNumber: "00000000",
+  payBank: "Bank of Nowhere",
+};
+
+function draftWith(lines: number, bonusMinor = 0, over: Record<string, unknown> = {}) {
+  return buildDraft({
+    period: "2026-08",
+    entries: Array.from({ length: lines }, (_, i) => ({
+      id: `e${i}`,
+      date: `2026-08-${String((i % 28) + 1).padStart(2, "0")}`,
+      durationMs: 7.5 * HOUR,
+      billingTag: "Feature development",
+    })),
+    teamProject: "Product Development",
+    rateMinor: 12_000,
+    bonusMinor,
+    currency: "AUD",
+    taxRate: 0,
+    preparedOn: "2026-09-05",
+    ...over,
+  });
+}
+
+// ------------------------------------------------------------------ formatting
+
+Deno.test("money is grouped, two-decimal and symbol-first, whatever the locale is", () => {
+  // Not `Intl`: a server in another locale would print a different invoice from the same numbers,
+  // and this is a document somebody keeps.
+  assertEquals(money(106_003, "AUD"), "$ 1,060.03");
+  assertEquals(money(0, "AUD"), "$ 0.00");
+  assertEquals(money(5, "AUD"), "$ 0.05");
+  assertEquals(money(123_456_789, "USD"), "$ 1,234,567.89");
+  assertEquals(money(-2_500, "AUD"), "-$ 25.00");
+  assertEquals(money(2_500, "SEK"), "SEK 25.00", "an unknown currency uses its code");
+});
+
+Deno.test("a date is formatted from its parts, so no timezone can move it", () => {
+  // `new Date("2026-08-01")` is UTC midnight, which prints as 31 July anywhere west of Greenwich.
+  assertEquals(formatDate("2026-08-01"), "1 Aug 2026");
+  assertEquals(formatDate("2026-12-31"), "31 Dec 2026");
+  assertEquals(formatDate("2026-01-01"), "1 Jan 2026");
+});
+
+Deno.test("the period range covers the whole month, leap years included", () => {
+  assertEquals(periodRange("2026-08"), "1 - 31 Aug 2026");
+  assertEquals(periodRange("2026-09"), "1 - 30 Sep 2026");
+  assertEquals(periodRange("2026-02"), "1 - 28 Feb 2026");
+  assertEquals(periodRange("2028-02"), "1 - 29 Feb 2028");
+});
+
+// ------------------------------------------------------------------ what the page says
+
+Deno.test("8.6-8.14 -- every part the format requires is on the page", () => {
+  const c = invoiceContent(draftWith(3, 25_000), CONFIG);
+  const words = allText(c).join("\n");
+
+  assertStringIncludes(words, "Wren & Co"); // 8.6, 8.23
+  assertStringIncludes(words, "Telephone No.:");
+  assertStringIncludes(words, "Kestrel Labs Pty Ltd"); // 8.7
+  assertStringIncludes(words, "1 - 31 Aug 2026"); // 8.8
+  assertStringIncludes(words, "DESCRIPTION OF WORK PERFORMED"); // 8.27
+  assertStringIncludes(words, "Description of work / expense"); // 8.10
+  assertStringIncludes(words, "Team/Project");
+  assertStringIncludes(words, "Sub-total"); // 8.11
+  assertStringIncludes(words, "VAT (if applicable)");
+  assertStringIncludes(words, "TOTAL");
+  assertStringIncludes(words, "Robin Fairweather"); // 8.12
+  assertStringIncludes(words, "METHOD OF PAYMENT"); // 8.13, 8.30
+  assertStringIncludes(words, "Bank of Nowhere");
+  assertStringIncludes(words, "Payment due by"); // 8.14, 8.31
+  assertStringIncludes(words, "5 Oct 2026"); // four weeks from 5 Sep, then Monday
+});
+
+Deno.test("8.19-8.21 -- the bonus row covers the period and carries its own Team/Project", () => {
+  const c = invoiceContent(draftWith(3, 25_000, { bonusTeamProject: "General" }), CONFIG);
+  assertEquals(c.bonusRow, [
+    "1 - 31 Aug 2026",
+    "Monthly bonus",
+    "General",
+    "-",
+    "-",
+    "$ 250.00",
+  ]);
+  assertEquals(c.bonusSubtotal, "$ 250.00");
+  assertEquals(c.rows.every((r) => r[2] === "Product Development"), true);
+});
+
+Deno.test("8.22 -- the work Total excludes the bonus, and the invoice total includes it", () => {
+  const c = invoiceContent(draftWith(4, 25_000), CONFIG);
+  assertEquals(c.totalRow, ["", "", "Total", "30.0", "", "$ 3,600.00"]);
+  assertEquals(c.totals.map((t) => t.value), ["$ 3,850.00", "$ 0.00", "$ 3,850.00"]);
+});
+
+Deno.test("no bonus means no bonus table at all, rather than a zero row", () => {
+  const c = invoiceContent(draftWith(2), CONFIG);
+  assertEquals(c.bonusRow, undefined);
+  assertEquals(c.bonusSubtotal, undefined);
+});
+
+Deno.test("9.4/20.9 -- an unset field is absent from the page, not a placeholder", () => {
+  // The check the byte-scanning version could not actually make: with nothing configured, no
+  // label whose value is missing appears, and nothing invented does either.
+  const c = invoiceContent(draftWith(2), DEFAULTS.invoice);
+  const words = allText(c);
+
+  for (const absent of ["Name (or name of company):", "Telephone No.:", "Work Approver:", "Bank"]) {
+    assertEquals(words.includes(absent), false, `"${absent}" printed with nothing beside it`);
+  }
+  assertEquals(c.billTo, [], "no client, so no bill-to block");
+  assertEquals(c.account, [], "no account details, so no rows");
+
+  for (const ghost of ["undefined", "null", "NaN", "TODO", "example.com", "[object Object]"]) {
+    assertEquals(words.some((w) => w.includes(ghost)), false, `the page contains "${ghost}"`);
+  }
+  // ...and what is genuinely known is still there.
+  assertStringIncludes(words.join("\n"), "INV-2026-08");
+});
+
+Deno.test("a tax rate replaces the VAT placeholder with the configured label", () => {
+  const c = invoiceContent(draftWith(2, 0, { taxRate: 0.1 }), { ...CONFIG, taxLabel: "GST" });
+  assertEquals(c.totals[1]?.label, "GST (10%)");
+  const odd = invoiceContent(draftWith(2, 0, { taxRate: 0.125 }), { ...CONFIG, taxLabel: "GST" });
+  assertEquals(odd.totals[1]?.label, "GST (12.5%)");
+});
+
+// ------------------------------------------------------------------ the document
+
+Deno.test("a small invoice renders to one page of real PDF", async () => {
+  const bytes = await renderInvoicePdf(draftWith(6), CONFIG);
+  assertStringIncludes(new TextDecoder().decode(bytes.slice(0, 8)), "%PDF-");
+  assertEquals((await PDFDocument.load(bytes)).getPageCount(), 1);
+});
+
+Deno.test("a long month spills onto a second page rather than off the first", async () => {
+  // Getting this wrong does not throw -- it draws below the margin, off the paper, where nobody
+  // notices until the invoice has been sent.
+  const bytes = await renderInvoicePdf(draftWith(28, 25_000), CONFIG);
+  assertEquals((await PDFDocument.load(bytes)).getPageCount() >= 2, true);
+});
+
+Deno.test("an unconfigured invoice still renders", async () => {
+  const bytes = await renderInvoicePdf(draftWith(2), DEFAULTS.invoice);
+  assertEquals((await PDFDocument.load(bytes)).getPageCount(), 1);
+});
+
+Deno.test("an invoice with no work at all renders, because a bonus-only month is a real one", async () => {
+  const bytes = await renderInvoicePdf(draftWith(0, 25_000), CONFIG);
+  assertEquals((await PDFDocument.load(bytes)).getPageCount(), 1);
+});

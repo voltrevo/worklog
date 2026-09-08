@@ -28,6 +28,7 @@
       "dependencies": [
         "npm:@kpstreams/server@~0.2.1",
         "npm:@types/node@22",
+        "npm:pdf-lib@^1.17.1",
         "npm:playwright@^1.63.0"
       ]
     }

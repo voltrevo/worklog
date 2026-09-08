@@ -101,6 +101,7 @@ async function main(): Promise<void> {
       append(db, { level: "warn", source: "prompt", message: reason })
     ),
     log,
+    dataDir: args.data,
     serverCertHash: listener.certhash,
     version: VERSION,
     sessions: new Map(),
