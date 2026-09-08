@@ -83,7 +83,9 @@ the constraint being solved is how much room there is.
 
 ## The desktop window
 
-`deno task desktop` runs the same bundle in a `Deno.BrowserWindow`. What it adds is a window that
+`deno task desktop` builds and runs the same bundle in a `Deno.BrowserWindow` (`deno desktop
+<entry>` only *builds*, so the task runs the result itself — the version that did not read exactly
+like it had worked). What it adds is a window that
 stays on top (**Settings → This window**) and a device key the operating system protects: the shell
 generates it into `device-key.json` at `0600`, re-imports it non-extractable, and the page asks for
 signatures rather than holding anything. That is a stronger reading of "the private key never
