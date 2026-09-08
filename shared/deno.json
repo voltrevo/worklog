@@ -7,6 +7,7 @@
     "./pacing": "./pacing.ts",
     "./invoice": "./invoice.ts",
     "./types": "./types.ts",
-    "./auth": "./auth.ts"
+    "./auth": "./auth.ts",
+    "./protocol": "./protocol.ts"
   }
 }

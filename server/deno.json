@@ -3,6 +3,6 @@
   "version": "0.0.0",
   "exports": {
     "./db": "./db.ts",
-    "./migrations": "./migrations.ts"
+    "./rpc": "./rpc.ts"
   }
 }
