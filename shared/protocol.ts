@@ -20,7 +20,7 @@
  */
 
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
-import type { DateString, DayInterval, Instant, PacingConfig, WorkEntry } from "./types.ts";
+import type { DateString, Instant, PacingConfig, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
 import type { InvoiceDraft, InvoiceSnapshot, InvoiceWarning } from "./invoice.ts";
 
@@ -159,8 +159,6 @@ export type Request =
     /** 24.42 — which year to check a new holiday region against. */
     clock?: { today: DateString };
   }
-  | { t: "override-set"; date: DateString; interval: DayInterval; reason?: string }
-  | { t: "override-delete"; date: DateString }
   | {
     t: "logs";
     minLevel?: "debug" | "info" | "warn" | "error";
@@ -353,8 +351,6 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "invoice-revert-issue": "write",
   "invoice-delete": "write",
   "config-set": "write",
-  "override-set": "write",
-  "override-delete": "write",
 
   "access-pending": "admin",
   "access-devices": "admin",

@@ -5,6 +5,7 @@ import {
   fromBase64,
   type HelloResult,
   type Request,
+  REQUIRED_ROLE,
   type SnapshotResult,
   toBase64,
   toWireClaim,
@@ -16,7 +17,7 @@ import { setConfig } from "./config.ts";
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
 import { loggerFor } from "./logs.ts";
 import { PromptHub } from "./prompts.ts";
-import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
+import { authorize, handle, OPEN, type ServerContext, type Session } from "./rpc.ts";
 import { Refused } from "./work.ts";
 
 const NOW = 1_788_000_000_000; // 2026-08-25T...
@@ -443,12 +444,15 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "snapshot",
     "timer-start",
     "timer-stop",
+    "timer-retag",
     "timer-discard",
     "entries",
     "entry-add",
     "entry-update",
     "entry-delete",
     "note-add",
+    "note-delete",
+    "note-audio",
     "notes",
     "invoices",
     "invoice-save",
@@ -456,11 +460,10 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "invoice-mark-paid",
     "invoice-unmark-paid",
     "invoice-revert-issue",
+    "invoice-delete",
     "invoice-pdf",
     "config-get",
     "config-set",
-    "override-set",
-    "override-delete",
     "logs",
     "client-error",
     "access-pending",
@@ -474,4 +477,22 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
   for (const t of known) {
     assertEquals(authorize(s, t).ok, true, `${t} has no role defined`);
   }
+
+  /*
+   * And the list is complete.
+   *
+   * Without this the check runs in one direction only: the array is typed `Request["t"][]`, so it
+   * cannot name a request that no longer exists — TypeScript caught two of those when the override
+   * endpoints went — but nothing stopped a *new* request being added and never listed here. The
+   * test would have kept passing while its subject grew.
+   *
+   * `OPEN` and `REQUIRED_ROLE` are the two runtime places a request's authority is decided, and
+   * between them they are meant to cover every request there is.
+   */
+  const declared = [...OPEN, ...Object.keys(REQUIRED_ROLE)].sort();
+  assertEquals(
+    [...known].sort(),
+    declared,
+    "a request exists that this list does not name, or names twice",
+  );
 });

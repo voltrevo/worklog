@@ -245,6 +245,19 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
    * duration instead.
    */
   const [mode, setMode] = useState<"duration" | "times">("duration");
+  /**
+   * 24.9's fix, applied to the other copy of the same field.
+   *
+   * The timer screen's tag box used the last-used tag as a *placeholder* while the value stayed
+   * empty, so grey text that looks like an empty field silently became the tag. This one did the
+   * same thing. It is a real prefilled value here too — and, because 24.1 now refuses an empty
+   * tag, leaving it as a placeholder would have turned the confusion into a rejection.
+   */
+  const [prefilled, setPrefilled] = useState(false);
+  if (!prefilled && snapshot?.recentTags.length) {
+    setPrefilled(true);
+    setTag(snapshot.recentTags[0]!);
+  }
   const [from, setFrom] = useState("09:00");
   const [to, setTo] = useState("17:00");
   const [problem, setProblem] = useState<string | null>(null);
@@ -350,7 +363,7 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
             list="recent-tags-history"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            placeholder={snapshot?.recentTags[0] ?? "Product Development"}
+            placeholder="Product Development"
           />
         </label>
         <datalist id="recent-tags-history">

@@ -159,6 +159,14 @@ function timerState(ctx: ServerContext): TimerState {
   };
 }
 
+/**
+ * Any pacing overrides in the database, for the projection to honour.
+ *
+ * Nothing *writes* these any more: 24.20 removed the editor, and the two endpoints that fed it
+ * went with it rather than sitting as unreachable write surface. The read stays because the table
+ * does — migrations are append-only — and because an installation that has rows in it should keep
+ * getting the pace those rows imply rather than silently having them ignored.
+ */
 function overridesFrom(db: Db): Map<string, PacingOverride> {
   const rows = db.prepare("SELECT date, start_time, end_time, reason FROM pacing_override").all();
   const out = new Map<string, PacingOverride>();
@@ -188,7 +196,7 @@ function overridesFrom(db: Db): Map<string, PacingOverride> {
  * `read`. A request with no entry in `REQUIRED_ROLE` and no place in that list is refused rather
  * than allowed, so adding a request without deciding its role fails closed.
  */
-const OPEN: ReadonlySet<Request["t"]> = new Set([
+export const OPEN: ReadonlySet<Request["t"]> = new Set([
   "hello",
   "claim-admin",
   "request-access",
@@ -625,23 +633,6 @@ export async function handle(
       ctx.log("info", "config", `${req.section} updated`);
       broadcast(ctx, { e: "changed", area: "config" });
       return req.section === "invoice" ? publicInvoiceConfig(updated as never) : updated;
-    }
-
-    case "override-set": {
-      db.prepare(
-        `INSERT INTO pacing_override (date, start_time, end_time, reason) VALUES (?, ?, ?, ?)
-         ON CONFLICT (date) DO UPDATE SET start_time = excluded.start_time,
-                                          end_time = excluded.end_time,
-                                          reason = excluded.reason`,
-      ).run(req.date, req.interval?.start ?? null, req.interval?.end ?? null, req.reason ?? null);
-      broadcast(ctx, { e: "changed", area: "config" });
-      return { date: req.date };
-    }
-
-    case "override-delete": {
-      const gone = db.prepare("DELETE FROM pacing_override WHERE date = ?").run(req.date).changes;
-      if (Number(gone) > 0) broadcast(ctx, { e: "changed", area: "config" });
-      return { deleted: Number(gone) > 0 };
     }
 
     // ---------------------------------------------------------------- diagnostics
