@@ -6,8 +6,9 @@
  * a string an unauthorized device chose. The role is picked here, by the person approving.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
+import { usePresentation } from "../App.tsx";
 import { dateTime } from "../format.ts";
 import type { AccessRole } from "@worklog/shared/auth";
 import type { LogEntry, LogLevel } from "@worklog/shared/protocol";
@@ -59,7 +60,12 @@ export function Admin() {
 }
 
 function Access() {
-  const { call } = useStore();
+  const { call, snapshot } = useStore();
+  // 23.2 — a phone gets a different layout, not a narrower one. These are the widest tables in the
+  // app: on a 390px screen the desktop version pushes Revoke, and every one of the three grant
+  // buttons, off the right-hand edge of a horizontal scroller. Reachable by scrolling is not the
+  // same as reachable, and 23.6 asks for every capability to be *reachable* on a phone.
+  const stacked = usePresentation() === "mobile";
   const [pending, setPending] = useState<PendingWire[]>();
   const [devices, setDevices] = useState<DeviceWire[]>();
   const [busy, setBusy] = useState(false);
@@ -68,7 +74,21 @@ function Access() {
     setPending(await call<PendingWire[]>({ t: "access-pending" }));
     setDevices(await call<DeviceWire[]>({ t: "access-devices" }));
   };
-  if (pending === undefined) void load();
+
+  /**
+   * 13.25, 1.12 — reload whenever the store's snapshot is replaced, which is what the store does
+   * for every event the server pushes.
+   *
+   * This screen used to load once, with an `if (pending === undefined) void load()`. So an admin
+   * sitting on this very screen when a new device asked for access saw nothing: `access-request`
+   * broadcasts, the store refreshes, and these two lists carried on showing what they had fetched
+   * on mount. The request appeared only if you navigated away and back. "Show pending requests to
+   * admins" is not much use if the showing happens before the request does.
+   */
+  useEffect(() => {
+    void load();
+    // `load` is redefined every render; depending on it would loop. The snapshot is the signal.
+  }, [snapshot]);
 
   const act = async (body: () => Promise<unknown>) => {
     setBusy(true);
@@ -89,6 +109,49 @@ function Access() {
             <p className="muted" style={{ margin: "8px 0 0" }}>
               Nothing waiting.
             </p>
+          )
+          : stacked
+          ? (
+            <div className="entries">
+              {(pending ?? []).map((p) => (
+                <div className="stacked-row" key={p.publicKey}>
+                  <div className="what">
+                    {/* 13.38 — a name is a display string. It is not evidence of anything. */}
+                    <strong>{p.name}</strong>
+                    <span className="faint mono">{p.fingerprint}</span>
+                    <span className="faint">
+                      asked for {p.requestedRole} · {dateTime(p.requestedAt)}
+                    </span>
+                  </div>
+                  {/* 13.28 — still a role to choose, never a one-tap Approve. */}
+                  <div className="acts wrap">
+                    {(["read", "write", "admin"] as AccessRole[]).map((role) => (
+                      <button
+                        key={role}
+                        className="btn"
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void act(() =>
+                            call({ t: "access-approve", publicKey: p.publicKey, role })
+                          )}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                    <button
+                      className="btn danger"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(() => call({ t: "access-deny", publicKey: p.publicKey }))}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )
           : (
             <div className="scroll-x">
@@ -154,59 +217,103 @@ function Access() {
 
       <div className="card">
         <h3>Authorised devices</h3>
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Device name</th>
-                <th>Role</th>
-                <th>Key fingerprint</th>
-                <th>Last seen</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(devices ?? []).map((d) => (
-                <tr key={d.publicKey}>
-                  <td>{d.name}</td>
-                  <td>
-                    <select
-                      value={d.role}
-                      disabled={busy}
-                      onChange={(e) =>
-                        void act(() =>
-                          call({
-                            t: "access-set-role",
-                            publicKey: d.publicKey,
-                            role: e.target.value as AccessRole,
-                          })
-                        )}
-                    >
-                      <option value="read">read</option>
-                      <option value="write">write</option>
-                      <option value="admin">admin</option>
-                    </select>
-                  </td>
-                  <td className="mono">{fingerprintOf(d.publicKey)}</td>
-                  <td className="muted">
-                    {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <button
-                      className="btn danger"
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(() => call({ t: "access-revoke", publicKey: d.publicKey }))}
-                    >
-                      Revoke
-                    </button>
-                  </td>
+        {stacked && (
+          <div className="entries">
+            {(devices ?? []).map((d) => (
+              <div className="stacked-row" key={d.publicKey}>
+                <div className="what">
+                  <strong>{d.name}</strong>
+                  <span className="faint mono">{fingerprintOf(d.publicKey)}</span>
+                  <span className="faint">
+                    last seen {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
+                  </span>
+                </div>
+                <div className="acts wrap">
+                  <select
+                    value={d.role}
+                    disabled={busy}
+                    onChange={(e) =>
+                      void act(() =>
+                        call({
+                          t: "access-set-role",
+                          publicKey: d.publicKey,
+                          role: e.target.value as AccessRole,
+                        })
+                      )}
+                  >
+                    <option value="read">read</option>
+                    <option value="write">write</option>
+                    <option value="admin">admin</option>
+                  </select>
+                  <button
+                    className="btn danger"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(() => call({ t: "access-revoke", publicKey: d.publicKey }))}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!stacked && (
+          <div className="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th>Device name</th>
+                  <th>Role</th>
+                  <th>Key fingerprint</th>
+                  <th>Last seen</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(devices ?? []).map((d) => (
+                  <tr key={d.publicKey}>
+                    <td>{d.name}</td>
+                    <td>
+                      <select
+                        value={d.role}
+                        disabled={busy}
+                        onChange={(e) =>
+                          void act(() =>
+                            call({
+                              t: "access-set-role",
+                              publicKey: d.publicKey,
+                              role: e.target.value as AccessRole,
+                            })
+                          )}
+                      >
+                        <option value="read">read</option>
+                        <option value="write">write</option>
+                        <option value="admin">admin</option>
+                      </select>
+                    </td>
+                    <td className="mono">{fingerprintOf(d.publicKey)}</td>
+                    <td className="muted">
+                      {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn danger"
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void act(() => call({ t: "access-revoke", publicKey: d.publicKey }))}
+                      >
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
           Revoking takes effect at once, including on a device that is connected right now.
         </p>

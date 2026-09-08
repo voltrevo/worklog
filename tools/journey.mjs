@@ -19,7 +19,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { claimAndApprove, root, startRig, visibleText } from "./harness.mjs";
+import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
 const dataDir = join(root, ".journey-data");
 const PORT = 41778;
@@ -329,6 +329,24 @@ async function main() {
   console.log("\nrevocation:");
   await nav(desktop.page, "Admin");
   await desktop.page.getByRole("button", { name: "Device access" }).click();
+
+  // 13.25, 1.12 — a request that arrives while an admin is already looking at this screen. It used
+  // to arrive nowhere: the lists were fetched once on mount, so the admin saw the request only
+  // after navigating away and back. Note the ordering -- the desktop is put on this screen *before*
+  // the spare asks, because arriving-while-watching is the whole claim.
+  const spare = await rig.open("spare", MOBILE, "Spare Tablet");
+  const askSpare = spare.page.getByRole("button", { name: "Ask for write access" });
+  await askSpare.waitFor({ timeout: 30_000 });
+  await askSpare.click();
+  check(
+    "a request arrives on an admin screen nobody navigated",
+    await until(
+      "pending row",
+      desktop.page,
+      async (p) => (await p.getByText("Spare Tablet").count()) > 0,
+    ),
+  );
+
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("button", { name: "Revoke" }).click();
 

@@ -155,6 +155,21 @@ Deno.test("13.39 -- a second device's claim is refused, and it can still ask", a
   ctx.db.close();
 });
 
+Deno.test("the device that claims admin has been seen, because claiming is being seen", async () => {
+  // It read "last seen never" for the admin's own row until it happened to reconnect -- which is
+  // the one line on that screen whose reader can personally disprove it. `authenticate` had always
+  // recorded it and `claim-admin` had not, so it was wrong exactly on a fresh server.
+  const ctx = context();
+  const a = session(ctx, "a");
+  const dev = await device();
+  await signedCall(ctx, a, dev, "claim");
+
+  const devices = await call(ctx, a, { t: "access-devices" }) as { lastSeenAt?: number }[];
+  assertEquals(devices.length, 1);
+  assertEquals(typeof devices[0]!.lastSeenAt, "number");
+  ctx.db.close();
+});
+
 Deno.test("13.28/13.32-13.34 -- an approved read device reads and cannot write", async () => {
   const ctx = context();
   const a = session(ctx, "a");

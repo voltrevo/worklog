@@ -241,6 +241,11 @@ export async function handle(
         const outcome = claimAdmin(db, claim, now);
         session.authenticated = true;
         session.role = outcome.role ?? "admin";
+        // Seen, for the same reason `authenticate` counts: the claim is a signed request from this
+        // device, arriving now. Without this the admin device reads "last seen never" in its own
+        // device list until the first time it reconnects -- which is the one row on that screen the
+        // reader can personally disprove.
+        touchDevice(db, claim.publicKey, now);
         ctx.log("info", "access", "admin claimed", { name: claim.deviceName });
         broadcast(ctx, { e: "changed", area: "access" });
         return outcome;

@@ -9,7 +9,7 @@
  */
 
 import { join } from "node:path";
-import { claimAndApprove, root, startRig, visibleText } from "./harness.mjs";
+import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
 const outDir = join(root, "docs");
 const dataDir = join(root, ".screenshots-data");
@@ -67,6 +67,21 @@ async function main() {
   await adminTab.click();
   await mobile.page.waitForTimeout(400);
   await shot(mobile.page, "admin-mobile");
+
+  // 13.27, 13.28, 23.5 — the pending-request layout on a phone, which nothing else reaches: the
+  // only device that has ever been pending here *is* the phone, and it cannot photograph its own
+  // request while making it. A third context supplies one.
+  //
+  // An earlier attempt at a third context hung forever because it was made the *admin* and nobody
+  // could approve it. This one stays pending on purpose, which is the whole point of it.
+  const spare = await rig.open("spare", MOBILE, "Spare Tablet");
+  const askSpare = spare.page.getByRole("button", { name: "Ask for write access" });
+  await askSpare.waitFor({ timeout: 30_000 });
+  await askSpare.click();
+  await spare.page.getByText("Waiting for approval").waitFor({ timeout: 15_000 });
+
+  await mobile.page.getByText("Spare Tablet").waitFor({ timeout: 20_000 });
+  await shot(mobile.page, "pending-mobile");
 
   await rig.close();
 

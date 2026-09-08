@@ -624,6 +624,37 @@ i.swatch.off {
   border-top: 1px solid var(--line);
 }
 
+/*
+ * 23.2 — the Admin tables, stacked. Same shape as `.entry`, but the controls go beneath rather than
+ * beside: a role select and four buttons do not share a line with a device name on a 390px screen,
+ * and the desktop table put every one of them off the right-hand edge of a scroller.
+ */
+.stacked-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.stacked-row .what {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stacked-row .what .faint {
+  font-size: 12px;
+}
+
+.stacked-row .acts.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+
 .entry .what {
   display: flex;
   flex-direction: column;

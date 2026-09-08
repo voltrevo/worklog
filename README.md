@@ -130,6 +130,12 @@ one, write a work note and see it arrive, invoice a month, take delivery of the 
 revoke the phone while it is still holding an open subscription. They share `tools/harness.mjs`
 and run on different ports, so both can run at once.
 
+**An admin watching the Admin screen never saw a request arrive.** That screen fetched its pending
+and device lists once on mount, so `access-request` broadcast, the store refreshed, and the two
+lists carried on showing what they had. The request appeared if you navigated away and came back.
+"Show pending requests to admins" (13.25) is not much use when the showing happens before the
+request does. The lists now follow the store's snapshot, like every other screen.
+
 **A device could lose its own identity, and one reload was not enough to see it.** The device key
 lives in IndexedDB, and two modules opened that database independently: `deviceKeys.ts` at version
 1, `localAudio.ts` at version 2. IndexedDB refuses to open an existing database at a lower version,
