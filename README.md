@@ -39,17 +39,22 @@ What is established:
   to `quic-connection.ts`, which surfaces streams by listening for `EventQUICConnectionStream` on
   the `@infisical/quic` connection; under Deno that event appears not to fire.
 
-**The WebRTC leg is the one that decides this**, because both frontends are browsers — the GitHub
-Pages tab and the Deno Desktop webview — so WebRTC, not QUIC, is how they reach the server. Nothing
-native dials it, so if WebRTC works under Deno the QUIC gap costs this project nothing.
+**The WebRTC leg decides this, and it passes.** Both frontends are browsers — the GitHub Pages tab
+and the Deno Desktop webview — so WebRTC, not QUIC, is how they reach the server, and nothing native
+dials it. A real Chromium dials the Deno-hosted listener, opens a stream, and the echo round-trips;
+the server logs `CONN accepted / STREAM accepted / STREAM echoed`. So the QUIC stream fault costs
+this project nothing.
 
-It looks healthy. `node-datachannel`'s whole native surface works under Deno: the ICE UDP mux binds,
-a `PeerConnection` constructs, a DTLS certificate is generated, and a local offer comes back
-carrying a `sha-256` fingerprint — every addon call the WebRTC backend makes short of the handshake
-itself. What remains untested is a real handshake and data channel end to end, which needs a
-browser: `node-datachannel`'s `RTCPeerConnection` polyfill is not a substitute, since it times out
-against a **Node** listener too, and Playwright cannot fetch a browser from here because
-`cdn.playwright.dev` redirects to `playwright.download.prss.microsoft.com`, which the proxy refuses.
+Two things that leg needed, recorded because they cost most of the spike:
+
+- **`node-datachannel`'s `RTCPeerConnection` polyfill is not a browser.** It times out against a
+  **Node** listener too, so a run using it measures the harness rather than the runtime. Every
+  transport claim here has a Node control beside it for that reason.
+- **Playwright cannot download a browser here.** `cdn.playwright.dev` 307s to
+  `playwright.download.prss.microsoft.com`, which the proxy refuses, and `npx playwright install`
+  *prunes* the shared browser cache before failing. `deb.debian.org` is reachable, so the browser is
+  a Debian **bookworm** Chromium extracted into a private prefix — not sid, which wants a newer
+  glibc than this image has.
 
 ### Neither native addon is load-bearing
 
