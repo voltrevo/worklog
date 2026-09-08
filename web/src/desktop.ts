@@ -1,40 +1,46 @@
 /**
- * The bridge to the Deno Desktop window, when there is one (section 15).
+ * The page's side of the Deno Desktop window, when there is one (section 15).
  *
- * **The frontend does not know which build it is.** There is one bundle (1.14, 1.19) — the same
- * files on GitHub Pages and inside the desktop window — so instead of a build flag the page looks
- * for functions the shell bound onto `window`. Present means desktop; absent means a browser tab.
- * 15.5 is then a consequence of how the control is detected rather than a rule to remember.
+ * The window control is what the desktop *adds* (15.1). The signer and the settings store are what
+ * it *replaces*, because a `file://` page has an opaque origin and no dependable storage of its
+ * own — so the key lives in a file the operating system protects and the page asks for signatures
+ * rather than holding anything.
  *
- * The shell binds four things and they divide neatly in two. The window control is what the
- * desktop *adds* (15.1). The signer and the settings store are what it *replaces*, because a
- * `file://` page has an opaque origin and no dependable storage of its own — so the key lives in a
- * file the operating system protects and the page asks for signatures rather than holding
- * anything.
+ * **How "am I the desktop?" is answered, and why it changed.** It used to be `typeof
+ * window.__worklogSign === "function"` — the shell bound functions onto the page, and their
+ * presence was the signal. `BrowserWindow.bind` turns out to expose nothing at all in this
+ * runtime, silently, so that test was permanently false *inside the desktop window*: the app
+ * decided it was a browser tab and fell back to keeping a key in a `file://` origin's IndexedDB,
+ * which is precisely the storage the shell exists to replace. Detection by "did a global arrive?"
+ * fails in the direction that hides the failure.
+ *
+ * So it now asks which *build* this is, which is a fact settled before anything runs:
+ * `inline.mjs` marks `desktop.html`, the Pages `index.html` is unmarked, and calls go over the
+ * queue in `bridge.ts`. 15.5 still follows from the answer rather than being a rule to remember.
  *
  * Nothing here touches the server (15.6, 15.7, 16.2, 16.3). There is no request to make.
  */
 
 import type { Signer } from "@worklog/shared/client";
-
-interface DesktopBindings {
-  __worklogSetAlwaysOnTop(on: boolean): Promise<boolean>;
-  __worklogIsAlwaysOnTop(): Promise<boolean>;
-  __worklogPublicKey(): Promise<string>;
-  __worklogSign(messageBase64: string): Promise<string>;
-  __worklogSettingsGet(): Promise<string>;
-  __worklogSettingsSet(json: string): Promise<boolean>;
-  /** 8.33 — write a generated file where the person can find it, and say where that was. */
-  __worklogSaveFile(fileName: string, base64: string): Promise<string>;
-}
-
-export function bindings(): Partial<DesktopBindings> {
-  return globalThis as unknown as Partial<DesktopBindings>;
-}
+import { bridge, desktopBuild } from "./bridge.ts";
 
 export function isDesktop(): boolean {
-  return typeof bindings().__worklogSign === "function";
+  return desktopBuild();
 }
+
+/** Every call the shell answers. The names are matched by `desktop/main.ts`'s handler table. */
+const call = {
+  setAlwaysOnTop: (on: boolean) => bridge().call("setAlwaysOnTop", [on]) as Promise<boolean>,
+  publicKey: () => bridge().call("publicKey") as Promise<string>,
+  sign: (messageBase64: string) => bridge().call("sign", [messageBase64]) as Promise<string>,
+  settingsGet: () => bridge().call("settingsGet") as Promise<string>,
+  settingsSet: (json: string) => bridge().call("settingsSet", [json]) as Promise<boolean>,
+  /** 8.33 — write a generated file where the person can find it, and say where that was. */
+  saveFile: (fileName: string, base64: string) =>
+    bridge().call("saveFile", [fileName, base64]) as Promise<string>,
+};
+
+export { call as shell };
 
 // ------------------------------------------------------------------ always on top
 
@@ -54,7 +60,7 @@ export function loadAlwaysOnTop(): boolean {
 export async function setAlwaysOnTop(on: boolean): Promise<void> {
   deviceStorage().set(ALWAYS_ON_TOP, on ? "1" : "0");
   try {
-    await bindings().__worklogSetAlwaysOnTop?.(on);
+    await call.setAlwaysOnTop(on);
   } catch {
     // "where supported" (15.4). A window manager that ignores the hint is not an error, and there
     // is nobody to report it to.
@@ -65,10 +71,9 @@ export async function setAlwaysOnTop(on: boolean): Promise<void> {
 
 /** 13.2, 13.4 — a signer backed by the shell's key file, which the page cannot read. */
 export function desktopSigner(): Signer {
-  const api = bindings();
   return {
-    publicKey: async () => fromBase64(await api.__worklogPublicKey!()),
-    sign: async (message) => fromBase64(await api.__worklogSign!(toBase64(message))),
+    publicKey: async () => fromBase64(await call.publicKey()),
+    sign: async (message) => fromBase64(await call.sign(toBase64(message))),
   };
 }
 
@@ -111,9 +116,8 @@ export function deviceStorage(): DeviceStorage {
       remove: (k) => localStorage.removeItem(k),
     };
   }
-  const api = bindings();
   const held = cached ??= {};
-  const flush = () => void api.__worklogSettingsSet?.(JSON.stringify(held)).catch(() => {});
+  const flush = () => void call.settingsSet(JSON.stringify(held)).catch(() => {});
   return {
     get: (k) => (k in held ? held[k]! : null),
     set: (k, v) => {
@@ -131,10 +135,7 @@ export function deviceStorage(): DeviceStorage {
 export async function primeDeviceStorage(): Promise<void> {
   if (!isDesktop()) return;
   try {
-    cached = JSON.parse(await bindings().__worklogSettingsGet!()) as Record<
-      string,
-      string
-    >;
+    cached = JSON.parse(await call.settingsGet()) as Record<string, string>;
   } catch {
     cached = {};
   }

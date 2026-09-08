@@ -19,3 +19,5 @@ web/dist/
 .journey-data/
 Worklog/
 Worklog.app/
+.desktop-selftest/
+desktopreal/

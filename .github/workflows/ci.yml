@@ -84,6 +84,15 @@ jobs:
         run: |
           echo "CHROME_PATH=$(node -e 'console.log(require("playwright").chromium.executablePath())')" >> "$GITHUB_ENV"
 
+      # The desktop shell, which needs a display and a WebKitGTK. Its bridge is the only thing
+      # between the desktop window and a shell that silently does nothing, and it was exactly that
+      # for as long as it existed.
+      - name: Desktop bridge
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0
+          xvfb-run -a deno task desktop:check
+
       - run: deno task journey
 
       # Regenerated, never committed from CI: the pacing figures move with the clock, so every run

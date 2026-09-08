@@ -45,6 +45,7 @@
  */
 
 import { dirname, join } from "jsr:@std/path@^1";
+import { type Handlers, serveBridge } from "./bridge.ts";
 
 interface BrowserWindowLike {
   setAlwaysOnTop(on: boolean): void;
@@ -52,7 +53,13 @@ interface BrowserWindowLike {
   setTitle(title: string): void;
   navigate(url: string): void;
   loadUrl?(url: string): void;
+  /**
+   * Present, and does nothing. Kept in this interface as a warning rather than deleted: the
+   * obvious way to add a host function is to reach for it, and in this runtime that produces a
+   * shell that looks wired up and is not. Use `desktop/bridge.ts`.
+   */
   bind(name: string, fn: (...args: never[]) => unknown): void;
+  executeJs(code: string): Promise<unknown> | unknown;
 }
 
 /** Everything the shell keeps for this device, in one file. */
@@ -193,53 +200,124 @@ async function main(): Promise<void> {
   });
 
   // 15.1, 15.4 — the whole of what the desktop adds to the window.
-  window.bind("__worklogSetAlwaysOnTop", (on: boolean) => {
-    window.setAlwaysOnTop(Boolean(on));
-    settings["worklog.alwaysOnTop"] = on ? "1" : "0";
-    void persist(settingsPath, settings);
-    return window.isAlwaysOnTop();
-  });
-  window.bind("__worklogIsAlwaysOnTop", () => window.isAlwaysOnTop());
+  //
+  // Through `serveBridge` rather than `window.bind`, which exposes nothing to the page in this
+  // runtime and says nothing about it. See `desktop/bridge.ts`.
+  const handlers: Handlers = {
+    setAlwaysOnTop: ([on]) => {
+      window.setAlwaysOnTop(Boolean(on));
+      settings["worklog.alwaysOnTop"] = on ? "1" : "0";
+      void persist(settingsPath, settings);
+      return window.isAlwaysOnTop();
+    },
+    isAlwaysOnTop: () => window.isAlwaysOnTop(),
 
-  // 13.2, 13.4 — the page can ask for a signature and can never ask for the key.
-  window.bind("__worklogPublicKey", () => device.publicKey);
-  window.bind("__worklogSign", async (messageBase64: string) =>
-    toBase64(
-      new Uint8Array(
-        await crypto.subtle.sign(
-          { name: "Ed25519" },
-          key,
-          fromBase64(messageBase64) as BufferSource,
+    // 13.2, 13.4 — the page can ask for a signature and can never ask for the key.
+    publicKey: () => device.publicKey,
+    sign: async ([messageBase64]) =>
+      toBase64(
+        new Uint8Array(
+          await crypto.subtle.sign(
+            { name: "Ed25519" },
+            key,
+            fromBase64(messageBase64 as string) as BufferSource,
+          ),
         ),
       ),
-    ));
 
-  // 8.34 — a `file://` page's own download has no dependable destination and a webview may drop it
-  // silently, so the shell writes the file. Beside the device's other files, which is somewhere a
-  // person can be told about in one sentence.
-  window.bind("__worklogSaveFile", async (fileName: string, base64: string) => {
-    // The name comes from the server, but it lands on *this* machine's filesystem, so it is treated
-    // as untrusted here too rather than only there: basename, and nothing that climbs.
-    const safe = fileName.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "") || "download";
-    const into = join(dir, "files");
-    await Deno.mkdir(into, { recursive: true });
-    const path = join(into, safe);
-    await Deno.writeFile(path, fromBase64(base64));
-    console.log(`worklog: wrote ${path}`);
-    return path;
-  });
+    // 16.1, 16.2, 22.3 — device-local settings, because a `file://` page has nowhere of its own.
+    settingsGet: () => JSON.stringify(settings),
+    settingsSet: ([json]) => {
+      Object.assign(settings, JSON.parse(json as string) as Record<string, string>);
+      void persist(settingsPath, settings);
+      return true;
+    },
 
-  // 16.1, 16.2, 22.3 — device-local settings, because a `file://` page has nowhere of its own.
-  window.bind("__worklogSettingsGet", () => JSON.stringify(settings));
-  window.bind("__worklogSettingsSet", (json: string) => {
-    Object.assign(settings, JSON.parse(json) as Record<string, string>);
-    void persist(settingsPath, settings);
-    return true;
-  });
+    // 8.34 — a `file://` page's own download has no dependable destination and a webview may drop
+    // it silently, so the shell writes the file. Beside the device's other files, which is
+    // somewhere a person can be told about in one sentence.
+    saveFile: async ([fileName, base64]) => {
+      // The name comes from the server, but it lands on *this* machine's filesystem, so it is
+      // treated as untrusted here too rather than only there: basename, and nothing that climbs.
+      const safe = String(fileName).replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "") ||
+        "download";
+      const into = join(dir, "files");
+      await Deno.mkdir(into, { recursive: true });
+      const path = join(into, safe);
+      await Deno.writeFile(path, fromBase64(base64 as string));
+      console.log(`worklog: wrote ${path}`);
+      return path;
+    },
+  };
 
-  const url = `file://${join(dist, "desktop.html")}`;
+  // ------------------------------------------------------------ getting the page onto real disk
+  //
+  // A packaged app's `web/dist` is *embedded*: `Deno.readFile` can see it, and the webview cannot.
+  // Navigating straight to `file://<embedded path>/desktop.html` silently leaves the window on
+  // `about:blank` — the process is healthy, the log is cheerful, and the app is a grey rectangle.
+  // That was the shipped behaviour, and nothing said so because nothing asked the page what it
+  // was.
+  //
+  // So the shell copies the page out to somewhere the webview can actually open. This costs one
+  // write and works identically from a checkout, and it is only bearable because `inline.mjs`
+  // makes `desktop.html` a *single* self-contained file — there are no assets to chase.
+  const html = await Deno.readFile(join(dist, "desktop.html"));
+  const pagePath = join(dir, "desktop.html");
+  await Deno.writeFile(pagePath, html);
+
+  const url = `file://${pagePath}`;
   if (window.loadUrl) window.loadUrl(url);
   else window.navigate(url);
+
+  // After the navigation, because the queue the pump drains belongs to the page and a page that
+  // has not loaded has none. `serveBridge` tolerates that gap rather than depending on the timing.
+  serveBridge(
+    window,
+    handlers,
+    (message) => console.error(`worklog: bridge: ${message}`),
+    (name) => console.log(`worklog: bridge live, page called ${name}`),
+  );
+
+  // Say whether the page actually loaded.
+  //
+  // A window that opens with nothing in it is this shell's oldest failure mode -- the `file://`
+  // module problem produced exactly that, and so did a bridge that bound nothing. In both cases
+  // the process looked healthy and printed a cheerful line. So: ask the page what it is, and if it
+  // cannot answer, say so on the way past rather than leaving a blank rectangle to interpret.
+  void (async () => {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      try {
+        const answer = await window.executeJs(
+          "document.readyState + '|' + (globalThis.__worklogDesktopBuild ? 'marked' : 'unmarked') " +
+            "+ '|' + document.title + '|' + location.href " +
+            "+ '|root=' + (document.getElementById('root')?.children.length ?? -1) " +
+            "+ '|bridge=' + (globalThis.__worklogBridge ? 'yes' : 'no') " +
+            "+ '|' + (globalThis.__worklogBootError || '')",
+        ) as { ok?: boolean; value?: unknown };
+        if (!answer?.ok) continue;
+        const [state, marked, title, href, root, hasBridge, bootError] = String(answer.value)
+          .split("|");
+        if (state !== "complete") continue;
+        console.log(
+          `worklog: page loaded (${marked}) title=${title} ${root} ${hasBridge} href=${href}`,
+        );
+        if (bootError) console.error(`worklog: the page failed to start: ${bootError}`);
+        if (marked !== "marked") {
+          console.error(
+            "worklog: this page is not the desktop build, so it will not use the shell's key or " +
+              "settings. Run `deno task web:build` and rebuild.",
+          );
+        }
+        return;
+      } catch {
+        // Not up yet, or gone. The loop decides.
+      }
+    }
+    console.error(
+      `worklog: the page at ${url} never finished loading. The window is open and empty.`,
+    );
+  })();
 
   console.log(`worklog: window open, device ${device.publicKey.slice(0, 12)}…, files in ${dir}`);
 }

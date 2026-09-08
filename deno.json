@@ -21,6 +21,8 @@
     "//test:bundle": "Runs *after* web:build in the gate, never as part of `test`. It reads web/dist, so running it first checks whichever bundle happened to be lying around -- and on a fresh clone there is none, and it would skip in silence.",
     "journey": "cd web && npm run build && cd .. && node tools/journey.mjs",
     "shots": "cd web && npm run build && cd .. && node tools/screenshots.mjs",
+    "desktop:check": "deno desktop --backend webview --allow-read --allow-write --allow-env -o .desktop-selftest desktop/selftest.ts && ./.desktop-selftest/.desktop-selftest",
+    "//desktop:check": "Needs a display: `xvfb-run -a deno task desktop:check` on a headless box. It verifies the bridge in `desktop/bridge.ts`, which is the only thing standing between the desktop window and a shell that silently does nothing.",
     "desktop": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist desktop/main.ts",
     "desktop:build": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist -o Worklog desktop/main.ts"
   },
@@ -41,8 +43,5 @@
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true
-  },
-  "unstable": [
-    "temporal"
-  ]
+  }
 }

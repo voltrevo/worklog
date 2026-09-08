@@ -89,24 +89,45 @@ generates it into `device-key.json` at `0600`, re-imports it non-extractable, an
 signatures rather than holding anything. That is a stronger reading of "the private key never
 leaves the device" than a browser can offer, where the key at least lives in the tab's storage.
 
-Getting there turned up four things about `deno desktop` worth writing down, because none of them
-fails loudly:
+`deno task desktop:check` proves it — a real Ed25519 signature made by the shell and verified
+against its public half, a settings round trip, a file written, and handler failures that reject
+rather than hang. On a headless box, `xvfb-run -a deno task desktop:check`.
 
-- **An HTTP listener inside the app accepts nothing.** `Deno.serve` calls `onListen` and every
-  connection is refused — inside the process and out, main thread and worker. So the bridge is
-  `BrowserWindow.bind`, not a loopback fetch.
-- **A permission prompt hangs rather than fails**, because a packaged app has no terminal to answer
-  it. The build grants `read`, `write` and `env` explicitly — and not `net`, which is what makes
-  "the server is never told about window state" a property of the runtime rather than of care.
-- **A `file://` page cannot load an ES module by `src`.** `web/inline.mjs` folds the bundle into
-  one `desktop.html`; an inline module has nothing to fetch. The Pages build is untouched.
-- **A `file://` origin has no dependable storage**, which is why the shell owns the key and the
-  device-local settings.
+**It did not work at all until that check existed.** Four faults, stacked, none of which printed
+anything:
 
-One thing is unverified: **the desktop window reaching a server**. The shell runs, writes its files,
-opens the window and loads the app, but this development container's WebKitGTK has no `libnice` and
-no `gstwebrtc`, so a WebRTC dial cannot complete in it at all. The same bundle over the same
-transport is exercised end to end in Chromium by `deno task shots`.
+- **`BrowserWindow.bind` exposes nothing.** In `deno desktop` 2.9.1's webview backend, `bind(name,
+  fn)` returns `undefined` and `window[name]` stays undefined — every name shape, before and after
+  navigation, on `file://` and `about:blank`, while `executeJs("1+1")` answers `2`. The shell bound
+  five functions and had none. Worse than useless: `isDesktop()` was "did a global arrive?", so the
+  app decided it was a browser tab and kept its key in a `file://` origin's IndexedDB, which is the
+  exact storage the shell exists to replace. `desktop/bridge.ts` drives a queue over `executeJs`
+  instead, and the build is detected by *which HTML file it is*, which is settled before anything
+  runs.
+- **A packaged app cannot load its own page.** `web/dist` is embedded, so `Deno.readFile` sees it
+  and the webview does not; navigating to `file://<embedded>/desktop.html` leaves the window on
+  `about:blank`. The shell copies the page out to real disk first, which is cheap only because
+  `inline.mjs` makes it a single self-contained file.
+- **`inline.mjs` was corrupting the bundle.** `String.replace` expands `$&` in the *replacement*,
+  and minified React contains `$&`, so inlining spliced fragments of the document into the script
+  and it failed to parse. A function replacement does not do that.
+- **`Temporal` is Chromium-only**, and `shared/dates.ts` was built on it. The window threw
+  `ReferenceError: Can't find variable: Temporal` on first render. That one was never a desktop
+  problem: the Pages build was equally broken in Safari and in Firefox, and the only test driving a
+  browser drove the one engine where it worked. `dates.ts` is plain UTC arithmetic now, the
+  `unstable: ["temporal"]` flag is gone, and the containment its own header claimed — "keep
+  `Temporal` from leaking" — is what kept the fix to one file.
+
+Every one of those presented as an empty window and a cheerful log line. So the shell now asks the
+page what it is a second after loading it, and says whether it answered: the build marker, the
+child count under `#root`, and any boot error. `inline.mjs` records what a `file://` document
+otherwise sanitises to `Script error. @ ?:0`, and `main.tsx` hands React's own errors to the same
+place, because a packaged app has no console to read and no devtools to open.
+
+What is still unverified is **the desktop window reaching a server**: this container's WebKitGTK
+has no `libnice` and no `gstwebrtc`, so a WebRTC dial cannot complete in it at all. Everything
+below the transport is covered by `desktop:check`; the transport is covered end to end in Chromium
+by `deno task journey`.
 
 ## Why there is a package.json
 

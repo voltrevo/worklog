@@ -26,7 +26,12 @@ async function inline(pattern, wrap) {
     const href = match[1];
     if (/^https?:/.test(href)) continue; // nothing remote is inlined; there is nothing remote
     const body = await readFile(join(dist, href.replace(/^\.?\//, "")), "utf8");
-    html = html.replace(match[0], wrap(body));
+    // A *function* replacement, because a string one is scanned for `$&`, `` $` ``, `$'` and `$1`
+    // and expands them. A minified React bundle contains `$&`, so the string form spliced fragments
+    // of the surrounding document into the middle of the script and produced a `SyntaxError` at
+    // load — a blank window, no console, and a shell that reported success. This is the bug that
+    // made the desktop app never work.
+    html = html.replace(match[0], () => wrap(body));
   }
   return matches.length;
 }
@@ -38,8 +43,51 @@ const styles = await inline(
 const scripts = await inline(
   /<script[^>]*type="module"[^>]*src="([^"]+)"[^>]*><\/script>/g,
   // `//# sourceMappingURL` would point at a file the page cannot fetch either, so it goes.
-  (js) => `<script type="module">\n${js.replace(/\/\/# sourceMappingURL=.*$/m, "")}\n</script>`,
+  /**
+   * Wrapped in a `try`, because a `file://` module that throws reports `Script error. @ ?:0` and
+   * nothing else — the origin is opaque, so the engine sanitises the message, and a window that
+   * failed to start is indistinguishable from one that started and rendered nothing. Inside the
+   * module the error is not sanitised, so this is the only place the truth is available.
+   *
+   * Safe because the bundle is fully bundled: no top-level `import` or `export`, which a `try`
+   * block would not permit.
+   */
+  (js) =>
+    `<script type="module">\ntry {\n${
+      js.replace(/\/\/# sourceMappingURL=.*$/m, "")
+    }\n  globalThis.__worklogBoot.module = "ran";\n} catch (e) {\n` +
+    `  globalThis.__worklogBoot.module = "threw: " + String((e && e.stack) || e);\n}\n</script>`,
 );
+
+/**
+ * The one thing that distinguishes this build from the Pages one at runtime (see
+ * `web/src/bridge.ts`). It must come before the module, because `isDesktop()` is read during the
+ * first render.
+ *
+ * A flag rather than a probe for an injected global: the shell injects nothing until it has
+ * polled, and the previous arrangement — "look for a function the host bound onto window" — was
+ * permanently false inside the desktop window and silently chose the browser code path.
+ */
+const PRELUDE = `<script>
+globalThis.__worklogDesktopBuild = true;
+// The shell has no console and no devtools, so everything that goes wrong is kept where
+// \`executeJs\` can find it. On a \`file://\` origin the engine sanitises script errors to
+// "Script error." with no location, so several signals are recorded separately rather than
+// collapsed into the first one — the useless one arrives first and would mask the rest.
+globalThis.__worklogBoot = { errors: [], rejections: [], module: "" };
+addEventListener("error", (e) => {
+  globalThis.__worklogBoot.errors.push(
+    String(e.message) + " @ " + (e.filename || "?") + ":" + e.lineno +
+      ((e.error && e.error.stack) ? " :: " + e.error.stack : "")
+  );
+});
+addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  globalThis.__worklogBoot.rejections.push(String((r && r.stack) || (r && r.message) || r));
+});
+</script>`;
+
+html = html.replace('<script type="module">', () => `${PRELUDE}\n<script type="module">`);
 
 const out = join(dist, "desktop.html");
 await writeFile(out, html);

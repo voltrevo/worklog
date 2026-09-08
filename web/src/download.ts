@@ -15,7 +15,7 @@
  *   the device key and the device settings, and for the same reason (15.x, 16.1).
  */
 
-import { bindings, isDesktop } from "./desktop.ts";
+import { isDesktop, shell } from "./desktop.ts";
 
 export interface Saved {
   /** Where it went, when that can be said. A browser cannot say. */
@@ -33,12 +33,8 @@ export async function saveFile(
   bytes: Uint8Array,
   mime: string,
 ): Promise<Saved> {
-  const api = bindings();
-  if (isDesktop() && typeof api.__worklogSaveFile === "function") {
-    const path = await api.__worklogSaveFile(
-      fileName,
-      btoa(String.fromCharCode(...bytes)),
-    );
+  if (isDesktop()) {
+    const path = await shell.saveFile(fileName, btoa(String.fromCharCode(...bytes)));
     return { path, fileName };
   }
 

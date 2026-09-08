@@ -26,7 +26,7 @@ export type TimeString = string;
 /** Milliseconds since the Unix epoch. Used for instants, which are a different thing to dates. */
 export type Instant = number;
 
-/** Monday is 1 and Sunday is 7, matching `Temporal.PlainDate.dayOfWeek`. */
+/** Monday is 1 and Sunday is 7 — ISO 8601 numbering, which is what a schedule is written in. */
 export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 /**
