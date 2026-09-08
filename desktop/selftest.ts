@@ -280,7 +280,10 @@ try {
         const n = await js("document.getElementById('root')?.children.length ?? -1");
         return Number(n) > 0 ? true : undefined;
       },
-      25_000,
+      // Generous, because this is a cold WebKitGTK loading a 300 kB inlined bundle on a machine
+      // that may be running a browser harness at the same time. A mount that takes twenty seconds
+      // is not a pass, but a *timeout* that fires at twenty is a red check about the machine.
+      45_000,
     ).catch(() => false);
 
     // Composed from several probes rather than one, because an empty `#root` is the symptom of a

@@ -1,7 +1,7 @@
 /**
  * Invoices: one list, and actions on the rows of it (24.25–24.29).
  *
- * **There is no "current" invoice.** This screen used to pick a month, show whichever invoice
+ * **There is no "current" invoice**, and no preview (24.26). This screen used to pick a month, show whichever invoice
  * belonged to it, and render a full preview of that document — the line table, the bonus table,
  * the sub-total and VAT stack. Three things were wrong with that. The preview duplicated the PDF,
  * which is the artefact that matters and is one click away. The month selector invented a piece of

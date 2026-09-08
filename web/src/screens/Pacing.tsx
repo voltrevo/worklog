@@ -42,6 +42,7 @@ export function Pacing() {
       }
       <div className="card">
         <div className="row between wrap" style={{ alignItems: "flex-end" }}>
+          {/* 24.40 — the figure is unchanged: projected month total against the target. */}
           <div
             className="huge"
             style={{ color: paced.tone === "bad" ? "var(--bad)" : undefined }}
@@ -99,6 +100,7 @@ export function Pacing() {
       </div>
 
       <div className="card">
+        {/* 24.24 — kept: the one thing on this screen nobody asked to change. */}
         <h3>Days</h3>
         <div className="daygrid" style={{ marginTop: 10 }}>
           {p.days.map((d) => {
