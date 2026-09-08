@@ -622,34 +622,26 @@ async function main() {
     `was ${capacityBefore}h`,
   );
 
-  // 6.19, 6.20 — an override is not a work record. It changes what the month is expected to hold,
-  // so the capacity moves and the recorded hours do not.
-  const capacityWithSaturday = await figure(desktop.page, "Capacity this month");
-  const workedBefore = await figure(desktop.page, "Worked so far");
-  await desktop.page.getByLabel("Date").last().fill(FIRST_MONDAY);
-  await desktop.page.getByRole("button", { name: "Add", exact: true }).click();
+  // 24.41 — the two bars, which are the pacing screen's whole answer now. Checked as *fills*
+  // rather than as text: the claim is that being ahead is visible as an offset between them, and a
+  // pair of numbers in the DOM would satisfy a test while the bars sat identical.
+  const fills = await desktop.page.locator(".barline .bar > span").evaluateAll((els) =>
+    els.map((e) => Number.parseFloat(e.style.width))
+  );
+  check("the pacing screen draws both bars", fills.length === 2, JSON.stringify(fills));
+  check(
+    "and worked is ahead of elapsed, which is what 'ahead' means",
+    fills.length === 2 && fills[1] > fills[0],
+    `elapsed ${fills[0]}%, worked ${fills[1]}%`,
+  );
 
-  check(
-    "marking a day off lowers the capacity",
-    await until(
-      "capacity down",
-      desktop.page,
-      async (p) => {
-        const now = await figure(p, "Capacity this month");
-        return now !== undefined && capacityWithSaturday !== undefined &&
-          now < capacityWithSaturday;
-      },
-    ),
-    `was ${capacityWithSaturday}h`,
-  );
-  // `workedBefore !== undefined` is not padding: without it a locator that matched nothing makes
-  // this `undefined === undefined`, and the check passes by having read neither figure.
-  const workedAfter = await figure(desktop.page, "Worked so far");
-  check(
-    "and changes no recorded work at all",
-    workedBefore !== undefined && workedAfter === workedBefore,
-    `${workedBefore}h -> ${workedAfter}h`,
-  );
+  // 24.19, 24.20, 24.21 — the things that made this screen busy are gone.
+  for (const gone of ["How the projection adds up", "Public holidays used", "Monthly target"]) {
+    check(
+      `"${gone}" is off the pacing screen`,
+      (await desktop.page.getByText(gone).count()) === 0,
+    );
+  }
 
   // ---------------------------------------------------------------- revoking, while connected
   //

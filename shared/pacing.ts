@@ -87,6 +87,15 @@ export interface Pacing {
   paceHours: number;
   /** 6.30 */
   capacityHours: number;
+  /**
+   * 24.41 — the scheduled hours of this month that have already gone by.
+   *
+   * Capacity minus everything still ahead: past workdays in full, the part of today before now,
+   * and nothing of the days to come. It is the denominator-free half of "am I behind" — how far
+   * through the month's *working* time we are, which is not how far through the calendar we are
+   * and is the thing worth comparing hours against.
+   */
+  elapsedScheduledHours: number;
   /** 6.17 */
   slackHours: number;
   /** 6.37 — which holidays shaped this month. */
@@ -135,6 +144,10 @@ export function project(input: PacingInput): Pacing {
   const actualAfterToday = sum((d) => (d.date > today ? d.actual : 0));
   const projectedHours = sum((d) => d.contribution);
   const capacity = capacityHours(month, cal);
+  // Every day contributes what it has left; what is left of the month is their sum, and what has
+  // gone is the rest. Derived from the same per-day `remaining` the projection uses, so the two
+  // readings cannot drift apart.
+  const elapsedScheduledHours = Math.max(0, capacity - sum((d) => d.remaining));
 
   return {
     month,
@@ -149,6 +162,7 @@ export function project(input: PacingInput): Pacing {
     monthlyTargetHours,
     paceHours: projectedHours - monthlyTargetHours,
     capacityHours: capacity,
+    elapsedScheduledHours,
     slackHours: capacity - monthlyTargetHours,
     holidays: holidaysUsed(month, cal),
     days,

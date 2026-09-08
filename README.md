@@ -51,6 +51,17 @@ and nothing later can move it — a session across midnight belongs entirely to 
 (2.19–2.23). Everything downstream is then timezone-free: the month an entry belongs to is a
 substring of a string.
 
+**How the projection is computed** (24.18 moved this off the screen). Every day of the month
+contributes the work recorded on it plus however much of its scheduled interval has not yet
+elapsed. A past day has none left, a future day has all of it, and today has the part after the
+current minute — so the projection moves through the day, and sitting idle through a scheduled
+morning shows up now rather than at midnight.
+
+The screen shows that as one figure and two bars: how far through the month's *scheduled* time we
+are, and how much of the target is done. Ahead or behind is the offset between them. It is drawn
+rather than stated because the stated version needs a negative number — a month with 176 scheduled
+hours against a 160-hour target carries 16 hours of slack, so "where you should be" opens at −16.
+
 **Pacing is a schedule, not a number of hours.** Every day of the month contributes work recorded on
 it plus however much of its scheduled interval has not yet elapsed. A past day has none left, a
 future day has all of it, today has the part after the current minute — so the projection moves

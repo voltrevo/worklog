@@ -9,16 +9,13 @@
  * visible, a bug in it is visible too.
  */
 
-import { useState } from "react";
 import { useStore } from "../state.tsx";
-import { hours, longDate, monthName, pace, shortDate } from "../format.ts";
+import { hours, pace } from "../format.ts";
 import { MonthNav } from "./MonthNav.tsx";
 import { today } from "@worklog/shared/dates";
-import type { PacingOverride } from "@worklog/shared/types";
 
 export function Pacing() {
-  const { snapshot, month, setMonth, phase } = useStore();
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const { snapshot, month, setMonth } = useStore();
   if (!snapshot) return <p className="muted">Loading…</p>;
 
   const p = snapshot.pacing;
@@ -34,31 +31,51 @@ export function Pacing() {
 
       {snapshot.holidayWarning && <div className="notice warn">{snapshot.holidayWarning}</div>}
 
+      {
+        /*
+        24.17 — two figures, and nothing else.
+        This card used to carry a heading saying "Projection" on the screen called Pacing, a
+        paragraph explaining how the arithmetic works, and the target the projection was measured
+        against. The heading and the target were noise; the paragraph is documentation and has gone
+        to the README (24.18).
+      */
+      }
       <div className="card">
-        <h3>Projection</h3>
-        <div
-          className="row between wrap"
-          style={{ alignItems: "flex-end", marginTop: 4 }}
-        >
-          <div>
-            <div
-              className="huge"
-              style={{ color: paced.tone === "bad" ? "var(--bad)" : undefined }}
-            >
-              {paced.text}
-            </div>
-            <p className="muted" style={{ margin: "6px 0 0", maxWidth: 460 }}>
-              Assuming you work the rest of today's scheduled hours and every remaining workday in
-              full. It moves as the day passes, so sitting idle through a scheduled morning shows up
-              now rather than at midnight.
-            </p>
+        <div className="row between wrap" style={{ alignItems: "flex-end" }}>
+          <div
+            className="huge"
+            style={{ color: paced.tone === "bad" ? "var(--bad)" : undefined }}
+          >
+            {paced.text}
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="big tabular">{hours(p.projectedHours)}</div>
-            <div className="muted">
-              projected, against {hours(p.monthlyTargetHours)}
-            </div>
+            <div className="muted">projected</div>
           </div>
+        </div>
+
+        {
+          /*
+          24.41 — the same comparison, as two bars.
+          The top bar is how much of the month's *working* time has gone; the bottom is how much of
+          the target has been done. Ahead or behind is the offset between them, which is a thing
+          you can see without a number that has to open the month negative to make sense.
+        */
+        }
+        <div className="bars" style={{ marginTop: 18 }}>
+          <Bar
+            label="Month elapsed"
+            value={p.elapsedScheduledHours}
+            of={p.capacityHours}
+            hint="of the scheduled hours"
+          />
+          <Bar
+            label="Worked"
+            value={p.workedHours}
+            of={p.monthlyTargetHours}
+            hint="of the target"
+            tone={paced.tone === "bad" ? "bad" : "good"}
+          />
         </div>
       </div>
 
@@ -67,7 +84,6 @@ export function Pacing() {
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
       >
         <Figure label="Worked so far" value={hours(p.workedHours)} />
-        <Figure label="Monthly target" value={hours(p.monthlyTargetHours)} />
         {/* 6.16, 6.17 — capacity and slack, so the target can be seen as achievable or not. */}
         <Figure
           label="Capacity this month"
@@ -81,63 +97,6 @@ export function Pacing() {
           tone={p.slackHours >= 0 ? undefined : "bad"}
         />
       </div>
-
-      <div className="card">
-        <h3>How the projection adds up</h3>
-        <div className="scroll-x">
-          <table>
-            <tbody>
-              <Term label="Worked before today" value={p.actualBeforeToday} />
-              <Term
-                label="Today: worked, plus the interval still ahead"
-                value={p.todayContribution}
-              />
-              <Term
-                label="Scheduled hours on the workdays still to come"
-                value={p.remainingWorkdayHours}
-              />
-              {p.actualAfterToday > 0 && (
-                <Term
-                  label="Work already recorded on a future date"
-                  value={p.actualAfterToday}
-                />
-              )}
-              <tr>
-                <td style={{ fontWeight: 700 }}>Projected</td>
-                <td
-                  className="tabular"
-                  style={{ textAlign: "right", fontWeight: 700 }}
-                >
-                  {hours(p.projectedHours)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 6.37 — the holidays this month's arithmetic used, so a wrong one is visible. */}
-      <div className="card">
-        <h3>Public holidays used</h3>
-        {p.holidays.length === 0
-          ? (
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              None in {monthName(month)} for {snapshot.pacingConfig.region}.
-            </p>
-          )
-          : (
-            <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-              {p.holidays.map((h) => (
-                <li key={`${h.date}-${h.name}`}>
-                  <span className="tabular">{shortDate(h.date)}</span> — {h.name}
-                </li>
-              ))}
-            </ul>
-          )}
-      </div>
-
-      {/* 6.19, 6.20 — leave, and days worked on purpose that the schedule does not have. */}
-      <Overrides canWrite={canWrite} />
 
       <div className="card">
         <h3>Days</h3>
@@ -196,121 +155,6 @@ export function Pacing() {
  * An override outranks a public holiday, which is the point of "intentional weekend work" — a
  * holiday you have decided to work is the same case.
  */
-function Overrides({ canWrite }: { canWrite: boolean }) {
-  const { snapshot, month, call, refresh } = useStore();
-  const [date, setDate] = useState(`${month}-01`);
-  const [kind, setKind] = useState<"off" | "on">("off");
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("17:00");
-
-  if (!snapshot) return null;
-  const overrides = snapshot.overrides ?? [];
-
-  const add = async () => {
-    await call({
-      t: "override-set",
-      date,
-      interval: kind === "off" ? null : { start, end },
-      reason: kind === "off" ? "not working" : "working",
-    });
-    await refresh();
-  };
-
-  return (
-    <div className="card">
-      <h3>Days that differ from the schedule</h3>
-      <p className="muted" style={{ margin: "4px 0 12px", maxWidth: 620 }}>
-        Leave, or a day worked on purpose that the week does not normally include. These change what
-        the month is expected to hold — they are not work records, and nothing invoices them.
-      </p>
-
-      {overrides.length === 0
-        ? (
-          <p className="faint" style={{ margin: 0 }}>
-            None in {monthName(month)}.
-          </p>
-        )
-        : (
-          <div className="entries">
-            {overrides.map((o: PacingOverride) => (
-              <div className="entry" key={o.date}>
-                <div className="what">
-                  <strong>{longDate(o.date)}</strong>
-                  <span className="faint">
-                    {o.interval ? `working ${o.interval.start} – ${o.interval.end}` : "not working"}
-                    {o.reason ? ` · ${o.reason}` : ""}
-                  </span>
-                </div>
-                {canWrite && (
-                  <div className="how-long">
-                    <button
-                      className="link"
-                      type="button"
-                      onClick={async () => {
-                        await call({ t: "override-delete", date: o.date });
-                        await refresh();
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-      {canWrite && (
-        <div
-          className="row wrap"
-          style={{ marginTop: 14, alignItems: "flex-end" }}
-        >
-          <label className="field">
-            Date
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-          <label className="field">
-            This day is
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as "off" | "on")}
-            >
-              <option value="off">not a workday</option>
-              <option value="on">worked</option>
-            </select>
-          </label>
-          {kind === "on" && (
-            <>
-              <label className="field">
-                From
-                <input
-                  type="time"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                />
-              </label>
-              <label className="field">
-                To
-                <input
-                  type="time"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                />
-              </label>
-            </>
-          )}
-          <button className="btn" type="button" onClick={() => void add()}>
-            Add
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Figure(
   { label, value, hint, tone }: {
@@ -334,11 +178,37 @@ function Figure(
   );
 }
 
-function Term({ label, value }: { label: string; value: number }) {
+/**
+ * One progress bar (24.41).
+ *
+ * Deliberately not clamped in the label: going past the target is a real and good outcome, and a
+ * bar reading "168h of 160h" while pinned at full width says that better than a bar that stops at
+ * a hundred percent and a number that quietly stops counting. Only the *fill* is clamped, because
+ * a div wider than its parent is not a design.
+ */
+function Bar(
+  { label, value, of, hint, tone }: {
+    label: string;
+    value: number;
+    of: number;
+    hint: string;
+    tone?: "good" | "bad";
+  },
+) {
+  const fraction = of > 0 ? value / of : 0;
   return (
-    <tr>
-      <td>{label}</td>
-      <td className="tabular" style={{ textAlign: "right" }}>{hours(value)}</td>
-    </tr>
+    <div className="barline">
+      <span className="barlabel">{label}</span>
+      <span className="bar">
+        <span
+          className={tone ?? ""}
+          style={{ width: `${Math.min(100, Math.max(0, fraction * 100))}%` }}
+        />
+      </span>
+      <span className="tabular figure">{hours(value)}</span>
+      <span className="faint days">
+        of {hours(of)} {hint}
+      </span>
+    </div>
   );
 }

@@ -274,3 +274,46 @@ Deno.test("workedToday adds the running timer to what is already recorded", () =
   assertEquals(workedToday(entries, "2026-09-08", 30 * 60 * 1000), 2.5 * HOUR);
   assertEquals(workedToday(entries, "2026-09-09"), 0);
 });
+
+Deno.test("24.41 -- elapsed scheduled hours is the month's working time already gone", () => {
+  const of = (today: string, nowMinutes: number) =>
+    project({
+      month: SEP,
+      cal: emptyCalendar(),
+      monthlyTargetHours: 160,
+      entries: [],
+      today,
+      nowMinutes,
+    }).elapsedScheduledHours;
+
+  // Before the month starts, none of it has elapsed; after it ends, all of it has.
+  assertEquals(of("2026-08-31", 0), 0);
+  assertEquals(of("2026-10-01", 0), SEP_CAPACITY);
+
+  // On the 8th at nine, the five earlier workdays are gone and the day itself has not begun.
+  assertEquals(of("2026-09-08", 9 * 60), BEFORE_8TH);
+  // Half past one is half the nine-to-five gone.
+  assertEquals(of("2026-09-08", 13 * 60), BEFORE_8TH + 4);
+  assertEquals(of("2026-09-08", 17 * 60), BEFORE_8TH + 8);
+
+  // A Sunday adds nothing however long you stare at it: this is working time, not calendar time,
+  // which is the whole reason the bar is worth drawing.
+  assertEquals(of("2026-09-06", 23 * 60), 4 * 8);
+});
+
+Deno.test("elapsed and remaining are the two halves of capacity", () => {
+  // The invariant behind the bar: whatever the clock says, what has gone plus what is left is the
+  // month. Derived from the same per-day `remaining` as the projection, so they cannot drift.
+  for (const nowMinutes of [0, 9 * 60, 12 * 60 + 37, 17 * 60, 23 * 60 + 59]) {
+    const p = project({
+      month: SEP,
+      cal: emptyCalendar(),
+      monthlyTargetHours: 160,
+      entries: [],
+      today: "2026-09-08",
+      nowMinutes,
+    });
+    const stillAhead = p.days.reduce((t, d) => t + d.remaining, 0);
+    assertAlmostEquals(p.elapsedScheduledHours + stillAhead, p.capacityHours, 1e-9);
+  }
+});

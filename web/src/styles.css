@@ -805,3 +805,61 @@ input[type="range"] {
   border-radius: 1px;
   transition: height 60ms linear;
 }
+
+/*
+ * 24.41 — the pacing bars.
+ *
+ * A grid rather than a flex row so the two bars' labels, tracks and figures line up in columns:
+ * the whole point is reading the offset between the two fills, and that is impossible if the
+ * tracks start at different x positions because one label is longer than the other.
+ */
+.bars {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.barline {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr auto auto;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.barline .barlabel {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.barline .bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.barline .bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ink-faint);
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+
+.barline .bar > span.good {
+  background: var(--good);
+}
+
+.barline .bar > span.bad {
+  background: var(--bad);
+}
+
+@media (max-width: 900px) {
+  /* The hint is the first thing to go: the label, the bar and the figure carry the meaning. */
+  .barline {
+    grid-template-columns: 6rem 1fr auto;
+  }
+
+  .barline .days {
+    display: none;
+  }
+}

@@ -20,14 +20,7 @@
  */
 
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
-import type {
-  DateString,
-  DayInterval,
-  Instant,
-  PacingConfig,
-  PacingOverride,
-  WorkEntry,
-} from "./types.ts";
+import type { DateString, DayInterval, Instant, PacingConfig, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
 import type { InvoiceDraft, InvoiceSnapshot, InvoiceWarning } from "./invoice.ts";
 
@@ -217,8 +210,6 @@ export interface SnapshotResult {
   recentTags: string[];
   invoiceWarnings: InvoiceWarning[];
   pacingConfig: PacingConfig;
-  /** 6.19, 6.20 — the pacing-only adjustments in this month. Never billable records. */
-  overrides: PacingOverride[];
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

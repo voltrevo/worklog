@@ -298,7 +298,6 @@ export async function handle(
         recentTags: recentBillingTags(db),
         invoiceWarnings: invoiceWarnings(allEntries(db), invoices),
         pacingConfig,
-        overrides: [...overrides.values()].filter((o) => o.date.startsWith(req.month)),
       };
       return result;
     }
