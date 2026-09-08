@@ -8,15 +8,37 @@
  * it. If a screen throws while rendering, the run fails rather than saving a broken image.
  */
 
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
 const outDir = join(root, "docs");
+/** Captured for the validation, not for the repository. Gitignored. */
+const scratchDir = join(root, ".screenshots");
 const dataDir = join(root, ".screenshots-data");
 const PORT = 41777;
 const HTTP_PORT = 5399;
 
 const SCREENS = ["timer", "notes", "history", "pacing", "invoices", "admin", "settings"];
+
+/**
+ * The four that are committed, because the README embeds them.
+ *
+ * Everything else is captured — walking every screen in both shells is what 23.5 actually
+ * validates, and a screen that throws while rendering still fails the run — but written to a
+ * scratch directory instead of into the repository. Nothing read the other fourteen. They were
+ * eleven megabytes of git history that no file referenced and no routine compared, and there has
+ * never been a baseline to compare them against: `shots` overwrites, it does not diff.
+ *
+ * An older version's screenshots are recoverable by checking that commit out and regenerating,
+ * which is a thing I verified rather than assumed.
+ */
+const COMMITTED = new Set([
+  "timer-desktop",
+  "timer-mobile",
+  "pacing-desktop",
+  "invoices-desktop",
+]);
 
 async function main() {
   const rig = await startRig({ dataDir, port: PORT, httpPort: HTTP_PORT });
@@ -110,8 +132,10 @@ function navLabel(screen) {
 }
 
 async function shot(page, name) {
-  await page.screenshot({ path: join(outDir, `${name}.png`), fullPage: true });
-  console.log(`  ${name}.png`);
+  const dir = COMMITTED.has(name) ? outDir : scratchDir;
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
+  console.log(`  ${name}.png${COMMITTED.has(name) ? "" : "  (scratch)"}`);
 }
 
 await main().catch((err) => {

@@ -4,7 +4,7 @@ Self-hosted work time tracking and invoicing. A Deno server holds the truth in S
 frontend reaches it over [KPS](https://github.com/ethereum/kps) — from a Deno Desktop window or from
 a static page on GitHub Pages, both dialling the same `<ip>:<port>:<certhash>` address.
 
-<img src="docs/timer-desktop.png" alt="The timer screen: today's total as the largest figure, the running session below it, and today's entries" width="420">
+<img src="docs/timer-desktop.png" alt="The timer screen: today's total against the day's scheduled hours, and the current session below it" width="420">
 <img src="docs/timer-mobile.png" alt="The same screen in the mobile presentation, with a bottom tab bar" width="200">
 
 [`REQUIREMENTS.md`](REQUIREMENTS.md) is the specification, and it is **append-only**: items keep
@@ -34,6 +34,12 @@ deno task desktop       # or the same frontend in a desktop window
 The server prints something like `192.168.1.5:41108:uEiA…`. Paste it into the frontend's first
 screen. **It is the only way in**, so treat it as a secret until a device is authorized — the first
 device to arrive can claim admin, and every one after that has to be approved by an admin.
+
+Only the four images this README embeds are committed. `deno task shots` captures every screen in
+both shells — that walk is what validates them (23.5), and a screen that throws while rendering
+fails the run — but writes the rest to `.screenshots/`, which is ignored. Nothing read the other
+fourteen, nothing ever compared them against a baseline, and an older version's are recoverable by
+checking that commit out and regenerating.
 
 `deno task seed ./data` fills a database with invented work if you want something to look at.
 `deno task shots` rebuilds the frontend and drives a real browser through the whole thing. It needs
@@ -236,8 +242,8 @@ then opens a *second* browser context, which is genuinely a second device becaus
 IndexedDB, has it request access, and approves it from the first. If the transport, the protocol,
 the signing or either shell is broken, there are no pictures.
 
-<img src="docs/pacing-desktop.png" alt="The pacing screen, showing the projection and the terms that add up to it" width="420">
-<img src="docs/invoices-desktop.png" alt="An invoice draft, with the bonus in its own table above the work table" width="420">
+<img src="docs/pacing-desktop.png" alt="The pacing screen: how far ahead or behind, and two bars comparing the month elapsed against the hours worked" width="420">
+<img src="docs/invoices-desktop.png" alt="The invoice list, with every lifecycle action on the row" width="420">
 
 The invoice PDF is rendered on the server and follows the supplied format closely — see
 [`docs/invoice-sample.pdf`](docs/invoice-sample.pdf), generated from the fixture by

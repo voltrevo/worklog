@@ -216,11 +216,43 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
     return { context, page, label };
   };
 
+  /**
+   * Kill the server even when nothing calls `close()`.
+   *
+   * `close()` used to be reachable only along the happy path, so every harness run that threw —
+   * a timed-out locator, a failed check — left its `deno run server/main.ts` alive holding the
+   * port. Fourteen of them had accumulated over one day. The next run then dialled a *previous*
+   * run's server, against a previous run's database, and failed for reasons that had nothing to do
+   * with the code under test: the failure I spent twenty minutes on was a zombie whose clock I had
+   * frozen in an experiment I had already reverted.
+   *
+   * `exit` fires for a normal end and for `process.exit`; the signal handlers cover a `^C` or a
+   * timeout from the shell. `SIGKILL` on the child because it is a Deno process with its own
+   * signal handling and this is the last thing this process will ever do.
+   */
+  let reaped = false;
+  const reap = () => {
+    if (reaped) return;
+    reaped = true;
+    try {
+      server.process.kill("SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  };
+  process.on("exit", reap);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => {
+      reap();
+      process.exit(1);
+    });
+  }
+
   const close = async () => {
     for (const c of contexts) await c.close().catch(() => {});
     await browser.close();
     http.close();
-    server.process.kill();
+    reap();
     await rm(dataDir, { recursive: true, force: true });
   };
 
