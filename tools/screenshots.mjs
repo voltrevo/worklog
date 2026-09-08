@@ -13,9 +13,31 @@
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { chromium } from "playwright";
+
+/**
+ * Check `CHROME_PATH` before anything else, because Playwright's own diagnosis is worse than none.
+ *
+ * Handed `executablePath: undefined` it falls back to its bundled browser, and when that is absent
+ * it prints a banner telling you to run `npx playwright install`. In a sandbox with no route to the
+ * download CDN that command cannot succeed — and it *prunes* the shared browser cache on its way to
+ * failing, so following the advice breaks every other harness on the machine. Half an hour of
+ * seeding, listening and serving happens before the launch, so this belongs at the top.
+ */
+async function requireBrowser() {
+  const path = process.env.CHROME_PATH;
+  const hint = "set CHROME_PATH to a Chromium binary (and LD_LIBRARY_PATH if it needs one). " +
+    "Do not run `npx playwright install`: it cannot reach the CDN here and it empties the shared cache first.";
+  if (!path) throw new Error(`screenshots: CHROME_PATH is not set — ${hint}`);
+  try {
+    await access(path);
+  } catch {
+    throw new Error(`screenshots: CHROME_PATH points at ${path}, which does not exist — ${hint}`);
+  }
+  return path;
+}
 
 const root = new URL("..", import.meta.url).pathname;
 const dist = join(root, "web/dist");
@@ -81,6 +103,7 @@ function startServer() {
 }
 
 async function main() {
+  const executablePath = await requireBrowser();
   await rm(dataDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
@@ -108,7 +131,7 @@ async function main() {
   await new Promise((r) => http.listen(HTTP_PORT, "127.0.0.1", r));
 
   const browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH,
+    executablePath,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
 

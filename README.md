@@ -30,7 +30,9 @@ screen. **It is the only way in**, so treat it as a secret until a device is aut
 device to arrive can claim admin, and every one after that has to be approved by an admin.
 
 `deno task seed ./data` fills a database with invented work if you want something to look at.
-`deno task shots` rebuilds the frontend and drives a real browser through the whole thing.
+`deno task shots` rebuilds the frontend and drives a real browser through the whole thing. It needs
+`CHROME_PATH` pointing at a Chromium, because Playwright cannot download one everywhere; it checks
+before it starts rather than after a minute of setup.
 
 ## Layout
 
