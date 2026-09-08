@@ -236,3 +236,23 @@ export function revertIssue(db: Db, id: string, now: Instant = Date.now()): Stor
 export function attachPdf(db: Db, id: string, path: string, now: Instant = Date.now()): void {
   db.prepare("UPDATE invoice SET pdf_path = ?, updated_at = ? WHERE id = ?").run(path, now, id);
 }
+
+/**
+ * 24.28 — remove an invoice at any stage, and say which file went with it.
+ *
+ * Deleting an *issued* invoice is allowed on purpose. 11.5's rule is that a month may carry only
+ * one issued invoice, and without a delete the only ways out of a mistake were reverting it to a
+ * draft forever or living with it. The row is the record; if it should not exist, it should not
+ * exist.
+ *
+ * Returns the PDF path rather than removing the file, because the store owns rows and the caller
+ * owns the data directory.
+ */
+export function deleteInvoice(db: Db, id: string): { pdfPath?: string } {
+  return transact(db, () => {
+    const current = getInvoice(db, id);
+    if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+    db.prepare("DELETE FROM invoice WHERE id = ?").run(id);
+    return current.pdfPath ? { pdfPath: current.pdfPath } : {};
+  });
+}

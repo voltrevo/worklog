@@ -45,7 +45,13 @@ import {
   setRole,
   touchDevice,
 } from "./access.ts";
-import { allConfig, getConfig, publicInvoiceConfig, setConfig } from "./config.ts";
+import {
+  allConfig,
+  getConfig,
+  missingInvoiceConfig,
+  publicInvoiceConfig,
+  setConfig,
+} from "./config.ts";
 import { loadHolidays } from "./holidays.ts";
 import type { Logger } from "./logs.ts";
 import { prune, query as queryLogs } from "./logs.ts";
@@ -68,6 +74,7 @@ import {
 import { renderInvoicePdf } from "./pdf.ts";
 import {
   attachPdf,
+  deleteInvoice,
   getInvoice,
   issue,
   listInvoices,
@@ -104,6 +111,27 @@ export interface ServerContext {
   /** Injected so tests can drive the calendar without a network. */
   now?: () => number;
   offlineHolidays?: boolean;
+}
+
+/** 17.11 — one place decides what an invoice's file is called, since two paths now write it. */
+function fileNameFor(number: string): string {
+  return `${number.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+}
+
+/**
+ * 24.31 — refuse rather than render blanks.
+ *
+ * A PDF generated with no payment details and no client address is not a draft of an invoice, it
+ * is a page with holes in it, and it looked enough like a document to send. Every missing field is
+ * named at once: one per attempt, for a dozen fields, is a dozen attempts.
+ */
+function requireInvoiceConfig(db: Db): void {
+  const missing = missingInvoiceConfig(getConfig(db, "invoice"));
+  if (missing.length === 0) return;
+  throw new Refused(
+    "invoice-config-incomplete",
+    `Settings needs ${missing.join(", ")} before an invoice can be made.`,
+  );
 }
 
 export function broadcast(ctx: ServerContext, event: Event): void {
@@ -454,6 +482,7 @@ export async function handle(
 
     // ---------------------------------------------------------------- invoices
     case "invoice-save": {
+      requireInvoiceConfig(db);
       const saved = saveDraft(db, {
         period: req.period,
         ...(req.teamProject !== undefined ? { teamProject: req.teamProject } : {}),
@@ -466,10 +495,48 @@ export async function handle(
     }
 
     case "invoice-issue": {
+      requireInvoiceConfig(db);
       const issued = issue(db, req.id, now);
+
+      /*
+       * 24.30 — freeze the *document*, not only the data.
+       *
+       * Issuing already froze a snapshot of the numbers, and the PDF was re-rendered from that
+       * snapshot on every download. That is a reproduction of the invoice rather than the invoice:
+       * change the letterhead, the payment details or the tax label afterwards and the "frozen"
+       * document comes back different, which is the one thing freezing was supposed to prevent.
+       *
+       * So the bytes are written here, once, and `invoice-pdf` serves the file from now on. The
+       * consequence is worth stating: a typo in your address cannot be corrected on an issued
+       * invoice. Revert it, fix the setting, issue it again — which is the same thing you would
+       * have to do with a document you had already sent.
+       */
+      if (ctx.dataDir) {
+        const bytes = await renderInvoicePdf(
+          issued.snapshot ?? issued.draft,
+          getConfig(db, "invoice"),
+        );
+        const relative = `invoices/${fileNameFor(issued.number)}`;
+        await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
+        attachPdf(db, issued.id, relative, now);
+      }
+
       ctx.log("info", "invoice", "issued", { number: issued.number, period: issued.period });
       broadcast(ctx, { e: "changed", area: "invoices" });
-      return issued;
+      return getInvoice(db, req.id) ?? issued;
+    }
+
+    case "invoice-delete": {
+      const gone = getInvoice(db, req.id);
+      const { pdfPath } = deleteInvoice(db, req.id);
+      if (pdfPath && ctx.dataDir) {
+        await Deno.remove(`${ctx.dataDir}/${pdfPath}`).catch(() => {
+          // Already gone. The row is what mattered and it is deleted.
+        });
+      }
+      ctx.log("warn", "invoice", "deleted", { number: gone?.number ?? req.id });
+      broadcast(ctx, { e: "changed", area: "invoices" });
+      return { deleted: true };
     }
 
     case "invoice-mark-paid": {
@@ -503,17 +570,25 @@ export async function handle(
         );
       }
 
-      // 8.15, 11.4 -- generating changes no accounting state. An issued invoice renders from its
-      // frozen snapshot and a draft from the current draft, so a PDF of an issued invoice is the
-      // document that was issued rather than a fresh look at today's work.
-      const source = invoice.snapshot ?? invoice.draft;
-      const bytes = await renderInvoicePdf(source, getConfig(db, "invoice"));
+      // 24.30 — an issued invoice has a file, and the file is the invoice. Read it back rather
+      // than re-rendering: re-rendering is how a frozen document quietly changes.
+      const frozen = invoice.status !== "draft" && invoice.pdfPath
+        ? await Deno.readFile(`${ctx.dataDir}/${invoice.pdfPath}`).catch(() => undefined)
+        : undefined;
 
-      // 17.11 -- the file lives on disk and the row holds a path.
-      const name = `${invoice.number.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+      const name = fileNameFor(invoice.number);
       const relative = `invoices/${name}`;
-      await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
-      attachPdf(db, invoice.id, relative, now);
+      let bytes: Uint8Array;
+      if (frozen) {
+        bytes = frozen;
+      } else {
+        // A draft, or an issued invoice whose file has gone missing. 8.15, 11.4 — rendering
+        // changes no accounting state either way.
+        requireInvoiceConfig(db);
+        bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, getConfig(db, "invoice"));
+        await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
+        attachPdf(db, invoice.id, relative, now);
+      }
       ctx.log("info", "invoice", "rendered a PDF", { number: invoice.number, bytes: bytes.length });
       // 8.33 -- and back down the wire, because a file on the server's disk is not an export. The
       // frontend that asked may be a phone on the other side of the room; `path` tells it where the

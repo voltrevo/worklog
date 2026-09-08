@@ -1,185 +1,118 @@
 /**
- * Invoices (sections 8–11).
+ * Invoices: one list, and actions on the rows of it (24.25–24.29).
  *
- * **Preview and issuance are visually separate and differently weighted** (19.9, 19.10). Generating
- * a PDF is a plain button; issuing is the only primary action on the screen and says what it will
- * do. 11.4 is the rule behind that: a PDF has no accounting meaning and issuing has all of it, so
- * the two must not sit side by side looking alike.
+ * **There is no "current" invoice.** This screen used to pick a month, show whichever invoice
+ * belonged to it, and render a full preview of that document — the line table, the bonus table,
+ * the sub-total and VAT stack. Three things were wrong with that. The preview duplicated the PDF,
+ * which is the artefact that matters and is one click away. The month selector invented a piece of
+ * state, "the invoice you are looking at", that the domain does not have. And every lifecycle
+ * action hung off that selection, so acting on an invoice meant navigating to it first.
  *
- * The warnings from 11.24 and 11.25 are at the top rather than beside the invoice they concern,
- * because the second one is *about work that is on no invoice* — there is no row for it to sit next
- * to, which is exactly why it is easy to miss.
+ * What a list needs is the period, the number, the hours, the amount and the status; what an
+ * invoice needs is issue, mark paid, revert, delete and its PDF. Both of those fit on a row.
  *
- * The tables follow the supplied format (8.3, 8.19–8.29): the bonus is its own table above the
- * work, the work table carries its own Total, and the sub-total / VAT / TOTAL stack sits at the
- * right below both.
+ * **Ordering is by what needs attention** (24.25): drafts and issued-but-unpaid first, newest
+ * period first within each, then the paid ones. Sorting purely by date buries the one invoice that
+ * is overdue underneath a year of settled ones.
  */
 
 import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
-import type { InvoiceLine, InvoiceWarning } from "@worklog/shared/invoice";
-import type { InvoicePdfResult, StoredInvoiceWire } from "@worklog/shared/protocol";
 import { bytesFromBase64, type Saved, saveFile } from "../download.ts";
+import type { InvoicePdfResult, StoredInvoiceWire } from "@worklog/shared/protocol";
+import type { InvoiceWarning } from "@worklog/shared/invoice";
 
-const COLUMNS = [
-  "Date",
-  "Description of work / expense",
-  "Team / Project",
-  "Hours",
-  "Rate",
-  "Amount",
-];
-
-function Head() {
-  return (
-    <thead>
-      <tr>
-        {COLUMNS.map((c, i) => (
-          <th key={c} style={i >= 3 ? { textAlign: "right" } : undefined}>
-            {c}
-          </th>
-        ))}
-      </tr>
-    </thead>
+/** Unpaid first, and within that the most recent period. */
+function ordered(invoices: StoredInvoiceWire[]): StoredInvoiceWire[] {
+  const rank = (i: StoredInvoiceWire) => (i.status === "paid" ? 1 : 0);
+  return [...invoices].sort((a, b) =>
+    rank(a) - rank(b) || (a.period < b.period ? 1 : a.period > b.period ? -1 : 0)
   );
 }
 
 export function Invoices() {
   const { snapshot, call, refresh, phase } = useStore();
   const [invoices, setInvoices] = useState<StoredInvoiceWire[]>();
-  const [period, setPeriod] = useState(() => shiftMonth(monthOf(today()), -1));
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   const load = async () => setInvoices(await call<StoredInvoiceWire[]>({ t: "invoices" }));
-
-  // 1.12 — follow the store, rather than loading once on mount. An invoice issued or marked paid
-  // on another device broadcasts `changed/invoices`, and this list has to show it: two people
-  // looking at the same month and disagreeing about whether it has been billed is the exact
-  // confusion 11.5's one-invoice-per-month rule exists to prevent.
+  // 1.12 — follow the store, so an invoice issued on another device appears here.
   useEffect(() => {
-    void load();
-    // `load` is redefined every render; the snapshot is the signal.
+    void load().catch(() => {});
   }, [snapshot]);
 
+  /**
+   * Every action goes through here so a refusal lands somewhere visible.
+   *
+   * 24.31's refusal — "Settings needs the client's address, the BSB … before an invoice can be
+   * made" — is the point of that change, and a refusal swallowed by a `catch` is the old behaviour
+   * with extra steps.
+   */
   const act = async (body: () => Promise<unknown>) => {
     setBusy(true);
+    setProblem(undefined);
     try {
       await body();
       await load();
       await refresh();
+    } catch (err) {
+      setProblem((err as Error).message);
     } finally {
       setBusy(false);
     }
   };
 
-  const selected = invoices?.find((i) => i.period === period);
+  const offerable = [shiftMonth(monthOf(today()), -1), monthOf(today())];
+  const periods = new Set((invoices ?? []).map((i) => i.period));
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <h1>Invoices</h1>
+      <div className="row between wrap">
+        <h1>Invoices</h1>
+        {canWrite && (
+          <div className="row wrap">
+            {/* Last month and this one: those are the months anybody prepares. */}
+            {offerable.filter((m) => !periods.has(m)).map((m) => (
+              <button
+                key={m}
+                className="btn primary"
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void act(() =>
+                    call({ t: "invoice-save", period: m, clock: { today: today(), nowMinutes: 0 } })
+                  )}
+              >
+                Prepare {monthName(m)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
+      {problem && <div className="notice bad">{problem}</div>}
       {snapshot?.invoiceWarnings.map((w, i) => <Warning key={i} warning={w} />)}
 
       <div className="card">
-        <div className="row between wrap">
-          <div className="row">
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setPeriod(shiftMonth(period, -1))}
-            >
-              ‹
-            </button>
-            <strong style={{ minWidth: 150, textAlign: "center" }}>
-              {monthName(period)}
-            </strong>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setPeriod(shiftMonth(period, 1))}
-            >
-              ›
-            </button>
-          </div>
-          {canWrite && (
-            <button
-              className="btn"
-              type="button"
-              disabled={busy ||
-                (selected !== undefined && selected.status !== "draft")}
-              onClick={() =>
-                void act(() =>
-                  call({
-                    t: "invoice-save",
-                    period,
-                    clock: { today: today(), nowMinutes: 0 },
-                  })
-                )}
-            >
-              {selected ? "Rebuild draft" : "Prepare invoice"}
-            </button>
-          )}
-        </div>
-
-        {!selected && (
-          <p className="muted" style={{ marginBottom: 0 }}>
-            No invoice for {monthName(period)}{" "}
-            yet. Preparing one takes every entry dated in that month — there is nothing to select,
-            and nothing gets billed twice because a month can only be issued once.
-          </p>
-        )}
-
-        {selected && <Draft invoice={selected} busy={busy} canWrite={canWrite} act={act} />}
-      </div>
-
-      <div className="card">
-        <h3>All invoices</h3>
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Period</th>
-                <th>Number</th>
-                <th style={{ textAlign: "right" }}>Total</th>
-                <th>Status</th>
-                <th>Due</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(invoices ?? []).map((i) => (
-                <tr
-                  key={i.id}
-                  onClick={() => setPeriod(i.period)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>{monthName(i.period)}</td>
-                  <td className="mono">{i.number}</td>
-                  <td className="tabular" style={{ textAlign: "right" }}>
-                    {money(
-                      (i.snapshot ?? i.draft).totalMinor,
-                      i.draft.currency,
-                    )}
-                  </td>
-                  <td>
-                    <StatusPill status={i.status} />
-                  </td>
-                  {/* 11.16 — a due date matters for an issued invoice and means nothing for a draft. */}
-                  <td className="tabular">
-                    {i.status === "draft" ? "—" : shortDate((i.snapshot ?? i.draft).dueDate)}
-                  </td>
-                </tr>
+        {invoices === undefined
+          ? <p className="muted" style={{ margin: 0 }}>Loading…</p>
+          : invoices.length === 0
+          ? (
+            <p className="muted" style={{ margin: 0 }}>
+              No invoices yet. Preparing one takes every entry dated in that month.
+            </p>
+          )
+          : (
+            <div className="entries">
+              {ordered(invoices).map((i) => (
+                <InvoiceRow key={i.id} invoice={i} canWrite={canWrite} busy={busy} act={act} />
               ))}
-              {invoices?.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="muted">Nothing yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -192,205 +125,59 @@ function StatusPill({ status }: { status: StoredInvoiceWire["status"] }) {
   return <span className="pill good">Paid</span>;
 }
 
-function Draft(
-  { invoice, busy, canWrite, act }: {
+function InvoiceRow(
+  { invoice, canWrite, busy, act }: {
     invoice: StoredInvoiceWire;
-    busy: boolean;
     canWrite: boolean;
+    busy: boolean;
     act: (body: () => Promise<unknown>) => Promise<void>;
   },
 ) {
   const { call } = useStore();
-  const shown = invoice.snapshot ?? invoice.draft;
-  const [confirming, setConfirming] = useState(false);
   const [saved, setSaved] = useState<Saved>();
+  const [confirm, setConfirm] = useState<"issue" | "delete">();
+  const shown = invoice.snapshot ?? invoice.draft;
 
-  /**
-   * 8.33 — generate, then actually hand it over.
-   *
-   * This used to end at the `call`: the server rendered the document, wrote it into its own data
-   * directory, and the button went back to looking exactly as it had. Nothing was broken enough to
-   * fail, which is why it survived — the file existed, on a disk the person pressing the button
-   * generally cannot reach.
-   */
+  /** 8.33 — generate, then actually hand it over. */
   const generate = async () => {
-    const res = await call<InvoicePdfResult>({
-      t: "invoice-pdf",
-      id: invoice.id,
-    });
-    setSaved(
-      await saveFile(
-        res.fileName,
-        bytesFromBase64(res.pdfBase64),
-        "application/pdf",
-      ),
-    );
+    const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
+    setSaved(await saveFile(res.fileName, bytesFromBase64(res.pdfBase64), "application/pdf"));
   };
 
   return (
-    <div className="stack" style={{ gap: 14, marginTop: 14 }}>
-      <div className="row between wrap">
-        <div>
-          <h2>{shown.number}</h2>
-          <div className="muted">
-            {/* 8.26, 9.23 — the period, the invoice date and the due date are three things. */}
-            {periodRange(shown.period)} · invoiced {longDate(shown.invoiceDate)} · due{" "}
-            {longDate(shown.dueDate)}
-          </div>
-        </div>
+    <div className="stacked-row">
+      <div className="what">
+        <strong>
+          {monthName(invoice.period)} · {shown.number}
+        </strong>
+        <span className="faint">
+          {hours(shown.workHours)} · {money(shown.totalMinor, shown.currency)}
+          {/* 11.16 — a due date matters for an issued invoice and means nothing for a draft. */}
+          {invoice.status !== "draft" && ` · due ${longDate(shown.dueDate)}`}
+        </span>
+      </div>
+
+      <div className="acts wrap">
         <StatusPill status={invoice.status} />
-      </div>
 
-      {/* 8.27 */}
-      <h3>Description of work performed</h3>
+        <button className="btn" type="button" disabled={busy} onClick={() => void act(generate)}>
+          PDF
+        </button>
+        {saved && (
+          <span className="faint">
+            {saved.path ? `Saved to ${saved.path}` : `Downloaded ${saved.fileName}`}
+          </span>
+        )}
 
-      {/* 8.19 — the bonus is its own table, above the work, with its own subtotal row. */}
-      {shown.bonusLine && (
-        <div className="scroll-x">
-          <table>
-            <Head />
-            <tbody>
-              <tr>
-                {/* 8.20 — the row covers the period, so its Date cell says so. */}
-                <td className="tabular">{periodRange(shown.period)}</td>
-                <td>{shown.bonusLine.description}</td>
-                <td>{shown.bonusLine.teamProject}</td>
-                <td style={{ textAlign: "right" }}>–</td>
-                <td style={{ textAlign: "right" }}>–</td>
-                <td className="tabular" style={{ textAlign: "right" }}>
-                  {money(shown.bonusLine.amountMinor, shown.currency)}
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={5} />
-                <td
-                  className="tabular"
-                  style={{ textAlign: "right", fontWeight: 700 }}
-                >
-                  {money(shown.bonusLine.amountMinor, shown.currency)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="scroll-x">
-        <table>
-          <Head />
-          <tbody>
-            {shown.lines.map((l: InvoiceLine, i: number) => (
-              <tr key={i}>
-                <td className="tabular">{l.date ? shortDate(l.date) : "—"}</td>
-                <td>{l.description}</td>
-                <td>{l.teamProject}</td>
-                <td className="tabular" style={{ textAlign: "right" }}>
-                  {l.hours === null ? "—" : l.hours.toFixed(1)}
-                </td>
-                <td className="tabular" style={{ textAlign: "right" }}>
-                  {l.rateMinor === null ? "—" : money(l.rateMinor, shown.currency)}
-                </td>
-                <td className="tabular" style={{ textAlign: "right" }}>
-                  {money(l.amountMinor, shown.currency)}
-                </td>
-              </tr>
-            ))}
-            {/* 8.22 — the work table's own Total, in hours and in money. */}
-            <tr>
-              <td colSpan={3} style={{ textAlign: "right", fontWeight: 700 }}>
-                Total
-              </td>
-              <td
-                className="tabular"
-                style={{ textAlign: "right", fontWeight: 700 }}
-              >
-                {shown.workHours.toFixed(1)}
-              </td>
-              <td />
-              <td
-                className="tabular"
-                style={{ textAlign: "right", fontWeight: 700 }}
-              >
-                {money(shown.workSubtotalMinor, shown.currency)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* 8.28, 8.29 */}
-      <div
-        className="row between wrap"
-        style={{ alignItems: "flex-start", gap: 24 }}
-      >
-        <div className="stack" style={{ gap: 4, fontSize: 14 }}>
-          <div>
-            <span className="muted">Hourly rate in:</span> <strong>{shown.currency}</strong>
-          </div>
-          {shown.teamProject && (
-            <div>
-              <span className="muted">Team / Project:</span> <strong>{shown.teamProject}</strong>
-            </div>
-          )}
-        </div>
-        <table style={{ width: "auto", minWidth: 280 }}>
-          <tbody>
-            <tr>
-              <td style={{ textAlign: "right" }}>Sub-total</td>
-              <td className="tabular" style={{ textAlign: "right" }}>
-                {money(shown.subtotalMinor, shown.currency)}
-              </td>
-            </tr>
-            <tr>
-              <td style={{ textAlign: "right", fontStyle: "italic" }}>
-                {shown.taxRate > 0
-                  ? `Tax (${Math.round(shown.taxRate * 100)}%)`
-                  : "VAT (if applicable)"}
-              </td>
-              <td className="tabular" style={{ textAlign: "right" }}>
-                {money(shown.taxMinor, shown.currency)}
-              </td>
-            </tr>
-            <tr>
-              <td style={{ textAlign: "right", fontWeight: 700 }}>TOTAL</td>
-              <td
-                className="tabular"
-                style={{ textAlign: "right", fontWeight: 700 }}
-              >
-                {money(shown.totalMinor, shown.currency)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {canWrite && (
-        <div className="row wrap between">
-          {/* 19.9 — preview is ordinary, because it means nothing (11.4). */}
-          <button
-            className="btn"
-            type="button"
-            disabled={busy}
-            onClick={() => void act(generate)}
-          >
-            Generate PDF
-          </button>
-          {saved && (
-            // A browser cannot say where its own download went, so it does not pretend to; the
-            // desktop shell wrote the file itself and can.
-            <span className="muted" style={{ alignSelf: "center" }}>
-              {saved.path ? `Saved to ${saved.path}` : `Downloaded ${saved.fileName}`}
-            </span>
-          )}
-
-          <div className="row wrap">
-            {invoice.status === "draft" && !confirming && (
+        {canWrite && (
+          <>
+            {invoice.status === "draft" && (
               <button
                 className="btn primary"
                 type="button"
-                onClick={() => setConfirming(true)}
+                onClick={() => setConfirm("issue")}
               >
-                Mark as issued
+                Issue
               </button>
             )}
             {invoice.status === "issued" && (
@@ -401,7 +188,7 @@ function Draft(
                   disabled={busy}
                   onClick={() => void act(() => call({ t: "invoice-mark-paid", id: invoice.id }))}
                 >
-                  Mark as paid
+                  Mark paid
                 </button>
                 <button
                   className="btn"
@@ -410,7 +197,7 @@ function Draft(
                   onClick={() =>
                     void act(() => call({ t: "invoice-revert-issue", id: invoice.id }))}
                 >
-                  Revert issuance
+                  Revert
                 </button>
               </>
             )}
@@ -421,60 +208,95 @@ function Draft(
                 disabled={busy}
                 onClick={() => void act(() => call({ t: "invoice-unmark-paid", id: invoice.id }))}
               >
-                Unmark as paid
+                Unmark paid
               </button>
             )}
-          </div>
-        </div>
-      )}
+            <button className="link danger" type="button" onClick={() => setConfirm("delete")}>
+              Delete
+            </button>
+          </>
+        )}
+      </div>
 
-      {confirming && (
-        // 11.6 — the sentence says what freezing means, because after this the work and the
-        // invoice stop being the same thing.
-        <div className="notice warn stack">
-          <span>
-            Issuing freezes this invoice exactly as it reads now. Editing the work afterwards will
-            not change it, and {monthName(invoice.period)}{" "}
-            cannot be invoiced again unless you revert.
-          </span>
-          <div className="row">
-            <button
-              className="btn primary"
-              type="button"
-              disabled={busy}
-              onClick={async () => {
-                setConfirming(false);
-                await act(() => call({ t: "invoice-issue", id: invoice.id }));
-              }}
-            >
-              Issue it
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setConfirming(false)}
-            >
-              Not yet
-            </button>
-          </div>
-        </div>
+      {/* 24.29 — a dialog, rather than a paragraph wedged into the row. */}
+      {confirm === "issue" && (
+        <Dialog
+          title={`Issue ${shown.number}?`}
+          body={`Issuing freezes this invoice exactly as it reads now, and freezes its PDF. Editing the work afterwards will not change it, and ${
+            monthName(invoice.period)
+          } cannot be invoiced again unless you revert or delete this one.`}
+          confirmLabel="Issue it"
+          busy={busy}
+          onConfirm={async () => {
+            setConfirm(undefined);
+            await act(() => call({ t: "invoice-issue", id: invoice.id }));
+          }}
+          onCancel={() => setConfirm(undefined)}
+        />
+      )}
+      {confirm === "delete" && (
+        <Dialog
+          title={`Delete ${shown.number}?`}
+          body={invoice.status === "draft"
+            ? "A draft has no accounting meaning, so nothing goes but the draft itself."
+            : `This invoice has been ${invoice.status}. Deleting it removes the record and its frozen PDF, and frees ${
+              monthName(invoice.period)
+            } to be invoiced again.`}
+          confirmLabel="Delete it"
+          danger
+          busy={busy}
+          onConfirm={async () => {
+            setConfirm(undefined);
+            await act(() => call({ t: "invoice-delete", id: invoice.id }));
+          }}
+          onCancel={() => setConfirm(undefined)}
+        />
       )}
     </div>
   );
 }
 
-/** 8.20, 8.26 — "1 – 31 Aug 2026", the span a period covers. */
-function periodRange(period: string): string {
-  const [y, m] = period.split("-").map(Number) as [number, number];
-  const last = new Date(y, m, 0).getDate();
-  const label = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    year: "numeric",
-  })
-    .format(new Date(y, m - 1, 1));
-  return `1 – ${last} ${label}`;
+/**
+ * 24.29 — a modal, used by both confirmations.
+ *
+ * The same `.sheet` as the work-note panel, so this app has one thing that means "answer before
+ * carrying on" rather than two that look slightly different.
+ */
+function Dialog(
+  { title, body, confirmLabel, danger, busy, onConfirm, onCancel }: {
+    title: string;
+    body: string;
+    confirmLabel: string;
+    danger?: boolean;
+    busy: boolean;
+    onConfirm: () => void | Promise<void>;
+    onCancel: () => void;
+  },
+) {
+  return (
+    <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="card stack" style={{ gap: 14, maxWidth: 520 }}>
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        <p className="muted" style={{ margin: 0 }}>{body}</p>
+        <div className="row">
+          <button
+            className={`btn ${danger ? "danger" : "primary"}`}
+            type="button"
+            disabled={busy}
+            onClick={() => void onConfirm()}
+          >
+            {confirmLabel}
+          </button>
+          <button className="btn" type="button" onClick={onCancel}>
+            Not now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
+/** 11.24, 11.25 — about work that is on no invoice, so there is no row for it to sit beside. */
 function Warning({ warning }: { warning: InvoiceWarning }) {
   if (warning.kind === "uninvoiced-month") {
     return (

@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { type Db, open } from "./db.ts";
-import { setConfig } from "./config.ts";
+import { missingInvoiceConfig, setConfig } from "./config.ts";
 import { addEntry, Refused, updateEntry } from "./work.ts";
 import {
   attachPdf,
@@ -13,6 +13,24 @@ import {
   saveDraft,
   unmarkPaid,
 } from "./invoices.ts";
+
+import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
+
+/** Every string field blanked, to see the whole list at once. */
+const BLANK = {
+  fromName: "",
+  fromAddress: "",
+  clientName: "",
+  clientAddress: "",
+  currency: "",
+  teamProject: "",
+  payMethod: "",
+  payName: "",
+  payBsb: "",
+  payAccountNumber: "",
+  payBank: "",
+  rateMinor: 0,
+};
 
 const HOUR = 3_600_000;
 const T0 = 1_788_000_000_000;
@@ -219,4 +237,43 @@ Deno.test("tax and totals reach the stored draft, not just the calculation", () 
   assertEquals(a.draft.totalMinor, 66_000);
   assertEquals(a.draft.currency, "AUD");
   db.close();
+});
+
+Deno.test("24.31 -- what is missing is named, all of it, in one answer", () => {
+  // One field per attempt, for a dozen fields, is a dozen attempts. The list is the point.
+  const empty = missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, ...BLANK });
+  assertEquals(empty.length > 8, true, `only found ${empty.join(", ")}`);
+  assertEquals(empty.includes("your name"), true);
+  assertEquals(empty.includes("the account number"), true);
+
+  // 24.34 — the supplied format carries no ABN, so an absent one is not missing.
+  assertEquals(missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, fromAbn: "" }), []);
+  // Nor are the fields the renderer omits cleanly when unset.
+  assertEquals(
+    missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, approver: "", note: "", bonusMinor: 0 }),
+    [],
+  );
+});
+
+Deno.test("24.35 -- a tax needs a name only when there is a tax", () => {
+  // "No tax applies" is a real configuration, and defaulting the label to GST asserted otherwise.
+  assertEquals(missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, taxRate: 0, taxLabel: "" }), []);
+  assertEquals(
+    missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, taxRate: 0.1, taxLabel: "" }),
+    ["a name for the tax"],
+  );
+});
+
+Deno.test("a rate of zero is missing, not merely free", () => {
+  assertEquals(
+    missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, rateMinor: 0 }),
+    ["an hourly rate above zero"],
+  );
+});
+
+Deno.test("whitespace is not a value", () => {
+  assertEquals(
+    missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, clientName: "   " }),
+    ["the client's name"],
+  );
 });

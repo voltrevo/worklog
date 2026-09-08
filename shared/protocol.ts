@@ -148,6 +148,8 @@ export type Request =
   | { t: "invoice-mark-paid"; id: string }
   | { t: "invoice-unmark-paid"; id: string }
   | { t: "invoice-revert-issue"; id: string }
+  /** 24.28 — an invoice is deletable, along with any PDF it froze. */
+  | { t: "invoice-delete"; id: string }
   | { t: "invoice-pdf"; id: string }
   | { t: "config-get" }
   | { t: "config-set"; section: "pacing" | "invoice" | "prompt"; value: Record<string, unknown> }
@@ -343,6 +345,7 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "invoice-mark-paid": "write",
   "invoice-unmark-paid": "write",
   "invoice-revert-issue": "write",
+  "invoice-delete": "write",
   "config-set": "write",
   "override-set": "write",
   "override-delete": "write",

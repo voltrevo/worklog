@@ -13,6 +13,7 @@ import type { AccessRole, AuthPurpose } from "@worklog/shared/auth";
 import { open } from "./db.ts";
 import { ChallengeStore } from "./access.ts";
 import { setConfig } from "./config.ts";
+import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
 import { loggerFor } from "./logs.ts";
 import { PromptHub } from "./prompts.ts";
 import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
@@ -24,7 +25,7 @@ const CLOCK = { today: "2026-09-08", nowMinutes: 10 * 60 };
 
 function context(): ServerContext {
   const db = open({ path: ":memory:" });
-  setConfig(db, "invoice", { rateMinor: 7500, currency: "AUD", teamProject: "Research" }, NOW);
+  setConfig(db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
   return {
     db,
     challenges: new ChallengeStore(),

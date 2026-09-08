@@ -86,16 +86,20 @@ export const DEFAULTS: Config = {
     fromPhone: "",
     clientName: "",
     clientAddress: "",
-    currency: "AUD",
+    // 24.35, 24.36 — nothing here is a guess about the person using it. "AUD" and "GST" were,
+    // and a default that is wrong is worse than a blank: a blank asks, and a wrong default is
+    // rendered onto a document that goes to a client.
+    currency: "",
     rateMinor: 0,
     taxRate: 0,
-    taxLabel: "GST",
+    taxLabel: "",
     approver: "",
     teamProject: "",
     bonusMinor: 0,
-    bonusTeamProject: "General",
+    bonusTeamProject: "",
     note: "",
-    payMethod: "Wire Transfer",
+    // 24.37 — "Wire Transfer" is a guess too, and it is printed under "Method of payment".
+    payMethod: "",
     payName: "",
     payBsb: "",
     payAccountNumber: "",
@@ -187,4 +191,38 @@ export function invoiceConfigGaps(cfg: InvoiceConfig): string[] {
   if (!cfg.currency) gaps.push("a currency");
   if (!cfg.payName || !cfg.payAccountNumber) gaps.push("payment details");
   return gaps;
+}
+
+/**
+ * What is missing before an invoice can be produced (24.31, 24.1).
+ *
+ * Returned as labels rather than as a boolean, and **all of them at once**: the alternative is
+ * finding out about one empty field per attempt, which for a dozen fields is a dozen attempts.
+ *
+ * The list is what the document actually renders. `fromAbn` is not on it — the supplied format
+ * does not carry one (24.34) — and neither are the approver, the note or the bonus, all of which
+ * the renderer omits cleanly when unset. `taxLabel` is required only when there is tax to label,
+ * because "no tax applies" is a legitimate configuration and 24.35 says so.
+ */
+export function missingInvoiceConfig(cfg: InvoiceConfig): string[] {
+  const required: [keyof InvoiceConfig, string][] = [
+    ["fromName", "your name"],
+    ["fromAddress", "your address"],
+    ["clientName", "the client's name"],
+    ["clientAddress", "the client's address"],
+    ["currency", "the currency"],
+    ["teamProject", "the team or project"],
+    ["payMethod", "the payment method"],
+    ["payName", "the account name"],
+    ["payBsb", "the BSB"],
+    ["payAccountNumber", "the account number"],
+    ["payBank", "the bank"],
+  ];
+  const missing = required
+    .filter(([key]) => !String(cfg[key] ?? "").trim())
+    .map(([, label]) => label);
+
+  if (!(cfg.rateMinor > 0)) missing.push("an hourly rate above zero");
+  if (cfg.taxRate > 0 && !cfg.taxLabel.trim()) missing.push("a name for the tax");
+  return missing;
 }

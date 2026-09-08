@@ -245,14 +245,18 @@ async function main() {
   );
 
   // ---------------------------------------------------------------- invoicing, and the PDF
+  //
+  // 24.25–24.31. One list, actions on the rows, dialogs for the two that cannot be undone by
+  // clicking again, and a PDF that is frozen at issue rather than re-rendered on each download.
   console.log("\ninvoice:");
   await nav(desktop.page, "Invoices");
 
-  const prepare = desktop.page.getByRole("button", { name: /Prepare invoice|Rebuild draft/ });
+  const prepare = desktop.page.getByRole("button", { name: /^Prepare / }).first();
   await prepare.waitFor({ timeout: 15_000 });
+  const preparing = (await prepare.textContent())?.replace("Prepare ", "").trim() ?? "";
   await prepare.click();
   check(
-    "a draft exists for last month",
+    "a prepared invoice appears in the list as a draft",
     await until(
       "draft",
       desktop.page,
@@ -260,34 +264,40 @@ async function main() {
     ),
   );
 
-  // 8.33 — the whole reason this file exists. A download that never arrives fails here rather than
-  // looking like a button that worked.
-  const wait = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() => undefined);
-  await desktop.page.getByRole("button", { name: "Generate PDF" }).click();
-  const download = await wait;
+  const invoiceRow = () =>
+    desktop.page.locator(".stacked-row").filter({ hasText: preparing }).first();
 
-  check("generating a PDF delivers a file to the browser", download !== undefined);
-  if (download) {
-    const path = await download.path();
-    const head = (await readFile(path)).subarray(0, 5).toString("latin1");
-    check("and the file is a PDF", head === "%PDF-", `starts with ${JSON.stringify(head)}`);
-    check(
-      "named after the invoice",
-      /\.pdf$/.test(download.suggestedFilename()),
-      download.suggestedFilename(),
-    );
+  // 8.33 — the download, which is the whole reason the button exists.
+  const firstDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
+    undefined
+  );
+  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  const draftPdf = await firstDownload;
+  check("a draft's PDF downloads", draftPdf !== undefined);
+  if (draftPdf) {
+    const head = (await readFile(await draftPdf.path())).subarray(0, 5).toString("latin1");
+    check("and it is a PDF", head === "%PDF-", JSON.stringify(head));
   }
 
-  // 11.4 — and none of that changed the accounting state.
+  // 11.4 — generating changed no state.
   check(
     "generating did not issue anything",
     await desktop.page.getByText("Draft", { exact: true }).first().isVisible(),
   );
 
-  await desktop.page.getByRole("button", { name: "Mark as issued" }).click();
+  // 24.29 — issuing asks in a dialog.
+  await invoiceRow().getByRole("button", { name: "Issue", exact: true }).click();
+  check(
+    "issuing asks first, in a dialog",
+    await until(
+      "issue dialog",
+      desktop.page,
+      async (p) => (await p.getByRole("dialog").count()) > 0,
+    ),
+  );
   await desktop.page.getByRole("button", { name: "Issue it" }).click();
   check(
-    "issuing moves it out of draft",
+    "and issuing moves it out of draft",
     await until(
       "issued",
       desktop.page,
@@ -295,11 +305,47 @@ async function main() {
     ),
   );
 
-  // 11.5, 11.19 — the month is spoken for now, so the rebuild that was available a moment ago is
-  // not. The server would refuse anyway; this checks the UI does not offer it.
+  // 24.30 — the frozen document. Issued invoices serve the stored file rather than re-rendering,
+  // so downloading twice must give the same bytes even though nothing stops the config changing
+  // in between. Byte equality is the only assertion that distinguishes the two.
+  const secondDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
+    undefined
+  );
+  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  const issuedPdf = await secondDownload;
+  check("an issued invoice's PDF downloads", issuedPdf !== undefined);
+  let frozenBytes;
+  if (issuedPdf) {
+    frozenBytes = await readFile(await issuedPdf.path());
+    check("and it is a PDF", frozenBytes.subarray(0, 5).toString("latin1") === "%PDF-");
+  }
+
+  const thirdDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
+    undefined
+  );
+  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  const again = await thirdDownload;
   check(
-    "and the month can no longer be rebuilt",
-    await desktop.page.getByRole("button", { name: "Rebuild draft" }).isDisabled(),
+    "and it is frozen: the same bytes every time",
+    again !== undefined && frozenBytes !== undefined &&
+      Buffer.compare(frozenBytes, await readFile(await again.path())) === 0,
+  );
+
+  // 11.5, 11.19 — the month is spoken for, so it is no longer offered.
+  check(
+    "the issued month is not offered for preparing again",
+    (await desktop.page.getByRole("button", { name: `Prepare ${preparing}` }).count()) === 0,
+  );
+
+  // 24.27 — paid, and back again, from the row.
+  await invoiceRow().getByRole("button", { name: "Mark paid" }).click();
+  check(
+    "marking paid works from the row",
+    await until(
+      "paid",
+      desktop.page,
+      (p) => p.getByText("Paid", { exact: true }).first().isVisible(),
+    ),
   );
 
   // ---------------------------------------------------------------- editing what was recorded
@@ -652,11 +698,11 @@ async function main() {
   // which is the only reason this check can be made before the revocation below.
   await nav(mobile.page, "Invoices");
   check(
-    "an invoice issued on the desktop shows as issued on the phone",
+    "an invoice acted on at the desktop reaches the phone's list",
     await until(
       "issued on phone",
       mobile.page,
-      async (p) => (await p.getByText("Issued", { exact: true }).count()) > 0,
+      async (p) => (await p.getByText(/Issued|Paid/).count()) > 0,
     ),
   );
 
@@ -707,15 +753,14 @@ async function main() {
   await nav(spare.page, "Invoices");
   check(
     "and cannot prepare an invoice",
-    (await spare.page.getByRole("button", { name: /Prepare invoice|Rebuild draft/ })
-      .count()) === 0,
+    (await spare.page.getByRole("button", { name: /^Prepare / }).count()) === 0,
   );
   check(
     "but can still read one",
     await until(
       "invoice visible to read",
       spare.page,
-      async (p) => (await p.getByText("Issued", { exact: true }).count()) > 0,
+      async (p) => (await p.getByText(/Issued|Paid/).count()) > 0,
     ),
   );
   check(
