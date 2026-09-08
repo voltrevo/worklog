@@ -6,6 +6,7 @@
     "./schedule": "./schedule.ts",
     "./pacing": "./pacing.ts",
     "./invoice": "./invoice.ts",
-    "./types": "./types.ts"
+    "./types": "./types.ts",
+    "./auth": "./auth.ts"
   }
 }
