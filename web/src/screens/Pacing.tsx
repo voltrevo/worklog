@@ -12,7 +12,8 @@
 import { useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours, longDate, monthName, pace, shortDate } from "../format.ts";
-import { shiftMonth, today } from "@worklog/shared/dates";
+import { MonthNav } from "./MonthNav.tsx";
+import { today } from "@worklog/shared/dates";
 import type { PacingOverride } from "@worklog/shared/types";
 
 export function Pacing() {
@@ -28,25 +29,7 @@ export function Pacing() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
         <h1>Pacing</h1>
-        <div className="row">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setMonth(shiftMonth(month, -1))}
-          >
-            ‹
-          </button>
-          <strong style={{ minWidth: 150, textAlign: "center" }}>
-            {monthName(month)}
-          </strong>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setMonth(shiftMonth(month, 1))}
-          >
-            ›
-          </button>
-        </div>
+        <MonthNav month={month} setMonth={setMonth} />
       </div>
 
       {snapshot.holidayWarning && <div className="notice warn">{snapshot.holidayWarning}</div>}

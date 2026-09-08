@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { meterStream, TRACE_LENGTH } from "../levels.ts";
 import { useStore } from "../state.tsx";
 import { clock } from "../format.ts";
 
@@ -123,17 +124,21 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
             )
             : recorder.state === "recording"
             ? (
-              <div className="row">
-                <span className="pill bad">
-                  ● recording {clock(recorder.elapsedMs)}
-                </span>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => void recorder.stop()}
-                >
-                  Stop
-                </button>
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="row">
+                  <span className="pill bad">
+                    ● recording {clock(recorder.elapsedMs)}
+                  </span>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => void recorder.stop()}
+                  >
+                    Stop
+                  </button>
+                </div>
+                {/* 24.5 — the part that moves when you speak. */}
+                <Trace levels={recorder.trace} />
               </div>
             )
             : recorder.recording
@@ -214,8 +219,14 @@ function useRecorder() {
   const mediaRef = useRef<MediaRecorder>(null);
   const streamRef = useRef<MediaStream>(null);
   const startedRef = useRef(0);
+  /** 24.5 — the live trace, and the handle that stops it. */
+  const [trace, setTrace] = useState<number[]>([]);
+  const stopMeterRef = useRef<(() => void) | undefined>(undefined);
 
   const release = () => {
+    stopMeterRef.current?.();
+    stopMeterRef.current = undefined;
+    setTrace([]);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   };
@@ -243,6 +254,9 @@ function useRecorder() {
         },
       });
       streamRef.current = stream;
+      // 24.5 — something that moves when you speak. Started from the same stream the recorder
+      // uses, so a trace that stays flat means the recording is flat too.
+      stopMeterRef.current = meterStream(stream, setTrace);
       const mimeType = pickMimeType();
       const media = new MediaRecorder(stream, {
         audioBitsPerSecond: BITS_PER_SECOND,
@@ -285,6 +299,7 @@ function useRecorder() {
 
   return {
     supported: typeof MediaRecorder !== "undefined",
+    trace,
     state,
     recording,
     problem,
@@ -303,4 +318,27 @@ function toBase64(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * The live input trace (24.5).
+ *
+ * Bars rather than a line, and drawn with plain elements rather than a canvas: there are a hundred
+ * and twenty of them, they change once a frame, and a canvas would need its own resize handling to
+ * do the same job. Fixed-width slots so the trace scrolls rather than squashing as it fills.
+ *
+ * The floor of 2% is deliberate. A bar of zero height is invisible, and a row of nothing looks
+ * like a component that failed rather than a microphone hearing silence — which is the exact
+ * ambiguity this is here to remove.
+ */
+function Trace({ levels }: { levels: number[] }) {
+  const slots = Array.from(
+    { length: TRACE_LENGTH },
+    (_, i) => levels[i - (TRACE_LENGTH - levels.length)] ?? 0,
+  );
+  return (
+    <div className="trace" aria-hidden="true">
+      {slots.map((level, i) => <span key={i} style={{ height: `${Math.max(2, level * 100)}%` }} />)}
+    </div>
+  );
 }

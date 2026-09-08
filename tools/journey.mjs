@@ -171,16 +171,21 @@ async function main() {
   await desktop.page.waitForTimeout(2_000);
   await desktop.page.getByRole("button", { name: /Stop/ }).click();
 
+  // 24.8 — in History, which is now the only place entries are listed. The timer screen used to
+  // carry a read-only copy of the same rows.
+  await nav(desktop.page, "History");
   check(
-    "stopping leaves an entry in today's list",
+    "stopping records the entry, and History shows it",
     await until(
       "entry present",
       desktop.page,
-      async (p) => (await p.getByRole("cell", { name: TAG }).count()) > 0,
+      async (p) => (await p.getByText(TAG).count()) > 0,
     ),
   );
+  await nav(desktop.page, "Timer");
   // Not "Not working": the phone said that before the timer ever started, so it could not
   // disagree. The entry carrying this run's tag is something that was not there a moment ago.
+  await nav(mobile.page, "History");
   check(
     "and the entry reaches the phone",
     await until(
@@ -322,33 +327,57 @@ async function main() {
   console.log("\nediting:");
   await nav(desktop.page, "History");
   const beforeEdit = await monthTotal(desktop.page);
+  // The timer above ran for about two seconds; editing it to 09:00–11:30 replaces that with 2.5h.
+  const shortSessionHours = 2 / 3600;
 
-  // The row this run created. 2.12's "drop the times" turns a timed entry into a duration-only
-  // one, which is the branch `entry-update` carries a `null` for and nothing else exercises.
+  // 24.12 — the times are editable. This used to tick a "drop the times" checkbox, which was the
+  // only edit a timed entry allowed and the one nobody wants: an interval that is wrong is wrong
+  // by minutes, not wrong by being an interval.
   const row = desktop.page.getByRole("row").filter({ hasText: TAG }).first();
   await row.getByRole("button", { name: "Edit" }).click();
-  await desktop.page.getByRole("checkbox").first().check();
+  await desktop.page.getByLabel("Start time").fill("09:00");
+  await desktop.page.getByLabel("End time").fill("11:30");
   await desktop.page.getByRole("button", { name: "Save", exact: true }).click();
 
   check(
-    "an edited entry keeps its hours and loses its times",
+    "editing the times changes the times",
     await until(
-      "duration only",
+      "times edited",
       desktop.page,
-      async (p) => {
-        const r = p.getByRole("row").filter({ hasText: TAG }).first();
-        return (await r.getByText("duration only").count()) > 0;
-      },
+      async (p) => (await p.getByText("09:00 – 11:30").count()) > 0,
     ),
   );
+  // The duration is the interval; there is no third number to disagree with it.
   check(
-    "and the month total did not move",
-    Math.abs((await monthTotal(desktop.page)) - beforeEdit) < 0.02,
-    `${beforeEdit}h -> ${await monthTotal(desktop.page)}h`,
+    "and the duration follows them",
+    await until(
+      "duration follows",
+      desktop.page,
+      async (p) => {
+        const now = await monthTotal(p);
+        return now !== undefined && beforeEdit !== undefined &&
+          Math.abs(now - (beforeEdit - shortSessionHours + 2.5)) < 0.05;
+      },
+    ),
+    `was ${beforeEdit}h`,
   );
 
-  await desktop.page.getByRole("row").filter({ hasText: "Phone entry" }).first()
-    .getByRole("button", { name: "Delete" }).click();
+  // Read again: the time edit above moved the month total, so `beforeEdit` is stale by now.
+  const beforeDelete = await monthTotal(desktop.page);
+
+  // 24.13 — deleting asks first. A single click used to be enough, which for a record with no
+  // undo is one mis-aim away from losing an afternoon.
+  const doomed = desktop.page.getByRole("row").filter({ hasText: "Phone entry" }).first();
+  await doomed.getByRole("button", { name: "Delete", exact: true }).click();
+  check(
+    "deleting asks before it deletes",
+    await until(
+      "confirm shown",
+      desktop.page,
+      async (p) => (await p.getByRole("button", { name: "Yes, delete" }).count()) > 0,
+    ),
+  );
+  await desktop.page.getByRole("button", { name: "Yes, delete" }).click();
   check(
     "deleting takes its hours out of the month",
     await until(
@@ -356,15 +385,16 @@ async function main() {
       desktop.page,
       async (p) => {
         const now = await monthTotal(p);
-        return now !== undefined && Math.abs(now - (beforeEdit - 2.5)) < 0.05;
+        return now !== undefined && beforeDelete !== undefined &&
+          Math.abs(now - (beforeDelete - 2.5)) < 0.05;
       },
     ),
-    `expected ${beforeEdit - 2.5}h`,
+    `expected ${beforeDelete === undefined ? "?" : beforeDelete - 2.5}h`,
   );
 
   // ---------------------------------------------------------------- a work note
   console.log("\nwork note:");
-  await nav(desktop.page, "Timer");
+  await nav(desktop.page, "Notes");
   await desktop.page.getByRole("button", { name: "New work note" }).click();
   await desktop.page.getByRole("textbox").first().fill("Wrote the journey harness.");
   await desktop.page.getByRole("button", { name: "Save note" }).click();
@@ -376,7 +406,7 @@ async function main() {
       (p) => p.getByText("Wrote the journey harness.").isVisible(),
     ),
   );
-  await nav(mobile.page, "Timer");
+  await nav(mobile.page, "Notes");
   check(
     "and reaches the other one",
     await until(
@@ -395,7 +425,7 @@ async function main() {
   // The browser has a synthetic microphone (see `harness.mjs`); without one this whole feature is
   // unreachable from a test, which is most of why it had never been run.
   console.log("\nvoice note:");
-  await nav(desktop.page, "Timer");
+  await nav(desktop.page, "Notes");
   await desktop.page.getByRole("button", { name: "New work note" }).click();
 
   const record = desktop.page.getByRole("button", { name: /Record$/ });
@@ -413,6 +443,21 @@ async function main() {
     );
     // Long enough to be a real Opus frame rather than an empty container.
     await desktop.page.waitForTimeout(1_500);
+
+    // 24.5 — the trace has to *move*. Chromium's fake device plays a tone, so a meter that is
+    // wired up produces varying bar heights; one that is not produces a row of identical floors,
+    // which is also exactly what a dead microphone looks like. That ambiguity is the whole reason
+    // the trace exists, so the check is on variety rather than on the element being present.
+    const heights = await desktop.page.locator(".trace span").evaluateAll((els) =>
+      els.map((e) => e.style.height)
+    );
+    check("the recording trace is drawn", heights.length > 0, `${heights.length} bars`);
+    check(
+      "and it moves with the input rather than sitting flat",
+      new Set(heights).size > 3,
+      `${new Set(heights).size} distinct heights`,
+    );
+
     await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();
 
     // 5.28 — playable before it is even saved.
@@ -434,13 +479,13 @@ async function main() {
       await until(
         "audio note listed",
         desktop.page,
-        async (p) => (await p.getByRole("button", { name: /▶ \d+s/ }).count()) > 0,
+        async (p) => (await p.getByRole("button", { name: /▶ Play \d+s/ }).count()) > 0,
       ),
     );
 
     // 5.28 again, but the round trip that matters: this fetches `note-audio`, which reads the file
     // the server wrote. A row with a duration and no file behind it would pass everything above.
-    await desktop.page.getByRole("button", { name: /▶ \d+s/ }).first().click();
+    await desktop.page.getByRole("button", { name: /▶ Play \d+s/ }).first().click();
     check(
       "and the bytes come back off the server's disk",
       await until(

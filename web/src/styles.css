@@ -779,3 +779,29 @@ input[type="range"] {
 .app.mobile .tagrow .days {
   display: none;
 }
+
+/*
+ * 24.5 — the live recording trace.
+ *
+ * `align-items: flex-end` so bars grow upward from a baseline, which is what makes a run of them
+ * read as a waveform rather than as a bar chart of unrelated values.
+ */
+.trace {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 44px;
+  padding: 0 var(--s-2);
+  background: var(--panel-2, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--line);
+  border-radius: var(--r-2, 8px);
+  overflow: hidden;
+}
+
+.trace span {
+  flex: 1 1 0;
+  min-width: 1px;
+  background: var(--bad, #c62828);
+  border-radius: 1px;
+  transition: height 60ms linear;
+}

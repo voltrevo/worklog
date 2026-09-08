@@ -134,3 +134,26 @@ export function parseDuration(text: string): number | null {
 
   return null;
 }
+
+/**
+ * `HH:MM` on a plain date, as an instant on this device's clock (24.11, 24.12).
+ *
+ * The inverse of `timeOfDay`, and the same rule as 2.19: a wall-clock time means what it means
+ * where the person typing it is standing. `new Date("2026-09-08T09:00")` — no zone suffix — is
+ * parsed as local time, which is exactly that.
+ *
+ * Returns `undefined` rather than an Invalid Date, because the caller has a form to keep and a
+ * message to show, and `NaN` reaching the server as a timestamp is how a NOT NULL column ends up
+ * being the thing that reports a typo.
+ */
+export function instantAt(date: DateString, time: string): number | undefined {
+  if (!/^\d{2}:\d{2}$/.test(time)) return undefined;
+  const at = new Date(`${date}T${time}:00`).getTime();
+  return Number.isFinite(at) ? at : undefined;
+}
+
+/** `HH:MM` for a time input, from an instant. `timeOfDay` is for display and may localise. */
+export function timeValue(instant: number): string {
+  const d = new Date(instant);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}

@@ -7,17 +7,27 @@
  * repeat.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
-import { duration, hours, longDate, monthName, parseDuration, timeOfDay } from "../format.ts";
-import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
+import {
+  duration,
+  hours,
+  instantAt,
+  longDate,
+  monthName,
+  parseDuration,
+  timeOfDay,
+  timeValue,
+} from "../format.ts";
+import { today } from "@worklog/shared/dates";
+import { MonthNav } from "./MonthNav.tsx";
 import { monthReport } from "@worklog/shared/reports";
 import type { StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { WorkEntry } from "@worklog/shared/types";
 
 export function History() {
-  const { snapshot, month, setMonth, call, refresh, phase } = useStore();
+  const { snapshot, month, setMonth, refresh, phase } = useStore();
   const presentation = usePresentation();
   const canWrite = phase.k === "ready" && phase.role !== "read";
   const [editing, setEditing] = useState<string | null>(null);
@@ -36,34 +46,7 @@ export function History() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
         {presentation === "desktop" && <h1>History</h1>}
-        <div className="row">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setMonth(shiftMonth(month, -1))}
-          >
-            ‹
-          </button>
-          <strong style={{ minWidth: 150, textAlign: "center" }}>
-            {monthName(month)}
-          </strong>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setMonth(shiftMonth(month, 1))}
-          >
-            ›
-          </button>
-          {month !== monthOf(today()) && (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setMonth(monthOf(today()))}
-            >
-              This month
-            </button>
-          )}
-        </div>
+        <MonthNav month={month} setMonth={setMonth} />
       </div>
 
       <MonthTotals />
@@ -111,16 +94,7 @@ export function History() {
                             >
                               Edit
                             </button>
-                            <button
-                              className="link"
-                              type="button"
-                              onClick={async () => {
-                                await call({ t: "entry-delete", id: e.id });
-                                await refresh();
-                              }}
-                            >
-                              Delete
-                            </button>
+                            <DeleteEntry id={e.id} onDone={() => void refresh()} />
                           </div>
                         )}
                       </div>
@@ -193,19 +167,7 @@ export function History() {
                                         Edit
                                       </button>
                                       {" · "}
-                                      <button
-                                        className="link"
-                                        type="button"
-                                        onClick={async () => {
-                                          await call({
-                                            t: "entry-delete",
-                                            id: e.id,
-                                          });
-                                          await refresh();
-                                        }}
-                                      >
-                                        Delete
-                                      </button>
+                                      <DeleteEntry id={e.id} onDone={() => void refresh()} />
                                     </>
                                   )}
                                 </td>
@@ -231,18 +193,16 @@ export function History() {
  * a report they check once a quarter.
  */
 function MonthTotals() {
-  const { snapshot, month, call } = useStore();
-  const [invoices, setInvoices] = useState<StoredInvoiceWire[]>([]);
-
-  useEffect(() => {
-    void call<StoredInvoiceWire[]>({ t: "invoices" }).then(setInvoices).catch(
-      () => {},
-    );
-  }, [call, snapshot]);
+  const { snapshot, month } = useStore();
+  // 24.16 — invoice state was shown here as a chip and is not shown any more: invoicing lives on
+  // the invoices screen, and a month's hours are its hours whether or not they have been billed.
+  const invoices: StoredInvoiceWire[] = [];
 
   if (!snapshot) return null;
+  // 24.15 — an empty month shows zeros rather than nothing. Hiding the card made an empty month
+  // look like a different screen, and the first thing you do on landing there is work out whether
+  // the app is broken or the month is.
   const report = monthReport(month, snapshot.entries, invoices);
-  if (report.totalHours === 0) return null;
 
   return (
     <div className="card">
@@ -251,16 +211,6 @@ function MonthTotals() {
           <h3>{monthName(month)}</h3>
           <div className="big tabular">{hours(report.totalHours)}</div>
         </div>
-        {/* 7.8 — and 11.3's reason for it: a draft is not a bill, so its month is still unbilled. */}
-        <span
-          className={`pill ${
-            report.state === "paid" ? "good" : report.state === "invoiced" ? "warn" : ""
-          }`}
-        >
-          {report.state === "uninvoiced"
-            ? "not invoiced"
-            : `${report.state} — ${report.invoiceNumber}`}
-        </span>
       </div>
 
       <div className="stack" style={{ gap: 6, marginTop: 14 }}>
@@ -286,22 +236,63 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
   const [date, setDate] = useState(today());
   const [text, setText] = useState("");
   const [tag, setTag] = useState("");
+  /**
+   * 24.11 — a past entry is a duration *or* an interval.
+   *
+   * 2.9's duration-only form exists so nobody has to invent a start and an end to record that they
+   * worked three hours on Tuesday, and it stays. It was the only form available, which is a
+   * different thing: when the times are known, typing them should not require inventing a
+   * duration instead.
+   */
+  const [mode, setMode] = useState<"duration" | "times">("duration");
+  const [from, setFrom] = useState("09:00");
+  const [to, setTo] = useState("17:00");
   const [problem, setProblem] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ms = parseDuration(text);
-    if (ms === null || ms <= 0) {
-      setProblem("Try 2h 30m, 2:30, 2.5 or 150m.");
+    // 24.1 — the tag is required, and a missing one is refused rather than filled in.
+    const billingTag = tag.trim();
+    if (!billingTag) {
+      setProblem("A billing tag is needed.");
       return;
     }
+
+    let durationMs: number;
+    let timing: { startedAt: number; endedAt: number } | undefined;
+
+    if (mode === "times") {
+      const startedAt = instantAt(date, from);
+      const endedAt = instantAt(date, to);
+      if (startedAt === undefined || endedAt === undefined) {
+        setProblem("Both times are needed, as HH:MM.");
+        return;
+      }
+      if (endedAt <= startedAt) {
+        // Deliberately not wrapped to the next day: 2.21 files a session under the day it began,
+        // and silently inventing a midnight crossing from two times on one date would file work
+        // somewhere nobody asked for.
+        setProblem("The end time is not after the start time.");
+        return;
+      }
+      timing = { startedAt, endedAt };
+      durationMs = endedAt - startedAt;
+    } else {
+      if (ms === null || ms <= 0) {
+        setProblem("Try 2h 30m, 2:30, 2.5 or 150m.");
+        return;
+      }
+      durationMs = ms;
+    }
+
     setProblem(null);
     await call({
       t: "entry-add",
       date,
-      durationMs: ms,
-      billingTag: tag || snapshot?.recentTags[0] || "Work",
-      // 2.9 — no `timing`, so no invented start and end.
+      durationMs,
+      billingTag,
+      ...(timing ? { timing } : {}),
     });
     setText("");
     onAdded();
@@ -323,14 +314,36 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
           />
         </label>
         <label className="field">
-          How long
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="2h 30m"
-            style={{ width: 110 }}
-          />
+          Record as
+          <select value={mode} onChange={(e) => setMode(e.target.value as "duration" | "times")}>
+            <option value="duration">a duration</option>
+            <option value="times">start and end</option>
+          </select>
         </label>
+        {mode === "duration"
+          ? (
+            <label className="field">
+              How long
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="2h 30m"
+                style={{ width: 110 }}
+              />
+            </label>
+          )
+          : (
+            <>
+              <label className="field">
+                From
+                <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label className="field">
+                To
+                <input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
+              </label>
+            </>
+          )}
         <label className="field" style={{ flex: 1, minWidth: 160 }}>
           Billing tag
           <input
@@ -355,6 +368,54 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+/**
+ * Delete, with a confirmation (24.13, 24.3).
+ *
+ * It used to be a bare link that deleted on the first click. An entry is somebody's record of an
+ * afternoon and there is no undo, so the click that destroys it should not be the same click that
+ * a mis-aim produces. Two clicks, and the second one is the red one.
+ *
+ * One component because the row is drawn twice — stacked on a phone, a table cell on a desktop —
+ * and a confirmation that exists in one of them is a confirmation you cannot rely on.
+ */
+function DeleteEntry({ id, onDone }: { id: string; onDone: () => Promise<void> | void }) {
+  const { call } = useStore();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button className="link" type="button" onClick={() => setConfirming(true)}>
+        Delete
+      </button>
+    );
+  }
+  return (
+    <>
+      <span className="faint">Delete?</span>{" "}
+      <button
+        className="link danger"
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await call({ t: "entry-delete", id });
+            await onDone();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Yes, delete
+      </button>{" "}
+      <button className="link" type="button" onClick={() => setConfirming(false)}>
+        Keep
+      </button>
+    </>
+  );
+}
+
 function EditRow(
   { entry, tags, onDone }: {
     entry: WorkEntry;
@@ -366,19 +427,55 @@ function EditRow(
   const [text, setText] = useState(duration(entry.durationMs));
   const [tag, setTag] = useState(entry.billingTag);
   const [date, setDate] = useState(entry.date);
-  const [dropTiming, setDropTiming] = useState(false);
+  /**
+   * 24.12 — the times are editable.
+   *
+   * The only edit available to a timed entry used to be a "drop the times" checkbox, which is the
+   * one change to an interval nobody needs: an interval that is wrong is wrong by a few minutes,
+   * not wrong by being an interval. 2.12's conversion is gone with it — deleting the entry and
+   * adding a duration-only one does the same thing without a checkbox that means "discard data".
+   */
+  const [from, setFrom] = useState(entry.timing ? timeValue(entry.timing.startedAt) : "");
+  const [to, setTo] = useState(entry.timing ? timeValue(entry.timing.endedAt) : "");
+  const [problem, setProblem] = useState<string>();
 
   const save = async () => {
+    const billingTag = tag.trim();
+    if (!billingTag) {
+      setProblem("A billing tag is needed.");
+      return;
+    }
+
+    // A timed entry's duration is its interval; there is no third number to disagree with.
+    if (entry.timing) {
+      const startedAt = instantAt(date, from);
+      const endedAt = instantAt(date, to);
+      if (startedAt === undefined || endedAt === undefined) {
+        setProblem("Both times are needed, as HH:MM.");
+        return;
+      }
+      if (endedAt <= startedAt) {
+        setProblem("The end time is not after the start time.");
+        return;
+      }
+      await call({
+        t: "entry-update",
+        id: entry.id,
+        date,
+        billingTag,
+        durationMs: endedAt - startedAt,
+        timing: { startedAt, endedAt },
+      });
+      await onDone();
+      return;
+    }
+
     const ms = parseDuration(text);
-    await call({
-      t: "entry-update",
-      id: entry.id,
-      date,
-      ...(ms !== null ? { durationMs: ms } : {}),
-      billingTag: tag,
-      // 2.12 — `null` converts a timed entry to duration-only; omitting it leaves the times alone.
-      ...(dropTiming ? { timing: null } : {}),
-    });
+    if (ms === null || ms <= 0) {
+      setProblem("Try 2h 30m, 2:30, 2.5 or 150m.");
+      return;
+    }
+    await call({ t: "entry-update", id: entry.id, date, durationMs: ms, billingTag });
     await onDone();
   };
 
@@ -391,18 +488,23 @@ function EditRow(
           onChange={(e) => setDate(e.target.value)}
         />
         {entry.timing && (
-          <label
-            className="faint"
-            style={{ display: "block", fontSize: 12, marginTop: 4 }}
-          >
+          <div className="row" style={{ gap: 4, marginTop: 4 }}>
             <input
-              type="checkbox"
-              checked={dropTiming}
-              onChange={(e) => setDropTiming(e.target.checked)}
-            />{" "}
-            drop the times
-          </label>
+              type="time"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label="Start time"
+            />
+            <span className="faint">–</span>
+            <input
+              type="time"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label="End time"
+            />
+          </div>
         )}
+        {problem && <div className="faint" style={{ fontSize: 12 }}>{problem}</div>}
       </td>
       <td>
         <input
