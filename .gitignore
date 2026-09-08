@@ -6,11 +6,13 @@ dist/
 kps-cert.pem
 kps-key.pem
 
-# Server state.
+# Server state. `/data/` is anchored: the unanchored `data/` also matched `server/data/`, which
+# holds the shipped holiday snapshot the server *imports*, so the repository did not build from a
+# fresh clone. See `tools/repo_test.ts`.
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
-data/
+/data/
 
 # Vite output, and the seeded databases the browser harnesses make. Both harnesses remove theirs on
 # the way out; these catch the run that was interrupted before it could.

@@ -90,3 +90,38 @@ Deno.test({
     assertEquals(leaked, [], "a build output is tracked; check .gitignore against the task names");
   },
 });
+
+Deno.test({
+  name: "every local file the sources import is itself tracked",
+  ...READS_REPO,
+  async fn() {
+    /*
+     * The repository has to build from a clean clone, and for a long time it did not.
+     *
+     * `.gitignore` carried an unanchored `data/` to keep the server's runtime directory out. It
+     * also matched `server/data/`, which holds the holiday snapshot `holidays.ts` *imports* — so
+     * the file existed on my machine, untracked, and every check passed. A fresh clone could not
+     * type-check, let alone run. Nothing noticed because nothing had ever started from a clone.
+     *
+     * The size guards above catch a build output that got *in*. This catches a required input that
+     * stayed *out*, which is the failure that hides, because the person who introduced it is the
+     * one person who cannot reproduce it.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const tracked = new Set(await trackedFiles());
+    const sources = [...tracked].filter((f) => /\.(ts|tsx|mjs)$/.test(f));
+
+    const missing: string[] = [];
+    for (const file of sources) {
+      const text = await Deno.readTextFile(`${root}${file}`);
+      const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+      // Relative specifiers only: bare ones are npm or jsr and are the lockfile's problem.
+      for (const match of text.matchAll(/(?:from|import)\s*\(?\s*["'](\.[^"']+)["']/g)) {
+        const spec = match[1]!;
+        const resolved = new URL(spec, `file:///${dir}`).pathname.replace(/^\//, "");
+        if (!tracked.has(resolved)) missing.push(`${file} imports ${spec} (${resolved})`);
+      }
+    }
+    assertEquals(missing, [], "an import resolves to a file no clone would have");
+  },
+});
