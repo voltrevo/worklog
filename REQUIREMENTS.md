@@ -1,0 +1,484 @@
+# Worklog — Product Requirements
+
+## Conventions
+
+This document is **append-only**. Sections are append-only, and so is the list inside each section.
+
+- **Every item has a stable identity.** `6.10` means the same thing forever, so anything may cite it
+  without being kept up to date.
+- **A superseded item is struck through, never deleted or renumbered.** ~~Like this.~~ The item that
+  replaces it is appended to the same section with the next free number, and names what it
+  supersedes.
+- **New items continue the section's own sequence**, even when they supersede an earlier item in
+  that section. Numbers are therefore not in logical order, only in the order they were written.
+- **A genuinely new area gets a new section** rather than being appended to an existing one.
+
+## Introduction
+
+Worklog is a focused, self-hosted work time tracking and invoicing application intended to replace the small subset of Toggl needed for personal contracting work.
+
+A shared frontend runs both as a Deno Desktop app and as a static web app on GitHub Pages. Multiple frontends may be connected concurrently, but the Deno server is always the source of truth and coordination authority. The server stores persistent state in SQLite, communicates over KPS, controls globally coordinated events such as work-detail prompts, maintains logs, and generates invoice PDFs.
+
+Everyday use should stay extremely lightweight: start or stop work, see live progress for the current workday, edit history freely, and add approximate past work as duration-only entries without inventing fake start/end times. Entries carry billing tags used directly in invoices. The app also tracks monthly pace against configurable targets and can request text or voice notes about recent work.
+
+Invoice generation preserves the essential structure of an existing invoice format while allowing visual polish. Generating a PDF is harmless preview/export; an invoice has accounting consequences only when explicitly marked issued, and can later be marked paid.
+
+Device access is explicit and key-based after initial bootstrap. Device-local conveniences—including an optional looping background-audio file and Deno Desktop always-on-top behavior—remain entirely local and invisible to the server.
+
+The product is intentionally narrow. Multi-project UI, transcription, accounting integrations, and broader productivity features are deferred.
+
+## 1. Architecture & authority
+
+1.1. MUST provide a shared frontend usable from both Deno Desktop and GitHub Pages.
+1.2. MUST use a Deno backend.
+1.3. MUST use SQLite for persistent backend storage.
+1.4. MUST use KPS as the client/server transport.
+1.5. MUST allow the GitHub Pages frontend to connect directly through KPS browser transport.
+1.6. MUST allow the Deno Desktop frontend to connect to the same server.
+1.7. MUST treat the server as the sole source of truth for persistent application state.
+1.8. MUST treat the server as the coordination authority for shared runtime behavior.
+1.9. MUST support many authorized frontends connected concurrently.
+1.10. MUST safely serialize or coordinate concurrent writes.
+1.11. MUST prevent frontend-local state from silently overriding authoritative server state.
+1.12. MUST broadcast authoritative state changes to connected authorized frontends.
+1.13. SHOULD use server-pushed events for timer, history, invoice, access, and prompt changes.
+1.14. SHOULD share nearly all frontend application code between desktop and web variants.
+1.15. SHOULD keep the application protocol over KPS small and application-specific.
+1.16. SHOULD prefer one KPS stream per RPC-style request unless a better design is justified.
+1.17. MUST implement the shared frontend as a React application built with Vite.
+1.18. MUST build the GitHub Pages variant as a static bundle with no server-side rendering.
+1.19. MUST share the application core — protocol client, state, and domain logic — across desktop, web, and both presentations of section 23.
+
+## 2. Time tracking
+
+2.1. MUST provide a start/stop timer for current work.
+2.2. MUST allow at most one active timer globally.
+2.3. MUST make timer start/stop authoritative server operations.
+2.4. MUST immediately propagate timer changes to all connected authorized frontends.
+2.5. MUST persist completed tracked work when the timer is stopped.
+2.6. MUST provide fully editable work history.
+2.7. MUST allow editing date, duration, billing tag, and timing details.
+2.8. MUST support timed entries with explicit start and end times.
+2.9. MUST support duration-only entries without fake start/end times.
+2.10. MUST allow simple entries such as a duration attributed to yesterday.
+2.11. MUST allow timed and duration-only entries on the same day.
+2.12. MUST allow conversion between timed and duration-only forms.
+2.13. MUST use recorded duration identically for reporting and billing regardless of representation.
+2.14. SHOULD present work history primarily by day.
+2.15. SHOULD make adding past time fast and obvious.
+2.16. SHOULD warn about implausibly long active timers.
+2.17. MUST NOT silently guess corrections for suspicious timers.
+2.18. MUST attach every work entry to a plain calendar date.
+2.19. MUST derive a timed entry's date from its start time in the local timezone of the device that started it.
+2.20. MUST capture that date when the timer starts rather than when it stops.
+2.21. MUST attribute a session crossing midnight entirely to its start date.
+2.22. MUST allow the date of a duration-only entry to be chosen directly.
+2.23. MUST NOT recompute a stored entry date from any other device's timezone.
+
+## 3. Timer home screen
+
+3.1. MUST make live total work duration for the current day the primary home-screen metric.
+3.2. MUST compare today's live total against configured expected hours per workday.
+3.3. SHOULD show worked, target, and remaining/over-target duration at a glance.
+3.4. MUST update today's total live while a timer is active.
+3.5. MUST show current active-session duration when working.
+3.6. MUST make active-session duration visually secondary to today's total.
+3.7. MUST keep start/stop controls obvious despite the changed metric priority.
+3.8. SHOULD show the current monthly ahead/behind pace on the home screen.
+3.9. MUST treat "today" as the current calendar date in the viewing device's local timezone.
+3.10. MAY therefore show a different today-total on devices in different timezones; this is accepted in v1 rather than reconciled against a server timezone.
+
+## 4. Billing tags
+
+4.1. MUST allow each work entry to have a billing tag.
+4.2. MUST use the billing tag as the invoice “Description of work / expense” value.
+4.3. MUST support different billing tags on different entries.
+4.4. MUST support multiple billing tags on the same date.
+4.5. SHOULD remember recently used billing tags.
+4.6. SHOULD provide lightweight autocomplete from previously used tags.
+4.7. SHOULD avoid a separate tag-management workflow for ordinary use.
+4.8. MUST NOT expose project selection in the initial time-tracking UI.
+4.9. MAY keep an invisible/default internal project concept only for future compatibility.
+
+## 5. Work-detail notes & prompts
+
+5.1. MUST support work-detail notes separately from billable time entries.
+5.2. MUST allow a work-detail note to contain text.
+5.3. MUST allow a work-detail note to contain a voice recording.
+5.4. MUST allow work-detail notes to be created manually at any time appropriate to the UI.
+5.5. MUST provide a manual “new work note” action from the main workflow.
+5.6. MUST support random work-detail prompts only while the authoritative timer is active.
+5.7. MUST allow configuration of the average prompt interval.
+5.8. MUST have the server evaluate prompt timing.
+5.9. MUST have the server poll approximately every 10 seconds while the timer is active.
+5.10. MUST calculate each prompt probability from actual elapsed time since the previous server poll.
+5.11. MUST clamp elapsed time so it never reaches before the current timer start.
+5.12. MUST use the approximation `p = elapsed / meanInterval`.
+5.13. MUST discard prompt-process timing state when the timer stops.
+5.14. MUST NOT schedule and preserve a future exponential prompt timestamp.
+5.15. MUST create only one authoritative prompt event for each trigger.
+5.16. MUST notify all currently listening eligible frontends when a prompt event fires.
+5.17. MUST let each notified frontend present the prompt and play its local notification tune.
+5.18. MUST drop a prompt event if it cannot be delivered to any listening frontend.
+5.19. MUST log a warning when a prompt event is dropped for lack of a listener.
+5.20. MUST NOT replay a stale dropped prompt later.
+5.21. MUST allow prompted notes to be dismissed without answering.
+5.22. MUST allow text responses to prompts.
+5.23. MUST allow voice responses to prompts.
+5.24. MUST retain submitted voice recordings.
+5.25. MUST encode retained voice notes using Opus.
+5.26. SHOULD use low-bitrate mono audio sufficient for intelligible speech.
+5.27. SHOULD target roughly 16–24 kbit/s unless testing suggests otherwise.
+5.28. MUST allow stored voice notes to be played back.
+5.29. SHOULD preserve original audio if derived text is added later.
+5.30. MUST NOT require transcription in v1.
+5.31. MUST clamp the probability of 5.12 to at most 1, so that a delayed poll cannot exceed certainty.
+
+## 6. Monthly pacing
+
+6.1. MUST allow configuration of target work hours per month.
+6.2. ~~MUST allow configuration of expected hours per workday.~~ Superseded by 6.21 and 6.25.
+6.3. ~~MUST treat Saturdays and Sundays as non-working days by default.~~ Superseded by 6.23.
+6.4. ~~MUST treat relevant NSW public holidays as non-working days.~~ Superseded by 6.31.
+6.5. ~~MUST use an updateable NSW public-holiday source rather than only recurring hard-coded rules.~~ Superseded by 6.31.
+6.6. SHOULD cache holiday data server-side.
+6.7. ~~MUST distinguish ordinary NSW public holidays from bank holidays that are not general public holidays.~~ Superseded by 6.33.
+6.8. SHOULD ignore local/regional holidays unless explicitly enabled later.
+6.9. MUST calculate actual work before today from recorded entries.
+6.10. ~~MUST assume today's full expected workday contribution when today is a workday.~~ Superseded by 6.26.
+6.11. ~~MUST ignore today's actual partial progress in the monthly projection formula.~~ Superseded by 6.26.
+6.12. ~~MUST assume each remaining workday contributes the configured expected daily hours.~~ Superseded by 6.25.
+6.13. ~~MUST calculate projected hours as actual-before-today plus expected-today plus expected-remaining.~~ Superseded by 6.29.
+6.14. MUST calculate pace as projected hours minus monthly target.
+6.15. MUST display positive pace as ahead and negative pace as behind.
+6.16. ~~MUST calculate monthly nominal capacity as workdays multiplied by expected daily hours.~~ Superseded by 6.30.
+6.17. MUST calculate monthly slack as nominal capacity minus monthly target.
+6.18. SHOULD expose capacity/slack context in pacing details.
+6.19. SHOULD allow future per-day pacing overrides such as leave or intentional weekend work.
+6.20. MUST keep pacing-day overrides separate from billable work records.
+6.21. MUST allow configuration of a weekly work schedule as one time interval per weekday.
+6.22. MUST allow a weekday's interval to be empty, meaning that weekday is not a workday.
+6.23. MUST default the schedule to empty on Saturday and Sunday. Supersedes 6.3.
+6.24. MUST treat a day with a non-empty interval as a workday, except where a public holiday or a pacing-day override says otherwise.
+6.25. MUST derive a workday's expected hours from the length of its scheduled interval. Supersedes 6.2 and 6.12.
+6.26. MUST calculate today's projected contribution as work already recorded today plus the part of today's scheduled interval that has not yet elapsed. Supersedes 6.10 and 6.11.
+6.27. MUST update today's projected contribution live, both as work is recorded and as the scheduled interval elapses.
+6.28. MUST count work recorded outside today's scheduled interval in full, so that early or extra work reads as ahead rather than being absorbed.
+6.29. MUST calculate projected hours as actual-before-today, plus today's projected contribution, plus the scheduled hours of each remaining workday. Supersedes 6.13.
+6.30. MUST calculate monthly nominal capacity as the sum of scheduled hours across the month's workdays. Supersedes 6.16.
+6.31. MUST obtain public holidays from a source keyed by a configurable region code rather than one specific to NSW. Supersedes 6.4 and 6.5.
+6.32. MUST default the configured region to New South Wales, Australia.
+6.33. MUST distinguish ordinary public holidays from bank holidays that are not general public holidays, using the source's own classification. Supersedes 6.7.
+6.34. MUST ship a checked-in holiday snapshot, used when the source is unreachable.
+6.35. MUST NOT let a failed holiday fetch silently change a month's workday count.
+6.36. MUST log a warning when holiday data falls back to cache or to the shipped snapshot.
+6.37. SHOULD show which holidays a month's pacing used, so a wrong or missing one is visible rather than only shifting the pace.
+6.38. MUST interpret the schedule's times as local to the viewing device.
+
+## 7. Reports
+
+7.1. MUST provide monthly work reports.
+7.2. MUST show total worked hours for the selected month.
+7.3. MUST derive totals from work-entry durations.
+7.4. MUST support arbitrary half-open date ranges internally.
+7.5. SHOULD provide daily work totals.
+7.6. SHOULD provide totals grouped by billing tag.
+7.7. MUST show work in reports regardless of invoice issuance state.
+7.8. SHOULD distinguish uninvoiced, invoiced/unpaid, and paid work where useful.
+7.9. MUST offer calendar-month selection only in v1, while keeping 7.4's internal ranges.
+7.10. MUST derive an entry's month from its stored calendar date, with no timezone conversion.
+7.11. MUST derive an entry's invoice state from the invoice covering its month and from that invoice's frozen snapshot, rather than from a flag on the entry.
+
+## 8. Invoice generation & layout
+
+8.1. MUST generate invoice PDFs from application data.
+8.2. MUST generate canonical invoice PDFs on the server.
+8.3. MUST preserve the essential structure and layout of the supplied invoice format.
+8.4. MAY improve typography, spacing, alignment, and visual polish.
+8.5. MUST NOT substantially reorganize invoice content without explicit approval.
+8.6. MUST include invoice identity/metadata near the top.
+8.7. MUST include bill-to details near the top.
+8.8. MUST include the invoiced time period.
+8.9. MUST include a work/expense table.
+8.10. MUST include columns equivalent to Date, Description of work / expense, Team/Project, Hours, Rate, and Amount.
+8.11. MUST include subtotal, tax/VAT where applicable, and total.
+8.12. MUST include work-approver information when configured.
+8.13. MUST include payment details when configured.
+8.14. MUST include a payment due date.
+8.15. MUST allow PDF generation without changing invoice accounting state.
+8.16. MUST allow repeated draft generation/regeneration safely.
+8.17. MUST include every work entry whose date falls within the invoice's period, without filtering.
+8.18. MUST restrict an invoice's period to one whole calendar month in v1.
+
+## 9. Invoice configuration
+
+9.1. MUST obtain invoice identity details from user configuration.
+9.2. MUST obtain client/bill-to details from user configuration.
+9.3. MUST obtain rate, currency, tax, approver, and payment details from user configuration.
+9.4. MUST NOT hard-code personal or financial information from supplied invoices.
+9.5. MUST NOT place real personal information into project plans, source, fixtures, screenshots, tests, examples, or defaults.
+9.6. MUST use clearly fictional development/demo/test data.
+9.7. MUST allow “Team/Project” to be configured per invoice.
+9.8. MUST default “Team/Project” to the previous invoice's value.
+9.9. MUST allow a monthly bonus amount per invoice.
+9.10. MUST default monthly bonus to the previous invoice's value.
+9.11. MUST render monthly bonus as its own invoice line before ordinary time entries.
+9.12. SHOULD default other recurring invoice fields from the previous invoice where safe and useful.
+9.13. MUST resolve “the previous invoice” of 9.8, 9.10 and 9.12 as the invoice with the most recent period.
+9.14. MUST default the invoice number to `INV-YYYY-MM`, derived from the period.
+9.15. MUST allow the invoice number to be edited while the invoice is a draft.
+9.16. MUST require invoice numbers to be unique among issued invoices.
+
+## 10. Invoice due date
+
+10.1. MUST default payment due date from the current date when preparing the invoice.
+10.2. MUST first add exactly four weeks.
+10.3. MUST leave that date unchanged when it is a Monday.
+10.4. MUST otherwise move it forward to the following Monday.
+10.5. MUST show the calculated due date before issuance.
+10.6. MAY allow explicit manual override if later required.
+10.7. MUST recalculate the due date while the invoice remains a draft.
+10.8. MUST freeze the due date at issuance, as part of the snapshot of 11.6.
+
+## 11. Invoice lifecycle
+
+11.1. MUST model invoice status explicitly.
+11.2. MUST support at least `draft`, `issued`, and `paid` states.
+11.3. MUST treat generated invoices as drafts until explicitly issued.
+11.4. MUST NOT mark work as invoiced merely because a PDF was generated.
+11.5. MUST provide an explicit “Mark as issued” action.
+11.6. MUST freeze the invoice snapshot at issuance.
+11.7. MUST associate included work with the issued invoice.
+11.8. MUST prevent later work-entry edits from silently changing an issued invoice.
+11.9. MUST allow an issued invoice to be marked paid.
+11.10. MUST record issuance time.
+11.11. MUST record payment time.
+11.12. SHOULD allow deliberate corrective actions to unmark paid.
+11.13. SHOULD allow deliberate corrective actions to revert issuance when appropriate.
+11.14. MUST make corrective state changes explicit rather than incidental.
+11.15. SHOULD show invoice status clearly in invoice lists.
+11.16. SHOULD show due dates for issued/unpaid invoices.
+11.17. SHOULD make drafts visually distinct.
+11.18. SHOULD retain issued invoice snapshots/PDFs for later reference.
+11.19. MUST refuse to issue an invoice whose period overlaps that of an already issued or paid invoice.
+11.20. MUST therefore permit at most one issued-or-paid invoice per calendar month, given 8.18.
+11.21. MUST free a period for reissue when an invoice's issuance is reverted under 11.13.
+11.22. MUST allow drafts to overlap each other and to overlap issued periods.
+11.23. MUST record the identity of every included work entry in the frozen snapshot of 11.6.
+11.24. MUST warn when a month containing work has no issued or paid invoice while a later month does.
+11.25. MUST warn when a work entry's date falls inside an invoiced month but the entry is absent from that invoice's snapshot.
+11.26. MUST NOT block issuance on the warnings of 11.24 or 11.25.
+
+## 12. Server logging & diagnostics
+
+12.1. MUST maintain sensible structured server logs.
+12.2. MUST timestamp log entries.
+12.3. MUST include severity and subsystem/source where useful.
+12.4. MUST log meaningful state transitions and failures without excessive noise.
+12.5. MUST log dropped work-detail prompts.
+12.6. MUST allow frontends to submit frontend errors to the server for centralized logging.
+12.7. MUST associate submitted frontend errors with the authenticated device where possible.
+12.8. SHOULD include useful stack/context data after removing sensitive values.
+12.9. MUST provide an in-app server-log viewer.
+12.10. MUST make server logs viewable from authorized frontends.
+12.11. SHOULD restrict sensitive diagnostic detail to admins.
+12.12. SHOULD provide level and time-range filters.
+12.13. SHOULD use bounded log retention or rotation.
+12.14. SHOULD queue transiently unsent frontend error reports locally when the server is temporarily unreachable.
+12.15. MUST NOT let diagnostic reporting expose secrets, private keys, bank details, or other sensitive configuration.
+12.16. MUST accept frontend error reports only from authorized devices, so an unauthorized device cannot fill the log.
+12.17. MUST redact sensitive configuration values from log entries served to non-admin devices, as the concrete form of 12.11.
+
+## 13. Access control & device identity
+
+13.1. MUST require explicit device authorization after initial bootstrap.
+13.2. MUST generate a device secret/private key locally if one does not already exist.
+13.3. MUST persist the device private key locally.
+13.4. MUST never send the device private key to the server.
+13.5. MUST derive a stable device identity from the corresponding public key.
+13.6. MUST allow the first frontend to bootstrap access only while the server has no authorized devices.
+13.7. MUST label the initial bootstrap action “Claim admin”.
+13.8. MUST require explicit user confirmation before claiming initial admin.
+13.9. MUST grant the successfully claimed first device admin access.
+13.10. MUST permanently disable automatic first-device claiming once bootstrap has completed, unless server state is deliberately reset.
+13.11. MUST show “Request access” rather than “Claim admin” to later unauthorized devices.
+13.12. MUST require an access requester to specify a device name.
+13.13. MUST require an access requester to request `read`, `write`, or `admin` access.
+13.14. MUST NOT automatically authorize subsequent devices.
+13.15. MUST make the server issue a fresh random challenge for device proofs.
+13.16. MUST make challenge values short-lived and single-use.
+13.17. MUST require access requests to be signed by the requesting device key.
+13.18. MUST bind the signature to the device description/name.
+13.19. MUST bind the signature to the requested access level.
+13.20. MUST bind the signature to the device public key.
+13.21. MUST bind the signature to a timestamp.
+13.22. MUST bind the signature to the server-provided random challenge.
+13.23. MUST bind the signature to the intended server identity/KPS certificate hash.
+13.24. MUST reject invalid, expired, replayed, or mismatched signed requests.
+13.25. MUST show pending access requests to admins.
+13.26. MUST show device name, requested role, public-key fingerprint, and request age/time in the admin queue.
+13.27. MUST let admins explicitly approve or deny each request.
+13.28. MUST grant only the role approved by an admin.
+13.29. MUST persist authorized device public keys and granted roles.
+13.30. MUST require authorized devices to prove possession of their private key on later connections.
+13.31. MUST use a fresh server challenge for subsequent authentication.
+13.32. MUST define `read` as non-mutating application access.
+13.33. MUST define `write` as ordinary application mutation without access-control administration.
+13.34. MUST define `admin` as including write access plus access-control administration.
+13.35. SHOULD allow admins to review currently authorized devices.
+13.36. SHOULD allow admins to revoke a device.
+13.37. SHOULD allow admins to change a device's granted role.
+13.38. MUST treat device names as untrusted display strings rather than identities.
+13.39. MUST reject an admin claim once any device has been authorized, deciding the race on the server rather than in the frontend.
+13.40. MUST let a frontend whose claim was rejected fall back to “Request access” without losing what the user had already entered.
+13.41. MUST treat the KPS address of section 22 as the out-of-band capability that gates 13.6; no separate bootstrap code is required.
+
+## 14. Local looping audio
+
+14.1. MUST provide an opt-in looping background-audio feature while the timer is active.
+14.2. MUST make the audio-loop feature entirely frontend/device-local.
+14.3. MUST NOT upload the loop audio file to the server.
+14.4. MUST NOT store loop-audio configuration on the server.
+14.5. MUST NOT give the server awareness of whether looping audio is configured or enabled.
+14.6. MUST allow the user to drop/import one audio file from a local configuration screen.
+14.7. SHOULD copy/store the selected file in device-local application storage so the original path is not required.
+14.8. MUST expose only an Enabled/Disabled control and Volume control during ordinary use.
+14.9. MUST NOT expose play/pause controls.
+14.10. MUST NOT expose seeking.
+14.11. MUST NOT implement playlists or music-library behavior.
+14.12. MUST loop the selected file continuously while Enabled and the authoritative timer is active.
+14.13. MUST stop local loop playback when the authoritative timer stops.
+14.14. MUST start local loop playback when an active timer becomes authoritative and local looping is Enabled.
+14.15. SHOULD restart playback from the beginning when a new work session starts.
+14.16. MUST allow each connected device to enable/disable looping independently.
+14.17. MUST allow multiple devices to play independently without server coordination.
+14.18. MUST make loop volume independent of system master volume.
+14.19. MUST use a perceptually appropriate logarithmic/decibel gain mapping.
+14.20. MUST provide fine control at very low listening levels.
+14.21. MUST avoid an artificial practical volume floor such as 5–10% linear amplitude.
+14.22. MUST map zero volume to true silence.
+14.23. SHOULD provide a broad attenuation range, roughly 60 dB or more before mute.
+14.24. MUST NOT apply automatic normalization or compression merely to make low-volume control easier.
+14.25. MUST hide the looping-audio feature in the mobile presentation, where autoplay restrictions and background suspension make 14.12 unhonourable.
+
+## 15. Deno Desktop local window behavior
+
+15.1. MUST provide an Always on top toggle in the Deno Desktop version.
+15.2. MUST make Always on top entirely device-local.
+15.3. MUST persist Always on top locally on that device.
+15.4. MUST apply changes immediately to the desktop window where supported.
+15.5. MUST NOT expose Always on top in the GitHub Pages version.
+15.6. MUST NOT store Always on top state on the server.
+15.7. MUST NOT give the server awareness of Always on top state.
+
+## 16. Local-only boundary
+
+16.1. MUST keep loop-audio file contents, filename/path, enabled state, and volume local to the device.
+16.2. MUST keep Always on top state local to the device.
+16.3. MUST NOT include local-only audio or window-state values in server RPCs, telemetry, or logs.
+16.4. MUST sanitize forwarded frontend errors so they do not reveal local-only audio/window configuration.
+16.5. MAY keep device-local diagnostic information locally when forwarding it would violate the local-only boundary.
+16.6. MUST continue using authoritative server timer state as the trigger for local device behavior.
+16.7. MUST keep the configured server address of section 22 local to the device.
+
+## 17. Data model & persistence
+
+17.1. MUST preserve whether a work entry is timed or duration-only.
+17.2. MUST preserve billing tags on work entries.
+17.3. MUST preserve submitted work-detail text notes.
+17.4. MUST preserve submitted work-detail voice notes.
+17.5. MUST preserve invoice snapshots separately from mutable source work data.
+17.6. MUST preserve invoice lifecycle timestamps.
+17.7. MUST preserve authorized-device public keys and permissions.
+17.8. MUST support schema migrations from the beginning.
+17.9. SHOULD use SQLite STRICT tables/features where practical.
+17.10. SHOULD store large audio-note files outside SQLite and reference them from SQLite.
+17.11. SHOULD store generated invoice PDFs outside SQLite and reference them from SQLite.
+17.12. MUST ensure server-persistent state survives frontend restarts and reconnects.
+17.13. MUST store a work entry's date as a plain calendar date rather than as an instant, so that 7.10 needs no timezone.
+
+## 18. GitHub & About
+
+18.1. MUST use the product name “Worklog”.
+18.2. MUST provide an About screen.
+18.3. MUST show application version/build information on the About screen.
+18.4. MUST provide a direct “View on GitHub” link to `github.com/voltrevo/worklog`.
+18.5. MUST provide a direct “Report an issue” link to that repository's new-issue flow.
+18.6. SHOULD keep repository URLs as build/application metadata rather than user invoice configuration.
+
+## 19. UI / UX
+
+19.1. MUST keep the primary workflow lightweight.
+19.2. MUST avoid project-selection UI in v1.
+19.3. MUST make today's live progress the visual priority on the main screen.
+19.4. MUST make current-session duration available but secondary.
+19.5. MUST make billing tags visible when reviewing/editing entries.
+19.6. MUST distinguish duration-only entries visually from timed intervals.
+19.7. MUST make manual past-time entry require minimal interaction.
+19.8. MUST make manual work-note creation easy to reach.
+19.9. MUST make invoice preview/generation clearly separate from issuance.
+19.10. MUST make “Mark as issued” an explicit action.
+19.11. MUST make “Mark as paid” an explicit action.
+19.12. MUST provide a device-access administration screen for admins.
+19.13. MUST provide a server-log viewing screen.
+19.14. SHOULD keep visual design clean, modern, restrained, and desktop-friendly.
+19.15. SHOULD avoid dense enterprise/project-management UI.
+19.16. MUST style the UI with plain CSS, using custom properties as design tokens, rather than a utility-class or CSS-in-JS framework.
+19.17. MUST support both light and dark presentation.
+19.18. MUST follow the supplied mockups for the desktop presentation's sidebar layout, treating them as indicative of structure rather than of exact pixels.
+
+## 20. Privacy & safety
+
+20.1. MUST treat invoice identity, addresses, contact details, bank details, rates, and client details as sensitive.
+20.2. MUST NOT expose sensitive configuration in logs unnecessarily.
+20.3. MUST NOT embed user-sensitive values in public frontend bundles.
+20.4. MUST keep secrets server-side where feasible.
+20.5. MUST keep device private keys device-local.
+20.6. MUST avoid shipping real user data in GitHub Pages assets.
+20.7. MUST ensure screenshots, examples, and fixtures use fictional data.
+20.8. MUST NOT infer missing personal or financial information from supplied invoices.
+20.9. MUST require the user to configure missing invoice/payment information.
+20.10. MUST never log authentication private keys or reusable secrets.
+
+## 21. Deferred / out of scope
+
+21.1. Multi-project selection UI is deferred.
+21.2. Renaming/enabling multiple projects is deferred.
+21.3. Automatic speech transcription is deferred.
+21.4. AI summarization of work notes is deferred.
+21.5. Team collaboration and multi-user work ownership are deferred.
+21.6. Payroll and tax filing are deferred.
+21.7. Accounting-system integration is deferred.
+21.8. Leave management is deferred beyond possible pacing-day overrides.
+21.9. General expense management is deferred.
+21.10. Mobile-native applications are deferred.
+21.11. Music-app features beyond one local looping file are explicitly out of scope.
+21.12. Cloud-hosted application infrastructure is not required.
+21.13. Toggl feature parity is explicitly not a goal.
+21.14. Filtering which work appears on an invoice is deferred; v1 includes all work in the period, per 8.17.
+21.15. Custom invoice and report date ranges are deferred; v1 offers calendar months only, per 7.9 and 8.18.
+21.16. Work schedules richer than one interval per weekday are deferred; the schedule of 6.21 is an approximation and is meant to stay one.
+21.17. Reconciling “today” across devices in different timezones is deferred, per 3.10.
+21.18. Mobile *native* applications remain deferred per 21.10; the mobile *web* presentation of section 23 is in scope.
+21.19. Encoding connection state in the URL is out of scope, per 22.4.
+
+## 22. Server address & connection
+
+22.1. MUST require the user to supply the server's KPS address before the frontend can connect.
+22.2. MUST accept that address in KPS `<ip>:<port>:<certhash>` form.
+22.3. MUST persist the address in device-local storage, alongside the device key of 13.3.
+22.4. MUST NOT encode the address, or any other connection state, in the URL; the app is entered app-first, with no URL semantics.
+22.5. MUST NOT ship any server address in the GitHub Pages bundle.
+22.6. MUST allow the stored address to be changed or cleared.
+22.7. MUST show connection state, distinguishing at least “no address configured”, “connecting”, “connected”, and “failed”.
+22.8. SHOULD reconnect automatically after a transient loss.
+22.9. MUST treat a malformed address as a configuration error shown in the UI rather than as a connection failure.
+
+## 23. Mobile presentation
+
+23.1. MUST provide a mobile presentation in addition to the desktop presentation.
+23.2. MUST design the mobile presentation independently rather than as a narrowed desktop layout; the supplied mockups describe the desktop/tablet layout only.
+23.3. MUST share the application core of 1.19 between the two presentations, varying only the shell, navigation and layout.
+23.4. MUST select the presentation from the viewport rather than from the runtime, so the desktop app and the web app each reach both.
+23.5. MUST validate both presentations with Playwright screenshots.
+23.6. SHOULD keep every v1 capability reachable in the mobile presentation, except where a section explicitly excludes it, as 14.25 does.
