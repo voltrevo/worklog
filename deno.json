@@ -8,7 +8,7 @@
     "test": "deno test shared/ server/ web/src/",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "gate": "deno fmt --check && deno lint && deno task check && deno task test",
+    "gate": "deno fmt --check && deno lint && deno task check && deno task test && deno task web:build",
     "serve": "deno run -A --node-modules-dir=manual server/main.ts",
     "check:serve": "deno check --node-modules-dir=manual server/main.ts",
     "deps": "npm install --no-audit --no-fund",
