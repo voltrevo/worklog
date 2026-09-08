@@ -4,7 +4,7 @@
     "./server"
   ],
   "tasks": {
-    "check": "deno check shared/ web/src/gain.ts $(ls server/*.ts | grep -v main.ts)",
+    "check": "deno check shared/ web/src/gain.ts web/src/errorReporting.ts $(ls server/*.ts | grep -v main.ts)",
     "test": "deno test shared/ server/ web/src/",
     "fmt": "deno fmt",
     "lint": "deno lint",

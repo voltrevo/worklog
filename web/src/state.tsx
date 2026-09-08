@@ -34,6 +34,13 @@ import { minutesSinceMidnight, monthOf, today } from "@worklog/shared/dates";
 import { connect } from "./kpsTransport.ts";
 import { desktopSigner, isDesktop, primeDeviceStorage } from "./desktop.ts";
 import {
+  describeError,
+  flushQueue,
+  installGlobalHandlers,
+  report,
+  type Sender,
+} from "./errorReporting.ts";
+import {
   indexedDbKeyStore,
   loadAddress,
   loadDeviceName,
@@ -96,6 +103,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [prompt, setPrompt] = useState<{ id: string; firedAt: number }>();
 
   const clientRef = useRef<WorklogClient>(null);
+  const senderRef = useRef<Sender>(null);
   const monthRef = useRef(month);
   monthRef.current = month;
 
@@ -123,6 +131,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return await client.call<T>(req);
     } catch (err) {
       setLastError(describe(err));
+      // A refusal is the server answering, not the app breaking; only the latter is worth logging.
+      if (!(err instanceof ServerRefusal) && senderRef.current) {
+        void report(senderRef.current, describeError(err, `request:${req.t}`));
+      }
       throw err;
     }
   }, []);
@@ -173,6 +185,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
       clientRef.current = client;
 
+      // 12.6, 12.16 — only an authenticated device may report, so the sender is wired up here
+      // rather than at startup, and it is what drains anything held while there was no server.
+      const send: Sender = (r) =>
+        client.call({ t: "client-error", message: r.message, context: r.context });
+      senderRef.current = send;
+
       const hello: HelloResult = await client.hello();
       if (hello.offer === "auth") {
         const who = await client.authenticate();
@@ -184,6 +202,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         await client.subscribe();
         await refresh();
+        void flushQueue(send); // 12.14 — whatever was held while there was no server
       } else {
         setPhase({
           k: "unauthorized",
@@ -279,6 +298,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase.k === "ready") void refresh();
   }, [month, phase.k, refresh]);
+
+  /**
+   * 12.6 — anything the app throws outside a render, reported to the server.
+   *
+   * The sender goes through a ref rather than being captured, because these handlers are installed
+   * once and the client is replaced on every reconnect. Capturing would report to the connection
+   * that existed when the page loaded, which by then is usually the one that failed.
+   */
+  useEffect(() =>
+    installGlobalHandlers((r) => {
+      const send = senderRef.current;
+      return send ? send(r) : Promise.reject(new Error("not connected"));
+    }), []);
 
   // 3.4 — a running timer counts up between snapshots, from the start instant the server gave.
   useEffect(() => {
