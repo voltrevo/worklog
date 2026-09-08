@@ -647,3 +647,53 @@ i.swatch.off {
   margin-top: 4px;
   font-size: 13px;
 }
+
+/* ------------------------------------------------------------------ the note sheet
+ *
+ * 5.16 — a prompt interrupts whichever screen is showing, so it sits above everything rather than
+ * inside a layout that might be scrolled away from.
+ */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  background: rgb(10 14 20 / 45%);
+  overflow: auto;
+}
+
+.sheet > .card {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.sheet textarea {
+  resize: vertical;
+  font: inherit;
+  font-size: 14px;
+}
+
+/* 14.6 — one file, dropped or chosen. */
+.dropzone {
+  margin-top: var(--s-4);
+  padding: var(--s-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: var(--panel-2);
+}
+
+.dropzone.over {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}

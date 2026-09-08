@@ -21,6 +21,8 @@ import { Pacing } from "./screens/Pacing.tsx";
 import { Invoices } from "./screens/Invoices.tsx";
 import { Admin } from "./screens/Admin.tsx";
 import { Settings } from "./screens/Settings.tsx";
+import { WorkNote } from "./screens/WorkNote.tsx";
+import { LoopPlayback } from "./screens/LocalAudio.tsx";
 
 export type ScreenId =
   | "timer"
@@ -188,7 +190,7 @@ function MobileShell(
 }
 
 function Shell() {
-  const { phase } = useStore();
+  const { phase, prompt, dismissPrompt } = useStore();
   const [screen, setScreen] = useState<ScreenId>("timer");
   const mobile = useIsMobile();
 
@@ -201,6 +203,10 @@ function Shell() {
       {mobile
         ? <MobileShell screen={screen} setScreen={setScreen} />
         : <DesktopShell screen={screen} setScreen={setScreen} />}
+      {/* 5.16 — a prompt interrupts whichever screen is showing, because that is what it is for. */}
+      {prompt && <WorkNote prompted onClose={dismissPrompt} />}
+      {/* 14.12-14.14 — renders nothing; it exists so the loop outlives the settings screen. */}
+      <LoopPlayback />
     </Presentation.Provider>
   );
 }

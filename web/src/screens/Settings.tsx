@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours } from "../format.ts";
+import { LocalAudioCard } from "./LocalAudio.tsx";
 import { WEEKDAY_NAMES } from "@worklog/shared/schedule";
 import type { DayInterval, PacingConfig, Weekday } from "@worklog/shared/types";
 
@@ -68,6 +69,11 @@ export function Settings() {
       <ScheduleCard cfg={cfg.pacing} canWrite={canWrite} save={save} />
       <InvoiceCard cfg={cfg.invoice} canWrite={canWrite} save={save} />
       <PromptCard cfg={cfg.prompt} canWrite={canWrite} save={save} />
+      {
+        /* Section 14 — device-local, so it is not behind `canWrite`: a read-only device still gets
+          to decide what its own speakers do. */
+      }
+      <LocalAudioCard />
 
       <div className="card">
         {/* 18.2, 18.3 */}

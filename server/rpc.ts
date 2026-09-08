@@ -21,6 +21,7 @@ import {
   type TimerState,
   toAuthClaim,
   toBase64,
+  type WorkNoteWire,
 } from "@worklog/shared/protocol";
 import type { AccessRole } from "@worklog/shared/auth";
 import { project } from "@worklog/shared/pacing";
@@ -307,10 +308,17 @@ export async function handle(
     }
 
     case "notes":
-      return db.prepare(
-        "SELECT id, created_at, body, audio_path, audio_ms, prompted FROM work_note" +
-          " ORDER BY created_at DESC LIMIT ?",
-      ).all(req.limit ?? 50);
+      return listNotes(db, req.limit ?? 50);
+
+    case "note-audio": {
+      const row = db.prepare("SELECT audio_path FROM work_note WHERE id = ?").get(req.id) as
+        | { audio_path: string | null }
+        | undefined;
+      if (!row?.audio_path) throw new Refused("no-such-audio", "that note has no recording");
+      if (!ctx.dataDir) throw new Refused("no-data-dir", "this server stores no files");
+      const bytes = await Deno.readFile(`${ctx.dataDir}/${row.audio_path}`);
+      return { audioBase64: toBase64(bytes) };
+    }
 
     case "logs":
       return queryLogs(db, {
@@ -378,19 +386,37 @@ export async function handle(
 
     // ---------------------------------------------------------------- notes
     case "note-add": {
-      if (!req.body && !req.audioBase64) {
-        throw new Refused("empty-note", "a work note needs text or audio");
+      if (!req.body?.trim() && !req.audioBase64) {
+        throw new Refused("empty-note", "a work note needs text or a recording");
       }
       const id = crypto.randomUUID();
-      // 17.10 -- audio goes to disk; only the path is stored. Writing it is `main.ts`'s job, so
-      // this records the intended path and the caller supplies the bytes alongside.
-      const audioPath = req.audioBase64 ? `notes/${id}.opus` : null;
+
+      // 17.10 — the audio goes to disk and only its path is stored. A minute of speech is a
+      // couple of hundred kilobytes, and a database that holds them stops being a file you can
+      // copy while the server is running.
+      let audioPath: string | null = null;
+      if (req.audioBase64) {
+        if (!ctx.dataDir) throw new Refused("no-data-dir", "this server stores no files");
+        audioPath = `notes/${id}.${extensionFor(req.audioType)}`;
+        await Deno.writeFile(`${ctx.dataDir}/${audioPath}`, fromBase64(req.audioBase64));
+      }
+
       db.prepare(
         "INSERT INTO work_note (id, created_at, body, audio_path, audio_ms, prompted)" +
           " VALUES (?, ?, ?, ?, ?, ?)",
-      ).run(id, now, req.body ?? null, audioPath, req.audioMs ?? null, req.prompted ? 1 : 0);
+      ).run(
+        id,
+        now,
+        req.body?.trim() || null,
+        audioPath,
+        req.audioMs ?? null,
+        req.prompted ? 1 : 0,
+      );
+      ctx.log("info", "note", req.prompted ? "answered a prompt" : "wrote a work note", {
+        hasAudio: audioPath !== null,
+      });
       broadcast(ctx, { e: "changed", area: "notes" });
-      return { id, audioPath };
+      return { id };
     }
 
     // ---------------------------------------------------------------- invoices
@@ -565,6 +591,54 @@ function notifyDevice(ctx: ServerContext, publicKey: Uint8Array, event: Event): 
       } catch { /* going away */ }
     }
   }
+}
+
+/**
+ * 5.25 — Opus, in whatever container the browser gave us.
+ *
+ * The extension is derived from the reported MIME type rather than assumed: a browser may hand
+ * back `audio/webm;codecs=opus` or `audio/ogg;codecs=opus`, and writing `.opus` over a WebM
+ * container would make the file unplayable by name alone.
+ */
+function extensionFor(mime?: string): string {
+  const type = (mime ?? "").toLowerCase();
+  if (type.includes("ogg")) return "ogg";
+  if (type.includes("mp4") || type.includes("m4a")) return "m4a";
+  if (type.includes("webm")) return "webm";
+  return "opus";
+}
+
+interface NoteRow {
+  id: string;
+  created_at: number;
+  body: string | null;
+  audio_path: string | null;
+  audio_ms: number | null;
+  prompted: number;
+}
+
+function listNotes(db: Db, limit: number): WorkNoteWire[] {
+  return db.prepare(
+    "SELECT id, created_at, body, audio_path, audio_ms, prompted FROM work_note" +
+      " ORDER BY created_at DESC LIMIT ?",
+  ).all(limit).map((r) => {
+    const row = r as unknown as NoteRow;
+    return {
+      id: row.id,
+      createdAt: Number(row.created_at),
+      ...(row.body ? { body: row.body } : {}),
+      ...(row.audio_ms === null ? {} : { audioMs: Number(row.audio_ms) }),
+      ...(row.audio_path ? { audioType: typeOf(row.audio_path) } : {}),
+      prompted: row.prompted === 1,
+    };
+  });
+}
+
+function typeOf(path: string): string {
+  if (path.endsWith(".ogg")) return "audio/ogg";
+  if (path.endsWith(".m4a")) return "audio/mp4";
+  if (path.endsWith(".webm")) return "audio/webm";
+  return "audio/ogg";
 }
 
 function allEntries(db: Db) {

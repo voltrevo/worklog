@@ -9,17 +9,34 @@
  * from the start instant the server gave — never from a clock the frontend started.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
+import { WorkNote } from "./WorkNote.tsx";
 import { clock, duration, hours, pace } from "../format.ts";
 import { today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
+
+interface NoteWire {
+  id: string;
+  createdAt: number;
+  body?: string;
+  audioMs?: number;
+  audioType?: string;
+  prompted: boolean;
+}
 
 export function Timer() {
   const { snapshot, call, refresh, phase, lastError, clearError } = useStore();
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notes, setNotes] = useState<NoteWire[]>([]);
   const canWrite = phase.k === "ready" && phase.role !== "read";
+
+  // Reloaded whenever anything changed, which the store signals by replacing the snapshot.
+  useEffect(() => {
+    void call<NoteWire[]>({ t: "notes", limit: 5 }).then(setNotes).catch(() => {});
+  }, [call, snapshot]);
 
   if (!snapshot) return <p className="muted">Loading…</p>;
 
@@ -163,6 +180,30 @@ export function Timer() {
         )}
       </div>
 
+      {
+        /* 5.1, 5.4, 5.5, 19.8 — a work note is not billable time, so it has its own card and its
+          own action, reachable from the screen a person is already on. */
+      }
+      <div className="card">
+        <div className="row between">
+          <h3>Work notes</h3>
+          {canWrite && (
+            <button className="btn" type="button" onClick={() => setNoteOpen(true)}>
+              New work note
+            </button>
+          )}
+        </div>
+        {notes.length === 0
+          ? <p className="muted" style={{ margin: "8px 0 0" }}>Nothing noted lately.</p>
+          : (
+            <div className="entries" style={{ marginTop: 6 }}>
+              {notes.map((n) => <NoteRow key={n.id} note={n} />)}
+            </div>
+          )}
+      </div>
+
+      {noteOpen && <WorkNote onClose={() => setNoteOpen(false)} />}
+
       <div className="card">
         <h3>Today's entries</h3>
         {snapshot.today.length === 0
@@ -201,6 +242,51 @@ export function Timer() {
             </div>
           )}
       </div>
+    </div>
+  );
+}
+
+/** 5.28 — the recording is fetched only when somebody asks to hear it. */
+function NoteRow({ note }: { note: NoteWire }) {
+  const { call } = useStore();
+  const [url, setUrl] = useState<string>();
+  const [loading, setLoading] = useState(false);
+
+  const play = async () => {
+    setLoading(true);
+    try {
+      const { audioBase64 } = await call<{ audioBase64: string }>({
+        t: "note-audio",
+        id: note.id,
+      });
+      const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+      setUrl(URL.createObjectURL(new Blob([bytes], { type: note.audioType ?? "audio/webm" })));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="entry">
+      <div className="what">
+        <span>{note.body ?? <em className="faint">a recording</em>}</span>
+        <span className="faint">
+          {new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
+            .format(new Date(note.createdAt))}
+          {note.prompted ? " · prompted" : ""}
+        </span>
+      </div>
+      {note.audioMs !== undefined && (
+        <div className="how-long">
+          {url
+            ? <audio controls src={url} style={{ height: 30 }} />
+            : (
+              <button className="link" type="button" disabled={loading} onClick={() => void play()}>
+                ▶ {Math.round(note.audioMs / 1000)}s
+              </button>
+            )}
+        </div>
+      )}
     </div>
   );
 }

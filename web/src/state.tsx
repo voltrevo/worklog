@@ -64,6 +64,9 @@ export interface Store {
   setDeviceName(name: string): void;
   lastError?: string;
   clearError(): void;
+  /** 5.16, 5.17 — set when the server fires a prompt; cleared when it is answered or dismissed. */
+  prompt?: { id: string; firedAt: number };
+  dismissPrompt(): void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -83,6 +86,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [deviceName, setNameState] = useState(() => loadDeviceName());
   const [lastError, setLastError] = useState<string>();
   const [tick, setTick] = useState(0);
+  const [prompt, setPrompt] = useState<{ id: string; firedAt: number }>();
 
   const clientRef = useRef<WorklogClient>(null);
   const monthRef = useRef(month);
@@ -133,6 +137,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     if (event.e === "access-granted") {
       void refresh();
+      return;
+    }
+    if (event.e === "prompt") {
+      // 5.17 — each notified frontend presents it and plays its own tune. The sound is local: the
+      // server knows a prompt fired and nothing about what any device did with it.
+      setPrompt({ id: event.id, firedAt: event.firedAt });
+      chime();
       return;
     }
     void refresh();
@@ -281,6 +292,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     ...(lastError ? { lastError } : {}),
     clearError: () => setLastError(undefined),
+    ...(prompt ? { prompt } : {}),
+    dismissPrompt: () => setPrompt(undefined),
   }), [
     phase,
     snapshot,
@@ -294,6 +307,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     forget,
     deviceName,
     lastError,
+    prompt,
   ]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -312,6 +326,39 @@ function safeKeyStore() {
     // Blocked by the browser's storage settings.
   }
   return memoryKeyStore();
+}
+
+/**
+ * Two soft notes, synthesised rather than fetched.
+ *
+ * A prompt should be audible without the page having downloaded an asset it might not have — and a
+ * bundle that ships a sound file to say "hello?" is a bundle carrying a sound file. Failing
+ * silently is fine: a muted tab is a preference, not an error.
+ */
+function chime(): void {
+  try {
+    const Ctx = globalThis.AudioContext ??
+      (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const audio = new Ctx();
+    const gain = audio.createGain();
+    gain.connect(audio.destination);
+    gain.gain.setValueAtTime(0.0001, audio.currentTime);
+    for (const [i, hz] of [660, 880].entries()) {
+      const at = audio.currentTime + i * 0.16;
+      const osc = audio.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      osc.connect(gain);
+      osc.start(at);
+      osc.stop(at + 0.15);
+    }
+    gain.gain.exponentialRampToValueAtTime(0.12, audio.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.34);
+    setTimeout(() => void audio.close().catch(() => {}), 900);
+  } catch {
+    // No audio permission, no audio context, a muted tab. None of these is worth reporting.
+  }
 }
 
 function describe(err: unknown): string {

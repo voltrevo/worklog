@@ -111,8 +111,26 @@ export type Request =
     timing?: { startedAt: Instant; endedAt: Instant } | null;
   }
   | { t: "entry-delete"; id: string }
-  | { t: "note-add"; body?: string; audioBase64?: string; audioMs?: number; prompted?: boolean }
+  /**
+   * 5.1-5.5, 5.22-5.25 — a work-detail note, in text, in audio, or in both.
+   *
+   * The audio arrives base64'd in the request rather than on a stream of its own. A note is a
+   * minute of speech at 24 kbit/s — under 200 kB — and one round trip is worth more here than the
+   * bytes saved by a second protocol for one field.
+   */
+  | {
+    t: "note-add";
+    body?: string;
+    audioBase64?: string;
+    audioMs?: number;
+    /** Whether this answers a prompt (5.6) or was written unprompted (5.4). */
+    prompted?: boolean;
+    /** The recording's container and codec, as the browser reported them. */
+    audioType?: string;
+  }
   | { t: "notes"; limit?: number }
+  /** 5.28 — the recording back, for playing. */
+  | { t: "note-audio"; id: string }
   | { t: "invoices" }
   | {
     t: "invoice-save";
@@ -204,6 +222,16 @@ export interface LogEntry {
   deviceFingerprint?: string;
 }
 
+export interface WorkNoteWire {
+  id: string;
+  createdAt: Instant;
+  body?: string;
+  /** Present when there is a recording; the bytes come separately, via `note-audio`. */
+  audioMs?: number;
+  audioType?: string;
+  prompted: boolean;
+}
+
 export interface StoredInvoiceWire {
   id: string;
   period: string;
@@ -272,6 +300,7 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "snapshot": "read",
   "entries": "read",
   "notes": "read",
+  "note-audio": "read",
   "invoices": "read",
   "config-get": "read",
   "logs": "read",
