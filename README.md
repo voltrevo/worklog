@@ -22,6 +22,7 @@ deno task serve         # prints the address a frontend needs
 ```sh
 deno task web           # the frontend, on http://127.0.0.1:5273
 deno task web:build     # or a static bundle in web/dist
+deno task desktop       # or the same frontend in a desktop window
 ```
 
 The server prints something like `192.168.1.5:41108:uEiA…`. Paste it into the frontend's first
@@ -76,6 +77,33 @@ by getting narrower. What they share is everything below them: the same screens,
 same client. The viewport picks, not the runtime, so a narrow desktop window gets the phone layout —
 the constraint being solved is how much room there is.
 
+## The desktop window
+
+`deno task desktop` runs the same bundle in a `Deno.BrowserWindow`. What it adds is a window that
+stays on top (**Settings → This window**) and a device key the operating system protects: the shell
+generates it into `device-key.json` at `0600`, re-imports it non-extractable, and the page asks for
+signatures rather than holding anything. That is a stronger reading of "the private key never
+leaves the device" than a browser can offer, where the key at least lives in the tab's storage.
+
+Getting there turned up four things about `deno desktop` worth writing down, because none of them
+fails loudly:
+
+- **An HTTP listener inside the app accepts nothing.** `Deno.serve` calls `onListen` and every
+  connection is refused — inside the process and out, main thread and worker. So the bridge is
+  `BrowserWindow.bind`, not a loopback fetch.
+- **A permission prompt hangs rather than fails**, because a packaged app has no terminal to answer
+  it. The build grants `read`, `write` and `env` explicitly — and not `net`, which is what makes
+  "the server is never told about window state" a property of the runtime rather than of care.
+- **A `file://` page cannot load an ES module by `src`.** `web/inline.mjs` folds the bundle into
+  one `desktop.html`; an inline module has nothing to fetch. The Pages build is untouched.
+- **A `file://` origin has no dependable storage**, which is why the shell owns the key and the
+  device-local settings.
+
+One thing is unverified: **the desktop window reaching a server**. The shell runs, writes its files,
+opens the window and loads the app, but this development container's WebKitGTK has no `libnice` and
+no `gstwebrtc`, so a WebRTC dial cannot complete in it at all. The same bundle over the same
+transport is exercised end to end in Chromium by `deno task shots`.
+
 ## Why there is a package.json
 
 Deno cannot install `@kpstreams/server` itself. Its QUIC backend lists
@@ -99,3 +127,7 @@ the signing or either shell is broken, there are no pictures.
 
 <img src="docs/pacing-desktop.png" alt="The pacing screen, showing the projection and the terms that add up to it" width="420">
 <img src="docs/invoices-desktop.png" alt="An invoice draft, with the bonus in its own table above the work table" width="420">
+
+The invoice PDF is rendered on the server and follows the supplied format closely — see
+[`docs/invoice-sample.pdf`](docs/invoice-sample.pdf), generated from the fixture by
+`deno run -A --node-modules-dir=manual tools/invoice-pdf.ts ./data 2026-08 out.pdf`.
