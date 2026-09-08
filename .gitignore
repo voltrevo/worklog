@@ -23,3 +23,5 @@ worklog-dev/
 Worklog/
 Worklog.app/
 worklog-check/
+# Left by an older name for `desktop:check`; kept so a stale directory cannot be committed again.
+.desktop-selftest/
