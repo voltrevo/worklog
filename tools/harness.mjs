@@ -57,6 +57,17 @@ export async function requireBrowser() {
   return path;
 }
 
+/**
+ * The page's own text, flattened and clipped.
+ *
+ * A timed-out locator reports "Timeout 30000ms exceeded" and nothing about whether the app was
+ * connected, on another screen, or sitting on an error — and those want different fixes.
+ */
+export async function visibleText(page) {
+  const text = await page.locator("body").innerText().catch((e) => `<unreadable: ${e.message}>`);
+  return text.replace(/\s+/g, " ").slice(0, 300);
+}
+
 export function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { cwd: root, stdio: "inherit", ...opts });

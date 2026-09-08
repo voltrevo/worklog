@@ -206,8 +206,17 @@ function Draft(
    * generally cannot reach.
    */
   const generate = async () => {
-    const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
-    setSaved(await saveFile(res.fileName, bytesFromBase64(res.pdfBase64), "application/pdf"));
+    const res = await call<InvoicePdfResult>({
+      t: "invoice-pdf",
+      id: invoice.id,
+    });
+    setSaved(
+      await saveFile(
+        res.fileName,
+        bytesFromBase64(res.pdfBase64),
+        "application/pdf",
+      ),
+    );
   };
 
   return (

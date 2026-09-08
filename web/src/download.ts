@@ -42,7 +42,9 @@ export async function saveFile(
     return { path, fileName };
   }
 
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }));
+  const url = URL.createObjectURL(
+    new Blob([bytes as BlobPart], { type: mime }),
+  );
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName;

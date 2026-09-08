@@ -41,7 +41,7 @@ before it starts rather than after a minute of setup.
 | `shared/` | The domain core. Imports no runtime — no filesystem, no socket, no DOM — which is what makes 1.19's "one core behind both frontends" true by construction rather than by discipline. |
 | `server/` | SQLite, the stores, the dispatcher. Everything KPS-shaped is in `main.ts` alone. |
 | `web/` | React + Vite. Two shells over one set of screens. |
-| `tools/` | The seeder and the screenshot harness. |
+| `tools/` | The seeder, and the two browser harnesses over their shared rig. |
 
 ## Some decisions worth knowing about
 
@@ -129,6 +129,16 @@ learn about it unasked, record time from the phone, edit an entry down to durati
 one, write a work note and see it arrive, invoice a month, take delivery of the PDF, issue it, and
 revoke the phone while it is still holding an open subscription. They share `tools/harness.mjs`
 and run on different ports, so both can run at once.
+
+**A device could lose its own identity, and one reload was not enough to see it.** The device key
+lives in IndexedDB, and two modules opened that database independently: `deviceKeys.ts` at version
+1, `localAudio.ts` at version 2. IndexedDB refuses to open an existing database at a lower version,
+so once anything touched the audio store, every later attempt to read the key failed with
+`VersionError` — and a device that cannot read its key cannot prove who it is, so it lands back on
+the connect screen and needs an admin to approve it all over again. Play the loop file once and
+reload, and the phone has forgotten itself. `web/src/idb.ts` now owns the database, its version and
+its stores, and a test counts the `indexedDB.open` calls, because nothing in the type system can
+see two callers disagreeing about a number.
 
 The distinction earned itself. The screenshots were green for a fortnight while **"Generate PDF"
 rendered a document onto the server's disk and handed the person who pressed it nothing** — the

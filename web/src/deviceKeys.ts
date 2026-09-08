@@ -12,44 +12,19 @@
 
 import type { DeviceKeyStore } from "@worklog/shared/client";
 import { deviceStorage } from "./desktop.ts";
+// The database, its version and its stores live in one place. This module used to open it itself,
+// at a version one lower than `localAudio.ts` used, which locked the device out of its own key --
+// see `idb.ts`.
+import { run } from "./idb.ts";
 
-const DB_NAME = "worklog";
 const STORE = "device";
 const KEY = "keypair";
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) {
-        req.result.createObjectStore(STORE);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function run<T>(
-  mode: IDBTransactionMode,
-  body: (s: IDBObjectStore) => IDBRequest,
-): Promise<T> {
-  return openDb().then((db) =>
-    new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(STORE, mode);
-      const req = body(tx.objectStore(STORE));
-      req.onsuccess = () => resolve(req.result as T);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
-    })
-  );
-}
-
 export function indexedDbKeyStore(): DeviceKeyStore {
   return {
-    load: () => run<CryptoKeyPair | undefined>("readonly", (s) => s.get(KEY)),
-    save: (pair) => run<unknown>("readwrite", (s) => s.put(pair, KEY)).then(() => {}),
-    clear: () => run<unknown>("readwrite", (s) => s.delete(KEY)).then(() => {}),
+    load: () => run<CryptoKeyPair | undefined>(STORE, "readonly", (s) => s.get(KEY)),
+    save: (pair) => run<unknown>(STORE, "readwrite", (s) => s.put(pair, KEY)).then(() => {}),
+    clear: () => run<unknown>(STORE, "readwrite", (s) => s.delete(KEY)).then(() => {}),
   };
 }
 

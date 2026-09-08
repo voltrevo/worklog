@@ -19,7 +19,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { claimAndApprove, root, startRig } from "./harness.mjs";
+import { claimAndApprove, root, startRig, visibleText } from "./harness.mjs";
 
 const dataDir = join(root, ".journey-data");
 const PORT = 41778;
@@ -64,12 +64,6 @@ async function until(label, page, predicate, timeout = 20_000) {
   // app was connected, on another screen, or sitting on an error -- and those want different fixes.
   console.error(`      showing: ${JSON.stringify(await visibleText(page))}`);
   return false;
-}
-
-/** The page's own text, flattened and clipped: enough to tell which screen and which state. */
-async function visibleText(page) {
-  const text = await page.locator("body").innerText().catch((e) => `<unreadable: ${e.message}>`);
-  return text.replace(/\s+/g, " ").slice(0, 300);
 }
 
 const nav = (page, name) => page.getByRole("button", { name, exact: true }).first().click();
@@ -305,6 +299,29 @@ async function main() {
     ),
   );
 
+  // ---------------------------------------------------------------- surviving reloads
+  //
+  // Twice, and the second one is the point. The device key lives in IndexedDB, and two modules used
+  // to open that database at different versions -- so the *first* reload found it at the old
+  // version and worked, and the second could not open it at all. A device that cannot read its own
+  // key is a device the server has never met: it lands back on the connect screen and has to be
+  // approved all over again. One reload could not see this. See `web/src/idb.ts`.
+  console.log("\nreloads:");
+  for (const attempt of [1, 2]) {
+    await mobile.page.reload();
+    check(
+      `the phone is still itself after reload ${attempt}`,
+      await until(
+        `phone authorised after reload ${attempt}`,
+        mobile.page,
+        async (p) =>
+          (await p.getByText("Today", { exact: true }).count()) > 0 &&
+          (await p.getByRole("button", { name: /Ask for/ }).count()) === 0,
+        30_000,
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------- revoking, while connected
   //
   // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there
@@ -343,6 +360,7 @@ async function monthTotal(page) {
 }
 
 await main().catch((err) => {
-  console.error(`journey: ${err.message}`);
+  // The stack, not just the message: every locator in this file times out with the same sentence.
+  console.error(`journey: ${err.stack ?? err.message}`);
   process.exit(1);
 });

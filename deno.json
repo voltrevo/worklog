@@ -5,8 +5,10 @@
   ],
   "tasks": {
     "check": "deno check shared/ web/src/gain.ts web/src/errorReporting.ts $(ls server/*.ts | grep -v main.ts)",
-    "test": "deno test shared/ server/ web/src/",
+    "test": "deno test --allow-read=. shared/ server/ web/src/",
+    "//test": "`--allow-read=.` is for the two guards in web/src/idb_test.ts, which read the sources they are asserting about. It is the process floor; those tests narrow it again with their own `permissions` block, and every other test still runs with nothing.",
     "fmt": "deno fmt",
+    "//fmt": "Always this, never `deno fmt <path under web/>`: given a path inside web/, Deno finds web/package.json first, ignores this file, and reformats at the default width instead of lineWidth 100 -- so the gate then rejects what fmt just wrote.",
     "lint": "deno lint",
     "gate": "deno fmt --check && deno lint && deno task check && deno task test && deno task web:build",
     "serve": "deno run -A --node-modules-dir=manual server/main.ts",

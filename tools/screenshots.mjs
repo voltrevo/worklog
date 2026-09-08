@@ -9,7 +9,7 @@
  */
 
 import { join } from "node:path";
-import { claimAndApprove, root, startRig } from "./harness.mjs";
+import { claimAndApprove, root, startRig, visibleText } from "./harness.mjs";
 
 const outDir = join(root, "docs");
 const dataDir = join(root, ".screenshots-data");
@@ -31,6 +31,42 @@ async function main() {
   // a device list with something in it.
   await capture(desktop.page, "desktop");
   await capture(mobile.page, "mobile");
+
+  // 23.6 — the phone has been a `write` device up to here, so its tab bar has five tabs and the
+  // admin screen has never been photographed on a phone at all. Promote it and look: six tabs is
+  // the widest that bar ever gets, and the admin screen is the densest thing in the app.
+  console.log("  promoting the phone to admin, for the one layout nothing else reaches…");
+  // `capture` walked the desktop's whole navigation, so it is sitting on Settings. The device list
+  // is two clicks away, and asking for a row that is not on screen just times out.
+  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
+  // A *pending* device is promoted with buttons; an already-authorised one has a `<select>`. They
+  // are different tables and the first attempt here used the wrong one, which times out silently.
+  await desktop.page.getByRole("row", { name: /Pixel Phone/ })
+    .getByRole("combobox")
+    .selectOption("admin");
+  // Confirm on the side that made the change before blaming the side that should see it.
+  await desktop.page.waitForTimeout(600);
+  const nowRole = await desktop.page.getByRole("row", { name: /Pixel Phone/ })
+    .getByRole("combobox").inputValue();
+  if (nowRole !== "admin") {
+    throw new Error(`the promotion did not take: the phone is still ${nowRole}`);
+  }
+
+  await mobile.page.reload();
+  const adminTab = mobile.page.getByRole("button", { name: "Admin", exact: true });
+  try {
+    await adminTab.waitFor({ timeout: 30_000 });
+  } catch (e) {
+    throw new Error(
+      `the phone never grew an Admin tab after being promoted. Showing: ${await visibleText(
+        mobile.page,
+      )} (${e.message})`,
+    );
+  }
+  await adminTab.click();
+  await mobile.page.waitForTimeout(400);
+  await shot(mobile.page, "admin-mobile");
 
   await rig.close();
 
@@ -64,6 +100,8 @@ async function shot(page, name) {
 }
 
 await main().catch((err) => {
-  console.error(`screenshots: ${err.message}`);
+  // The stack, not just the message: "Timeout 30000ms exceeded" is the same sentence for every
+  // locator in the file, and the line number is the only thing that says which one.
+  console.error(`screenshots: ${err.stack ?? err.message}`);
   process.exit(1);
 });

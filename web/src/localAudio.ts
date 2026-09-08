@@ -17,8 +17,10 @@
 
 import { gainFor } from "./gain.ts";
 import { deviceStorage } from "./desktop.ts";
+// One opener for the whole frontend; this module and `deviceKeys.ts` used to open the same
+// database at different versions, which locked the device out of its own key. See `idb.ts`.
+import { run } from "./idb.ts";
 
-const DB_NAME = "worklog";
 const STORE = "audio";
 const FILE_KEY = "loop";
 const ENABLED_KEY = "worklog.audio.enabled";
@@ -27,38 +29,6 @@ const VOLUME_KEY = "worklog.audio.volume";
 export { gainFor, labelFor, RANGE_DB } from "./gain.ts";
 
 // ------------------------------------------------------------------ the stored file
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);
-    req.onupgradeneeded = () => {
-      // Version 2 adds this store beside the device key's, which version 1 created.
-      if (!req.result.objectStoreNames.contains("device")) {
-        req.result.createObjectStore("device");
-      }
-      if (!req.result.objectStoreNames.contains(STORE)) {
-        req.result.createObjectStore(STORE);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function run<T>(
-  mode: IDBTransactionMode,
-  body: (s: IDBObjectStore) => IDBRequest,
-): Promise<T> {
-  return openDb().then((db) =>
-    new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(STORE, mode);
-      const req = body(tx.objectStore(STORE));
-      req.onsuccess = () => resolve(req.result as T);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
-    })
-  );
-}
 
 export interface StoredLoop {
   name: string;
@@ -73,16 +43,16 @@ export async function saveLoop(file: File): Promise<StoredLoop> {
     type: file.type || "audio/mpeg",
     bytes: await file.arrayBuffer(),
   };
-  await run("readwrite", (s) => s.put(stored, FILE_KEY));
+  await run(STORE, "readwrite", (s) => s.put(stored, FILE_KEY));
   return stored;
 }
 
 export function loadLoop(): Promise<StoredLoop | undefined> {
-  return run<StoredLoop | undefined>("readonly", (s) => s.get(FILE_KEY));
+  return run<StoredLoop | undefined>(STORE, "readonly", (s) => s.get(FILE_KEY));
 }
 
 export async function clearLoop(): Promise<void> {
-  await run("readwrite", (s) => s.delete(FILE_KEY));
+  await run(STORE, "readwrite", (s) => s.delete(FILE_KEY));
 }
 
 export function loadEnabled(): boolean {
