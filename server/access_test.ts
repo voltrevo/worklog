@@ -30,7 +30,7 @@ import {
 import { Refused } from "./work.ts";
 
 const NOW = 1_788_000_000_000;
-const CERT = "uEiAKk40R8i7tHdB16Wy7YZ2jiZqU-FZrigOcCq3jEYuMtA";
+const CERT = "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha";
 
 function fresh(): Db {
   return open({ path: ":memory:" });

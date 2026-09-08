@@ -106,7 +106,13 @@ Deno.test({
   fn() {
     // Both halves matter. A guard that misses the real thing is useless; a guard that fires on the
     // example is one somebody switches off, and then it misses the real thing too.
-    const real = "192.168.1.5:41108:uEiCxUR0bPba1flxMVPXhET-uXzymxsWs33_-HTZ-8VM_Pw";
+    //
+    // The "real" address below is a *shaped* string, not a real one. The first version of this
+    // test pasted a certhash straight out of a live server's startup line, which committed a
+    // genuine server identity to a repository whose whole point is that the identity is the way
+    // in. It was ephemeral — the harness deletes its cert on exit — but nothing about reading the
+    // file said so, and the next person to need a realistic fixture would have copied the method.
+    const real = "192.168.1.5:41108:uEiSECONDexampleSECONDexampleSECONDexampleSECO";
     const shown = "192.168.1.5:41108:uEiA…";
     assertEquals(
       COMPLETE_CERTHASH.test(real),

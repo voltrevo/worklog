@@ -30,7 +30,7 @@ import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
 import { Refused } from "./work.ts";
 
 const NOW = 1_788_000_000_000;
-const CERT = "uEiAKk40R8i7tHdB16Wy7YZ2jiZqU-FZrigOcCq3jEYuMtA";
+const CERT = "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha";
 
 /**
  * Distinctive enough that a substring search cannot miss them and cannot match by chance.

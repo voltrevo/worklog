@@ -19,7 +19,7 @@ import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
 import { Refused } from "./work.ts";
 
 const NOW = 1_788_000_000_000; // 2026-08-25T...
-const CERT = "uEiAKk40R8i7tHdB16Wy7YZ2jiZqU-FZrigOcCq3jEYuMtA";
+const CERT = "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha";
 const CLOCK = { today: "2026-09-08", nowMinutes: 10 * 60 };
 
 function context(): ServerContext {

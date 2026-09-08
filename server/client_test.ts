@@ -43,7 +43,7 @@ function server(): ServerContext {
     challenges: new ChallengeStore(),
     hub: new PromptHub(),
     log: loggerFor(db),
-    serverCertHash: "uEiAKk40R8i7tHdB16Wy7YZ2jiZqU-FZrigOcCq3jEYuMtA",
+    serverCertHash: "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha",
     version: "0.0.0-test",
     sessions: new Map(),
     // The real clock: the client stamps its claims with `Date.now()`, and a frozen server clock
