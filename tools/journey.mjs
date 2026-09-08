@@ -374,6 +374,55 @@ async function main() {
     ),
   );
 
+  // ---------------------------------------------------------------- what a read device can see
+  //
+  // 13.32–13.34 and 19.12/19.13. The server refusing a write from a `read` device is covered by
+  // `rpc_test.ts`; what is not covered anywhere is the *UI's* half of it, which is a different
+  // mechanism — a `canWrite` flag threaded through five screens, hiding some controls and
+  // disabling others. A refusal the person could not have seen coming is a bug even when the
+  // server does the right thing.
+  //
+  // The spare tablet is still pending from the check above, so it is the device to approve.
+  console.log("\nread-only:");
+  await desktop.page.getByRole("row", { name: /Spare Tablet/ })
+    .getByRole("button", { name: "read", exact: true }).click();
+  await spare.page.reload();
+  await spare.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+
+  check(
+    "a read device cannot start the timer",
+    await spare.page.getByRole("button", { name: /Start/ }).isDisabled(),
+  );
+  check(
+    "and is not offered a work note",
+    (await spare.page.getByRole("button", { name: "New work note" }).count()) === 0,
+  );
+
+  await nav(spare.page, "History");
+  check(
+    "and cannot add past time",
+    (await spare.page.getByRole("button", { name: "Add", exact: true }).count()) === 0,
+  );
+
+  await nav(spare.page, "Invoices");
+  check(
+    "and cannot prepare an invoice",
+    (await spare.page.getByRole("button", { name: /Prepare invoice|Rebuild draft/ })
+      .count()) === 0,
+  );
+  check(
+    "but can still read one",
+    await until(
+      "invoice visible to read",
+      spare.page,
+      async (p) => (await p.getByText("Issued", { exact: true }).count()) > 0,
+    ),
+  );
+  check(
+    "and has no Admin tab at all",
+    (await spare.page.getByRole("button", { name: "Admin", exact: true }).count()) === 0,
+  );
+
   await rig.close();
 
   const pageErrors = rig.errors.length;
