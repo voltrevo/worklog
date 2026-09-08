@@ -77,6 +77,7 @@ function NoteRow(
   const [url, setUrl] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState<string>();
 
   /** 5.28 — the recording is fetched only when somebody asks to hear it. */
   const play = async () => {
@@ -95,9 +96,14 @@ function NoteRow(
 
   const remove = async () => {
     setBusy(true);
+    setProblem(undefined);
     try {
       await call({ t: "note-delete", id: note.id });
       onChanged();
+    } catch (err) {
+      // A delete that fails silently leaves the row sitting in its "are you sure?" state, which
+      // reads as an unresponsive button rather than as a refusal.
+      setProblem((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -124,6 +130,7 @@ function NoteRow(
           {note.prompted ? " · prompted" : ""}
         </span>
       </div>
+      {problem && <div className="notice bad">{problem}</div>}
       <div className="acts wrap">
         {spoken &&
           (url

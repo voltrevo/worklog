@@ -398,6 +398,39 @@ async function main() {
     ),
   );
 
+  // 24.28 — and it can be deleted, paid or not. Without this the only ways out of a mistake were
+  // reverting an issued invoice forever or living with it, which is why "every action should be
+  // reversible" was the note against this screen.
+  await invoiceRow().getByRole("button", { name: "Delete" }).click();
+  check(
+    "deleting a paid invoice asks first",
+    await until(
+      "delete dialog",
+      desktop.page,
+      async (p) => (await p.getByRole("dialog").count()) > 0,
+    ),
+  );
+  await desktop.page.getByRole("button", { name: "Delete it" }).click();
+  check(
+    "and then it is gone, freeing the month",
+    await until(
+      "deleted",
+      desktop.page,
+      async (p) =>
+        (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 0 &&
+        (await p.getByRole("button", { name: `Prepare ${preparing}` }).count()) > 0,
+    ),
+  );
+
+  // Prepared again, because the checks further down watch an invoice reach the phone and the
+  // delete above left the month empty. Re-preparing is also the proof that deleting freed it.
+  await desktop.page.getByRole("button", { name: `Prepare ${preparing}` }).click();
+  await until(
+    "re-prepared",
+    desktop.page,
+    (p) => p.getByText("Draft", { exact: true }).first().isVisible(),
+  );
+
   // ---------------------------------------------------------------- editing what was recorded
   console.log("\nediting:");
   await nav(desktop.page, "History");
@@ -632,6 +665,35 @@ async function main() {
     await visibleText(mobile.page),
   );
 
+  // 24.6 — and a note can be deleted, recording and all.
+  await nav(desktop.page, "Notes");
+  const noteRow = desktop.page.locator(".stacked-row").filter({ hasText: /Voice note|Wrote the/ })
+    .first();
+  await noteRow.getByRole("button", { name: "Delete" }).click();
+  check(
+    "deleting a note asks first",
+    await until(
+      "note confirm",
+      desktop.page,
+      async (p) =>
+        (await p.getByRole("button", { name: "Delete", exact: true }).count()) > 0 &&
+        (await p.getByText("Delete this note?").count()) > 0,
+    ),
+  );
+  const notesBefore = await desktop.page.locator(".stacked-row").count();
+  // Scoped to the row. `page.getByRole(...).last()` picks the *last* Delete on the page, which is
+  // the bottom note's link, so the confirm opened on one row and the click landed on another —
+  // and the check then reported "the note did not go", which was true and not the reason.
+  await noteRow.getByRole("button", { name: "Delete", exact: true }).click();
+  check(
+    "and the note goes",
+    await until(
+      "note gone",
+      desktop.page,
+      async (p) => (await p.locator(".stacked-row").count()) < notesBefore,
+    ),
+  );
+
   // ---------------------------------------------------------------- surviving reloads
   //
   // Twice, and the second one is the point. The device key lives in IndexedDB, and two modules used
@@ -752,7 +814,7 @@ async function main() {
     await until(
       "issued on phone",
       mobile.page,
-      async (p) => (await p.getByText(/Issued|Paid/).count()) > 0,
+      async (p) => (await p.getByText(/Draft|Issued|Paid/).count()) > 0,
     ),
   );
 
@@ -810,7 +872,7 @@ async function main() {
     await until(
       "invoice visible to read",
       spare.page,
-      async (p) => (await p.getByText(/Issued|Paid/).count()) > 0,
+      async (p) => (await p.getByText(/Draft|Issued|Paid/).count()) > 0,
     ),
   );
   check(

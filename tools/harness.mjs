@@ -194,6 +194,14 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
       console.error(`  [${label}] page error: ${e.message}`);
       errors.push(`${label}: ${e.message}`);
     });
+    // An unhandled *rejection* is not a `pageerror`, and every failed request in this app is a
+    // rejected promise. A run could report "0 page errors" while every write was failing.
+    page.on("console", (m) => {
+      const text = m.text();
+      if (m.type() !== "error" || !/unhandled|rejection/i.test(text)) return;
+      console.error(`  [${label}] unhandled rejection: ${text}`);
+      errors.push(`${label}: ${text}`);
+    });
     // 22.3, 22.4 -- the address is device-local storage, so that is where the harness puts it.
     // There is no URL to put it in, which is the point of 22.4.
     await page.addInitScript(
