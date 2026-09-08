@@ -257,11 +257,13 @@ export class WorklogClient {
       buffered += text;
       const { lines, rest } = splitLines(buffered);
       buffered = rest;
-      for (const [i, line] of lines.entries()) {
+      for (const line of lines) {
         try {
           const parsed = JSON.parse(line) as Response | Event;
-          // The first line is the acknowledgement of the subscribe itself; the rest are events.
-          if (i === 0 && "ok" in parsed) continue;
+          // Told apart by shape rather than by position. The acknowledgement of the subscribe is
+          // the first line and nothing else on this stream carries `ok`, but keying on the index
+          // meant this loop had an opinion about framing -- and the framing was wrong for a while
+          // without this noticing, because a line it cannot parse is silently one event lost.
           if ("e" in parsed) this.#onEvent?.(parsed);
         } catch {
           // A line we cannot parse is one event lost, not a reason to tear the stream down.

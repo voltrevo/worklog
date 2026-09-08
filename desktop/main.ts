@@ -214,6 +214,21 @@ async function main(): Promise<void> {
       ),
     ));
 
+  // 8.34 — a `file://` page's own download has no dependable destination and a webview may drop it
+  // silently, so the shell writes the file. Beside the device's other files, which is somewhere a
+  // person can be told about in one sentence.
+  window.bind("__worklogSaveFile", async (fileName: string, base64: string) => {
+    // The name comes from the server, but it lands on *this* machine's filesystem, so it is treated
+    // as untrusted here too rather than only there: basename, and nothing that climbs.
+    const safe = fileName.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "") || "download";
+    const into = join(dir, "files");
+    await Deno.mkdir(into, { recursive: true });
+    const path = join(into, safe);
+    await Deno.writeFile(path, fromBase64(base64));
+    console.log(`worklog: wrote ${path}`);
+    return path;
+  });
+
   // 16.1, 16.2, 22.3 — device-local settings, because a `file://` page has nowhere of its own.
   window.bind("__worklogSettingsGet", () => JSON.stringify(settings));
   window.bind("__worklogSettingsSet", (json: string) => {

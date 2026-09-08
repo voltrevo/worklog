@@ -223,6 +223,8 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 8.30. MUST include a "Method of payment" block giving the payment method and the account fields as labelled rows.
 8.31. MUST show the payment due date as a labelled field at the foot.
 8.32. MAY include a note beneath the totals, such as one about currency conversion, when configured.
+8.33. MUST deliver a generated PDF to the frontend that requested it, not only to the server's data directory — the requester is frequently a device with no access to that directory.
+8.34. MUST let the desktop shell write a delivered file itself, because a `file://` page has no dependable download destination.
 
 ## 9. Invoice configuration
 
@@ -503,3 +505,4 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 23.4. MUST select the presentation from the viewport rather than from the runtime, so the desktop app and the web app each reach both.
 23.5. MUST validate both presentations with Playwright screenshots.
 23.6. SHOULD keep every v1 capability reachable in the mobile presentation, except where a section explicitly excludes it, as 14.25 does.
+23.7. MUST validate the write path end to end from two concurrent devices, because a screenshot proves a screen renders and not that pressing anything on it works.

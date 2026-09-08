@@ -15,6 +15,7 @@
     "seed": "deno run -A --node-modules-dir=manual tools/seed.ts",
     "web": "cd web && npm run dev",
     "web:build": "cd web && npm run build",
+    "journey": "cd web && npm run build && cd .. && node tools/journey.mjs",
     "shots": "cd web && npm run build && cd .. && node tools/screenshots.mjs",
     "desktop": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist desktop/main.ts",
     "desktop:build": "deno task web:build && deno desktop --backend webview --allow-read --allow-write --allow-env --exclude node_modules --exclude web/node_modules --include web/dist -o Worklog desktop/main.ts"

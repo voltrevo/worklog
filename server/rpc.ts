@@ -484,7 +484,16 @@ export async function handle(
       await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
       attachPdf(db, invoice.id, relative, now);
       ctx.log("info", "invoice", "rendered a PDF", { number: invoice.number, bytes: bytes.length });
-      return { path: relative, bytes: bytes.length, invoice: getInvoice(db, req.id) };
+      // 8.33 -- and back down the wire, because a file on the server's disk is not an export. The
+      // frontend that asked may be a phone on the other side of the room; `path` tells it where the
+      // canonical copy lives (17.11) and `pdfBase64` is the copy it can actually open.
+      return {
+        path: relative,
+        bytes: bytes.length,
+        fileName: name,
+        pdfBase64: toBase64(bytes),
+        invoice: getInvoice(db, req.id),
+      };
     }
 
     // ---------------------------------------------------------------- config

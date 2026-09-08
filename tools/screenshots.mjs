@@ -1,219 +1,40 @@
 /**
  * 23.5 — screenshots of both presentations, from a real browser against a real server.
  *
- *     node tools/screenshots.mjs
+ *     deno task shots
  *
- * Nothing is mocked. It seeds a database with invented data, starts the actual KPS listener, serves
- * the actual production bundle, and drives Chromium through the actual claim-admin handshake over
- * WebRTC. That makes this the end-to-end test as much as it is a screenshot tool: if the transport,
- * the protocol, the signing or the shells are broken, there are no pictures.
- *
- * `CHROME_PATH` points at a browser, because Playwright cannot download one in every environment.
+ * Nothing is mocked; `harness.mjs` has the reasons and the setup. This file is only the part that
+ * differs from `journey.mjs`: walk each shell's navigation and take a picture of every screen in
+ * it. If a screen throws while rendering, the run fails rather than saving a broken image.
  */
 
-import { spawn } from "node:child_process";
-import { createServer } from "node:http";
-import { access, mkdir, readFile, rm } from "node:fs/promises";
-import { extname, join } from "node:path";
-import { chromium } from "playwright";
+import { join } from "node:path";
+import { claimAndApprove, root, startRig } from "./harness.mjs";
 
-/**
- * Check `CHROME_PATH` before anything else, because Playwright's own diagnosis is worse than none.
- *
- * Handed `executablePath: undefined` it falls back to its bundled browser, and when that is absent
- * it prints a banner telling you to run `npx playwright install`. In a sandbox with no route to the
- * download CDN that command cannot succeed — and it *prunes* the shared browser cache on its way to
- * failing, so following the advice breaks every other harness on the machine. Half an hour of
- * seeding, listening and serving happens before the launch, so this belongs at the top.
- */
-async function requireBrowser() {
-  const path = process.env.CHROME_PATH;
-  const hint = "set CHROME_PATH to a Chromium binary (and LD_LIBRARY_PATH if it needs one). " +
-    "Do not run `npx playwright install`: it cannot reach the CDN here and it empties the shared cache first.";
-  if (!path) throw new Error(`screenshots: CHROME_PATH is not set — ${hint}`);
-  try {
-    await access(path);
-  } catch {
-    throw new Error(`screenshots: CHROME_PATH points at ${path}, which does not exist — ${hint}`);
-  }
-  return path;
-}
-
-const root = new URL("..", import.meta.url).pathname;
-const dist = join(root, "web/dist");
 const outDir = join(root, "docs");
 const dataDir = join(root, ".screenshots-data");
 const PORT = 41777;
 const HTTP_PORT = 5399;
 
-const DESKTOP = { width: 1440, height: 1000 };
-const MOBILE = { width: 390, height: 844, isMobile: true, deviceScaleFactor: 2 };
-
 const SCREENS = ["timer", "history", "pacing", "invoices", "admin", "settings"];
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".map": "application/json",
-  ".svg": "image/svg+xml",
-};
-
-function run(cmd, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd: root, stdio: "inherit", ...opts });
-    p.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`)));
-    p.on("error", reject);
-  });
-}
-
-/** Start the server and wait for the address it prints, which is the only way in (22.1). */
-function startServer() {
-  return new Promise((resolve, reject) => {
-    const p = spawn("deno", [
-      "run",
-      "-A",
-      "--node-modules-dir=manual",
-      "server/main.ts",
-      "--port",
-      String(PORT),
-      "--data",
-      dataDir,
-    ], { cwd: root });
-
-    let buffered = "";
-    const timer = setTimeout(
-      () => reject(new Error("the server never printed an address")),
-      60_000,
-    );
-    p.stdout.on("data", (chunk) => {
-      buffered += chunk.toString();
-      const match = /(\d+\.\d+\.\d+\.\d+:\d+:uEi[A-Za-z0-9_-]+)/.exec(buffered);
-      if (match) {
-        clearTimeout(timer);
-        resolve({ process: p, address: match[1] });
-      }
-    });
-    p.stderr.on("data", (c) => process.stderr.write(c));
-    p.on("exit", (code) => {
-      clearTimeout(timer);
-      reject(new Error(`the server exited ${code} before printing an address`));
-    });
-  });
-}
-
 async function main() {
-  const executablePath = await requireBrowser();
-  await rm(dataDir, { recursive: true, force: true });
-  await mkdir(outDir, { recursive: true });
+  const rig = await startRig({ dataDir, port: PORT, httpPort: HTTP_PORT });
 
-  console.log("seeding…");
-  // Seeded in the timezone the screenshots are taken in, or the fixture's nine-to-fives render as
-  // night shifts -- the entry timings are instants, and only the *dates* are zone-free.
-  await run("deno", ["run", "-A", "--node-modules-dir=manual", "tools/seed.ts", dataDir], {
-    env: { ...process.env, TZ: "Australia/Sydney" },
+  const { desktop, mobile } = await claimAndApprove(rig, {
+    onClaimScreen: (page) => shot(page, "claim-desktop"),
+    onRequestScreen: (page) => shot(page, "request-mobile"),
+    onAccessScreen: (page) => shot(page, "access-desktop"),
   });
 
-  console.log("starting the server…");
-  const server = await startServer();
-  console.log(`  ${server.address}`);
-
-  const http = createServer(async (req, res) => {
-    const path = req.url === "/" ? "/index.html" : (req.url ?? "/").split("?")[0];
-    try {
-      const body = await readFile(join(dist, path));
-      res.writeHead(200, { "content-type": MIME[extname(path)] ?? "application/octet-stream" });
-      res.end(body);
-    } catch {
-      res.writeHead(404).end("not found");
-    }
-  });
-  await new Promise((r) => http.listen(HTTP_PORT, "127.0.0.1", r));
-
-  const browser = await chromium.launch({
-    executablePath,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
-
-  let failures = 0;
-  const watch = (page, label) =>
-    page.on("pageerror", (e) => {
-      console.error(`  [${label}] page error: ${e.message}`);
-      failures++;
-    });
-
-  /**
-   * A context is a device.
-   *
-   * That is not incidental -- the device key lives in IndexedDB, so a fresh context has a fresh key
-   * and is a genuinely new device as far as the server is concerned. The first attempt at this
-   * harness opened a *third* context to play the admin and hung forever waiting for that one to be
-   * approved. The desktop page stays open instead, and does the approving.
-   */
-  const open = async (label, viewport, deviceName) => {
-    const context = await browser.newContext({
-      viewport: { width: viewport.width, height: viewport.height },
-      deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
-      isMobile: viewport.isMobile ?? false,
-      hasTouch: viewport.isMobile ?? false,
-      colorScheme: "light",
-      // Fixed, so a screenshot taken in Sydney and one taken in CI look the same.
-      timezoneId: "Australia/Sydney",
-      locale: "en-AU",
-    });
-    const page = await context.newPage();
-    watch(page, label);
-    // 22.3, 22.4 -- the address is device-local storage, so that is where the harness puts it.
-    // There is no URL to put it in, which is the point of 22.4.
-    await page.addInitScript(
-      ([address, name]) => {
-        localStorage.setItem("worklog.serverAddress", address);
-        localStorage.setItem("worklog.deviceName", name);
-      },
-      [server.address, deviceName],
-    );
-    await page.goto(`http://127.0.0.1:${HTTP_PORT}/`);
-    return { context, page };
-  };
-
-  // ---- the first device claims admin (13.6-13.9)
-  const desktop = await open("desktop", DESKTOP, "Studio Desktop");
-  const claim = desktop.page.getByRole("button", { name: "Claim admin" });
-  await claim.waitFor({ timeout: 30_000 });
-  await shot(desktop.page, outDir, "claim-desktop");
-  await claim.click();
-  await desktop.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+  // The desktop's own screens are captured after the approval rather than before, so `admin` shows
+  // a device list with something in it.
   await capture(desktop.page, "desktop");
-
-  // ---- the second is a new device, so it asks and the first approves (13.11-13.13, 13.27, 13.28)
-  const mobile = await open("mobile", MOBILE, "Pixel Phone");
-  const ask = mobile.page.getByRole("button", { name: "Ask for write access" });
-  await ask.waitFor({ timeout: 30_000 });
-  await shot(mobile.page, outDir, "request-mobile");
-  await ask.click();
-  await mobile.page.getByText("Waiting for approval").waitFor({ timeout: 15_000 });
-
-  console.log("  approving the phone from the desktop...");
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
-  await desktop.page.getByRole("button", { name: "Device access" }).click();
-  await desktop.page.getByRole("row", { name: /Pixel Phone/ })
-    .getByRole("button", { name: "write", exact: true })
-    .click();
-  await desktop.page.waitForTimeout(600);
-  await shot(desktop.page, outDir, "access-desktop");
-
-  await mobile.page.reload();
-  await mobile.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
   await capture(mobile.page, "mobile");
 
-  await mobile.context.close();
-  await desktop.context.close();
+  await rig.close();
 
-  await browser.close();
-  http.close();
-  server.process.kill();
-  await rm(dataDir, { recursive: true, force: true });
-
+  const failures = rig.errors.length;
   console.log(
     failures === 0 ? "\nall screens captured, no page errors" : `\n${failures} page errors`,
   );
@@ -229,7 +50,7 @@ async function capture(page, label) {
     }
     await nav.click();
     await page.waitForTimeout(400);
-    await shot(page, outDir, `${screen}-${label}`);
+    await shot(page, `${screen}-${label}`);
   }
 }
 
@@ -237,9 +58,8 @@ function navLabel(screen) {
   return screen.charAt(0).toUpperCase() + screen.slice(1);
 }
 
-async function shot(page, dir, name) {
-  const file = join(dir, `${name}.png`);
-  await page.screenshot({ path: file, fullPage: true });
+async function shot(page, name) {
+  await page.screenshot({ path: join(outDir, `${name}.png`), fullPage: true });
   console.log(`  ${name}.png`);
 }
 

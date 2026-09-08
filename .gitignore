@@ -12,7 +12,10 @@ kps-key.pem
 *.sqlite-wal
 data/
 
-# Vite output and the seeded databases the screenshot harness makes.
+# Vite output and the seeded databases the browser harnesses make. Both remove theirs on the way
+# out; these catch the run that was interrupted before it could.
 web/dist/
+.screenshots-data/
+.journey-data/
 Worklog/
 Worklog.app/

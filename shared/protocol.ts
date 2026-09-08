@@ -253,6 +253,23 @@ export interface StoredInvoiceWire {
   paidAt?: Instant;
 }
 
+/**
+ * 8.33 — what `invoice-pdf` answers with.
+ *
+ * Two copies of the same document, deliberately. `path` is the canonical one the server keeps
+ * (17.11, 11.18) and is the only one that survives the request; `pdfBase64` is the one the person
+ * who pressed the button gets, because that person is very often not sitting at the server.
+ */
+export interface InvoicePdfResult {
+  /** Relative to the server's data directory. Not a path the caller can open. */
+  path: string;
+  bytes: number;
+  /** Sanitised from the invoice number, so the caller does not have to invent one. */
+  fileName: string;
+  pdfBase64: string;
+  invoice: StoredInvoiceWire;
+}
+
 export type Response =
   | { ok: true; result: unknown }
   /** A refusal on the merits, with a code the UI can branch on and a sentence it can show. */

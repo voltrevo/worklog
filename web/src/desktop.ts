@@ -24,9 +24,11 @@ interface DesktopBindings {
   __worklogSign(messageBase64: string): Promise<string>;
   __worklogSettingsGet(): Promise<string>;
   __worklogSettingsSet(json: string): Promise<boolean>;
+  /** 8.33 — write a generated file where the person can find it, and say where that was. */
+  __worklogSaveFile(fileName: string, base64: string): Promise<string>;
 }
 
-function bindings(): Partial<DesktopBindings> {
+export function bindings(): Partial<DesktopBindings> {
   return globalThis as unknown as Partial<DesktopBindings>;
 }
 

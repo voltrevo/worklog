@@ -23,6 +23,7 @@ import {
   type Response,
 } from "@worklog/shared/protocol";
 import { open } from "./db.ts";
+import { encodeSubscribeAck } from "./framing.ts";
 import { ChallengeStore } from "./access.ts";
 import { getConfig } from "./config.ts";
 import { append, loggerFor, prune } from "./logs.ts";
@@ -165,11 +166,15 @@ async function serveStream(ctx: ServerContext, session: Session, stream: KpsStre
     }
 
     const result = await handle(ctx, session, req);
-    await writer.write(encodeJson({ ok: true, result } satisfies Response));
 
     if (req.t === "subscribe") {
-      // 1.12, 1.13 -- the response is followed by events until the stream goes away. The push
-      // closure is what `broadcast` reaches; failures there mark the session for removal.
+      // 1.12, 1.13 -- the response is followed by events until the stream goes away, so from here
+      // the stream is line-delimited and the acknowledgement is the first line. It used to go out
+      // through `encodeJson` like every other response, with no newline, so it and the first event
+      // arrived as one unparseable string and that event was dropped. See `framing.ts`.
+      await writer.write(encodeSubscribeAck({ ok: true, result } satisfies Response));
+
+      // The push closure is what `broadcast` reaches; failures there mark the session for removal.
       session.push = (event: Event) => {
         writer.write(encodeEvent(event)).catch(() => {
           delete session.push;
@@ -183,6 +188,8 @@ async function serveStream(ctx: ServerContext, session: Session, stream: KpsStre
       return; // deliberately left open
     }
 
+    // Every other request: one bare JSON body, with the closing of the write half as the delimiter.
+    await writer.write(encodeJson({ ok: true, result } satisfies Response));
     await writer.close();
   } catch (err) {
     const response: Response = err instanceof Refused

@@ -20,7 +20,8 @@ import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import type { InvoiceLine, InvoiceWarning } from "@worklog/shared/invoice";
-import type { StoredInvoiceWire } from "@worklog/shared/protocol";
+import type { InvoicePdfResult, StoredInvoiceWire } from "@worklog/shared/protocol";
+import { bytesFromBase64, type Saved, saveFile } from "../download.ts";
 
 const COLUMNS = [
   "Date",
@@ -194,6 +195,20 @@ function Draft(
   const { call } = useStore();
   const shown = invoice.snapshot ?? invoice.draft;
   const [confirming, setConfirming] = useState(false);
+  const [saved, setSaved] = useState<Saved>();
+
+  /**
+   * 8.33 — generate, then actually hand it over.
+   *
+   * This used to end at the `call`: the server rendered the document, wrote it into its own data
+   * directory, and the button went back to looking exactly as it had. Nothing was broken enough to
+   * fail, which is why it survived — the file existed, on a disk the person pressing the button
+   * generally cannot reach.
+   */
+  const generate = async () => {
+    const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
+    setSaved(await saveFile(res.fileName, bytesFromBase64(res.pdfBase64), "application/pdf"));
+  };
 
   return (
     <div className="stack" style={{ gap: 14, marginTop: 14 }}>
@@ -339,10 +354,17 @@ function Draft(
             className="btn"
             type="button"
             disabled={busy}
-            onClick={() => void act(() => call({ t: "invoice-pdf", id: invoice.id }))}
+            onClick={() => void act(generate)}
           >
             Generate PDF
           </button>
+          {saved && (
+            // A browser cannot say where its own download went, so it does not pretend to; the
+            // desktop shell wrote the file itself and can.
+            <span className="muted" style={{ alignSelf: "center" }}>
+              {saved.path ? `Saved to ${saved.path}` : `Downloaded ${saved.fileName}`}
+            </span>
+          )}
 
           <div className="row wrap">
             {invoice.status === "draft" && !confirming && (

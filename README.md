@@ -121,6 +121,22 @@ client against the identical listener under Node echoes fine. It costs this proj
 both frontends are browsers and take the WebRTC path — which does work, and is exercised end to end
 by `deno task shots`.
 
+## Two browser harnesses, and what each is for
+
+`deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
+works. They share `tools/harness.mjs` and run on different ports, so both can run at once.
+
+The distinction earned itself. The screenshots were green for a fortnight while **"Generate PDF"
+rendered a document onto the server's disk and handed the person who pressed it nothing** — the
+button existed, the screen rendered, the call succeeded, and the result was discarded (8.33). And
+underneath that, **every subscription silently dropped its first event**: the subscribe
+acknowledgement went out through `encodeJson` with no trailing newline while every event after it
+had one, so the two arrived as one unparseable string and the client's `catch` counted it as one
+event lost. Nothing failed. The device that made a change refreshed itself and looked right; the
+second device was one event behind forever. It took two browsers to see it, and the test that
+should have caught it was green because its *fake* transport wrote the newline the real server
+did not.
+
 ## The screenshots are the end-to-end test
 
 `tools/screenshots.mjs` mocks nothing. It seeds a database, starts the real KPS listener, serves the
