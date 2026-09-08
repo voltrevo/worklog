@@ -1,22 +1,25 @@
+node_modules/
+dist/
+*.log
 
 # KPS identity — the certhash is the server's identity, so this must never be committed.
+kps-cert.pem
+kps-key.pem
+
 # Server state.
-# Vite output and the seeded databases the browser harnesses make. Both remove theirs on the way
-# out; these catch the run that was interrupted before it could.
-*.log
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
-.desktop-selftest/
-.journey-data/
-.screenshots-data/
-Worklog.app/
-Worklog/
 data/
-desktopreal/
-dist/
-kps-cert.pem
-kps-key.pem
-node_modules/
+
+# Vite output, and the seeded databases the browser harnesses make. Both harnesses remove theirs on
+# the way out; these catch the run that was interrupted before it could.
 web/dist/
+.screenshots-data/
+.journey-data/
+
+# Built desktop apps: `deno task desktop`, `deno task desktop:build`, `deno task desktop:check`.
 worklog-dev/
+Worklog/
+Worklog.app/
+.desktop-selftest/
