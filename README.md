@@ -126,10 +126,14 @@ child count under `#root`, and any boot error. `inline.mjs` records what a `file
 otherwise sanitises to `Script error. @ ?:0`, and `main.tsx` hands React's own errors to the same
 place, because a packaged app has no console to read and no devtools to open.
 
-What is still unverified is **the desktop window reaching a server**: this container's WebKitGTK
-has no `libnice` and no `gstwebrtc`, so a WebRTC dial cannot complete in it at all. Everything
-below the transport is covered by `desktop:check`; the transport is covered end to end in Chromium
-by `deno task journey`.
+What is still unverified is **the desktop window reaching a server**, and it is unverifiable here
+rather than untried: this WebKitGTK has no `RTCPeerConnection` at all — the constructor is
+undefined, not broken — so no dial can be attempted from it. Everything below the transport is
+covered by `desktop:check`; the transport is covered end to end in Chromium by `deno task journey`.
+
+That is a property of how a webview was compiled rather than of this container, so the app now says
+so in a sentence instead of throwing `Can't find variable: RTCPeerConnection`, which reads like a
+bug in the frontend and is not one.
 
 ## Why there is a package.json
 

@@ -7,6 +7,10 @@
  * Both frontends land here. The GitHub Pages tab dials over WebRTC (1.5), and so does the Deno
  * Desktop window — its shell is a webview, so it is a browser too, which is why there is one
  * transport rather than two.
+ *
+ * That last sentence has a catch, which `requireWebRTC` exists to say out loud: a webview is a
+ * browser only to the extent that it was built like one, and WebRTC is a build option. WebKitGTK
+ * compiled without it has no `RTCPeerConnection` at all — not a broken one, an absent one.
  */
 
 import { dial } from "@kpstreams/webrtc-client";
@@ -19,10 +23,28 @@ export interface KpsTransport extends Transport {
   readonly closed: Promise<void>;
 }
 
+/**
+ * Fail with a sentence rather than with `Can't find variable: RTCPeerConnection`.
+ *
+ * The engine's own message is accurate and useless: it names a variable, which suggests a bug in
+ * this code, when the truth is that the browser this is running in cannot do WebRTC at all and no
+ * amount of retrying or re-pasting the address will change that. The distinction matters most in
+ * the desktop window, where there is no console to look at and the only thing the person sees is
+ * whatever this throw becomes.
+ */
+function requireWebRTC(): void {
+  if (typeof RTCPeerConnection !== "undefined") return;
+  throw new Error(
+    "this browser has no WebRTC, so it cannot reach a worklog server. In the desktop window that " +
+      "means the webview was built without it; in a tab, that the browser has it disabled.",
+  );
+}
+
 export async function connect(
   address: string,
   signal?: AbortSignal,
 ): Promise<KpsTransport> {
+  requireWebRTC();
   const conn: Conn = await dial(address.trim(), signal ? { signal } : {});
   let closedResolve!: () => void;
   const closed = new Promise<void>((r) => {
