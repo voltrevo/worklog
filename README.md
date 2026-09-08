@@ -153,6 +153,15 @@ client against the identical listener under Node echoes fine. It costs this proj
 both frontends are browsers and take the WebRTC path — which does work, and is exercised end to end
 by `deno task shots`.
 
+## How it is checked
+
+| | |
+| --- | --- |
+| `deno task gate` | fmt, lint, types, **221 unit tests**, the browser build, then the published-bundle guard |
+| `deno task journey` | **45 checks** driving the write path from three concurrent browsers |
+| `deno task desktop:check` | **10 checks** on the desktop bridge, ending with "does the real app mount in WebKit" |
+| `deno task shots` | 16 screenshots, both presentations, nothing mocked |
+
 ## Two browser harnesses, and what each is for
 
 `deno task shots` proves every screen renders. `deno task journey` proves pressing things on them

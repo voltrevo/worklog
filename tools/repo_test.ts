@@ -29,6 +29,19 @@ async function trackedFiles(): Promise<string[]> {
     args: ["ls-files", "-z"],
     cwd: new URL("..", import.meta.url).pathname,
     stdout: "piped",
+    /**
+     * Nothing inherited.
+     *
+     * Deno refuses to spawn with `LD_LIBRARY_PATH` in the environment unless granted blanket
+     * `--allow-run`, and it is right to: that variable can make a child load anything. The browser
+     * harnesses set it, so a suite run in a shell that had sourced their env failed here and
+     * nowhere else — passing on its own, failing after `deno task shots`, which is the most
+     * annoying shape a failure comes in.
+     *
+     * `git ls-files` needs no environment at all: Deno resolves the program in this process, and
+     * the repository is found from `cwd`.
+     */
+    clearEnv: true,
   });
   const { success, stdout } = await git.output();
   if (!success) throw new Error("git ls-files failed");
