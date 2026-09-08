@@ -9,12 +9,14 @@
 
 import { useState } from "react";
 import { useStore } from "../state.tsx";
+import { usePresentation } from "../App.tsx";
 import { duration, longDate, monthName, parseDuration, timeOfDay } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
 export function History() {
   const { snapshot, month, setMonth, call, refresh, phase } = useStore();
+  const presentation = usePresentation();
   const canWrite = phase.k === "ready" && phase.role !== "read";
   const [editing, setEditing] = useState<string | null>(null);
 
@@ -31,7 +33,7 @@ export function History() {
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
-        <h1>History</h1>
+        {presentation === "desktop" && <h1>History</h1>}
         <div className="row">
           <button
             className="btn"
@@ -79,88 +81,127 @@ export function History() {
                 <h2>{longDate(date)}</h2>
                 <span className="pill accent tabular">{duration(total)}</span>
               </div>
-              <div className="scroll-x">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Billing tag</th>
-                      <th style={{ textAlign: "right" }}>Duration</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entries.map((e) =>
-                      editing === e.id
-                        ? (
-                          <EditRow
-                            key={e.id}
-                            entry={e}
-                            tags={snapshot.recentTags}
-                            onDone={async () => {
-                              setEditing(null);
-                              await refresh();
-                            }}
-                          />
-                        )
-                        : (
-                          <tr key={e.id}>
-                            <td>
-                              {/* 19.6 */}
-                              {e.timing
-                                ? (
-                                  <span className="tabular">
-                                    {timeOfDay(e.timing.startedAt)} – {timeOfDay(e.timing.endedAt)}
-                                  </span>
-                                )
-                                : <span className="pill">duration only</span>}
-                            </td>
-                            {/* 19.5 — the tag is visible while reviewing, not hidden behind an edit. */}
-                            <td>{e.billingTag}</td>
-                            <td
-                              className="tabular"
-                              style={{ textAlign: "right" }}
-                            >
-                              {duration(e.durationMs)}
-                            </td>
-                            <td
-                              style={{
-                                textAlign: "right",
-                                whiteSpace: "nowrap",
+              {presentation === "mobile"
+                ? (
+                  <div className="entries">
+                    {entries.map((e) => (
+                      <div className="entry" key={e.id}>
+                        <div className="what">
+                          <strong>{e.billingTag}</strong>
+                          <span className="faint">
+                            {/* 19.6 — still distinguished, just not in a column. */}
+                            {e.timing
+                              ? `${timeOfDay(e.timing.startedAt)} – ${timeOfDay(e.timing.endedAt)}`
+                              : "duration only"}
+                          </span>
+                        </div>
+                        <div className="how-long tabular">{duration(e.durationMs)}</div>
+                        {canWrite && (
+                          <div className="acts">
+                            <button className="link" type="button" onClick={() => setEditing(e.id)}>
+                              Edit
+                            </button>
+                            <button
+                              className="link"
+                              type="button"
+                              onClick={async () => {
+                                await call({ t: "entry-delete", id: e.id });
+                                await refresh();
                               }}
                             >
-                              {canWrite && (
-                                <>
-                                  <button
-                                    className="link"
-                                    type="button"
-                                    onClick={() => setEditing(e.id)}
-                                  >
-                                    Edit
-                                  </button>
-                                  {" · "}
-                                  <button
-                                    className="link"
-                                    type="button"
-                                    onClick={async () => {
-                                      await call({
-                                        t: "entry-delete",
-                                        id: e.id,
-                                      });
-                                      await refresh();
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+                : (
+                  <div className="scroll-x">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>When</th>
+                          <th>Billing tag</th>
+                          <th style={{ textAlign: "right" }}>Duration</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((e) =>
+                          editing === e.id
+                            ? (
+                              <EditRow
+                                key={e.id}
+                                entry={e}
+                                tags={snapshot.recentTags}
+                                onDone={async () => {
+                                  setEditing(null);
+                                  await refresh();
+                                }}
+                              />
+                            )
+                            : (
+                              <tr key={e.id}>
+                                <td>
+                                  {/* 19.6 */}
+                                  {e.timing
+                                    ? (
+                                      <span className="tabular">
+                                        {timeOfDay(e.timing.startedAt)} –{" "}
+                                        {timeOfDay(e.timing.endedAt)}
+                                      </span>
+                                    )
+                                    : <span className="pill">duration only</span>}
+                                </td>
+                                {/* 19.5 — the tag is visible while reviewing, not hidden behind an edit. */}
+                                <td>{e.billingTag}</td>
+                                <td
+                                  className="tabular"
+                                  style={{ textAlign: "right" }}
+                                >
+                                  {duration(e.durationMs)}
+                                </td>
+                                <td
+                                  style={{
+                                    textAlign: "right",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {canWrite && (
+                                    <>
+                                      <button
+                                        className="link"
+                                        type="button"
+                                        onClick={() => setEditing(e.id)}
+                                      >
+                                        Edit
+                                      </button>
+                                      {" · "}
+                                      <button
+                                        className="link"
+                                        type="button"
+                                        onClick={async () => {
+                                          await call({
+                                            t: "entry-delete",
+                                            id: e.id,
+                                          });
+                                          await refresh();
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
             </div>
           );
         })}

@@ -27,7 +27,8 @@
     "packageJson": {
       "dependencies": [
         "npm:@kpstreams/server@~0.2.1",
-        "npm:@types/node@22"
+        "npm:@types/node@22",
+        "npm:playwright@^1.63.0"
       ]
     }
   }

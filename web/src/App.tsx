@@ -12,7 +12,7 @@
  * how much room there is, not what the app was compiled into.
  */
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { StoreProvider, useStore } from "./state.tsx";
 import { Connect } from "./screens/Connect.tsx";
 import { Timer } from "./screens/Timer.tsx";
@@ -29,6 +29,20 @@ export type ScreenId =
   | "invoices"
   | "admin"
   | "settings";
+
+/**
+ * Which presentation a screen is being drawn in.
+ *
+ * 23.3 lets the shell, the navigation *and the layout* differ, and this is how a screen finds out.
+ * It is not a licence to fork behaviour: what changes is how a list is drawn, never what the list
+ * says. The first thing it bought was history, whose desktop table clipped its own Edit and Delete
+ * off the right edge of a phone — precisely the narrowed-desktop layout that 23.2 forbids.
+ */
+const Presentation = createContext<"desktop" | "mobile">("desktop");
+
+export function usePresentation(): "desktop" | "mobile" {
+  return useContext(Presentation);
+}
 
 interface NavItem {
   id: ScreenId;
@@ -182,9 +196,13 @@ function Shell() {
   // useful thing to do and a sidebar of dead links is worse than no sidebar.
   if (phase.k !== "ready") return <Connect />;
 
-  return mobile
-    ? <MobileShell screen={screen} setScreen={setScreen} />
-    : <DesktopShell screen={screen} setScreen={setScreen} />;
+  return (
+    <Presentation.Provider value={mobile ? "mobile" : "desktop"}>
+      {mobile
+        ? <MobileShell screen={screen} setScreen={setScreen} />
+        : <DesktopShell screen={screen} setScreen={setScreen} />}
+    </Presentation.Provider>
+  );
 }
 
 export function App() {

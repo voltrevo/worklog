@@ -8,6 +8,7 @@
   },
   "//types": "Once a package.json exists Deno resolves node: specifiers through node_modules, and node:sqlite's types come from @types/node. Without it `deno check` fails on every file that touches the database.",
   "devDependencies": {
-    "@types/node": "^22"
+    "@types/node": "^22",
+    "playwright": "^1.63.0"
   }
 }

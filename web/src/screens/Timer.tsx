@@ -32,9 +32,8 @@ export function Timer() {
   const todayMs = recordedMs + runningMs;
 
   // 3.2, 3.3 — measured against the day's own scheduled hours rather than a monthly average.
-  const targetHours = snapshot.pacing.days.find((d) => d.date === today())?.remaining ?? 0;
-  const scheduledToday = targetHours + (snapshot.pacing.actualToday ?? 0);
-  const targetMs = Math.max(0, scheduledToday) * 3_600_000;
+  const targetMs = (snapshot.pacing.days.find((d) => d.date === today())?.scheduled ?? 0) *
+    3_600_000;
   const remainingMs = targetMs - todayMs;
   const progress = targetMs > 0 ? Math.min(1, todayMs / targetMs) : 0;
   const paced = pace(snapshot.pacing.paceHours);

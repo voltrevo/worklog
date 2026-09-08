@@ -87,9 +87,14 @@ function fill(month: string, upTo?: string): number {
     if (weekday < 6 && random() > 0.92) continue; // the odd day off
 
     const tag = TAGS[Math.floor(random() * TAGS.length)] ?? TAGS[0]!;
-    const hours = weekday >= 6 ? 2 + random() * 3 : 5 + random() * 4;
-    const startHour = 9 + Math.floor(random() * 2);
-    const startedAt = new Date(`${date}T0${startHour}:00:00`).getTime();
+    // Quarter hours, because that is how people actually record time -- and because an invoice
+    // full of $1,060.03 lines reads as a bug even when the arithmetic is right.
+    const raw = weekday >= 6 ? 2 + random() * 3 : 5 + random() * 4;
+    const hours = Math.round(raw * 4) / 4;
+    // Padded rather than prefixed with "0": hour 10 built `T010:00:00`, which `Date` rejects, and
+    // the resulting NaN reached the database as a NULL `created_at`. The schema caught it.
+    const startHour = String(9 + Math.floor(random() * 2)).padStart(2, "0");
+    const startedAt = new Date(`${date}T${startHour}:00:00`).getTime();
     addEntry(db, {
       date,
       durationMs: Math.round(hours * HOUR),

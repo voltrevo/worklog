@@ -11,7 +11,11 @@
     "gate": "deno fmt --check && deno lint && deno task check && deno task test",
     "serve": "deno run -A --node-modules-dir=manual server/main.ts",
     "check:serve": "deno check --node-modules-dir=manual server/main.ts",
-    "deps": "npm install --no-audit --no-fund"
+    "deps": "npm install --no-audit --no-fund",
+    "seed": "deno run -A --node-modules-dir=manual tools/seed.ts",
+    "web": "cd web && npm run dev",
+    "web:build": "cd web && npm run build",
+    "shots": "cd web && npm run build && cd .. && node tools/screenshots.mjs"
   },
   "fmt": {
     "lineWidth": 100,

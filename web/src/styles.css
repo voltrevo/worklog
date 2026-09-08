@@ -602,3 +602,48 @@ i.swatch.off {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ entries, stacked
+ *
+ * 23.2 — the phone's list of work is not the desktop table at a smaller size. A table with six
+ * columns on a 390px screen clips its own actions off the right edge, which is how the first
+ * mobile screenshot came out. Each entry is its own block instead.
+ */
+
+.entries {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--s-3);
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.entry .what {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.entry .what .faint {
+  font-size: 12px;
+}
+
+.entry .how-long {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.entry .acts {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--s-4);
+  margin-top: 4px;
+  font-size: 13px;
+}

@@ -43,6 +43,14 @@ export interface DayPacing {
   date: DateString;
   /** Hours recorded against this date. */
   actual: number;
+  /**
+   * The length of this day's scheduled interval, whatever the clock has done to it.
+   *
+   * Reported rather than left to be reconstructed: `actual + remaining` is this day's
+   * *contribution to the projection*, not its length, and the home screen briefly showed a
+   * nine-to-five Tuesday as "11h 23m scheduled" because the two look alike at a glance.
+   */
+  scheduled: number;
   /** Hours of this date's interval still ahead of `now`. */
   remaining: number;
   /** What this day contributes to the projection: `actual + remaining`. */
@@ -110,6 +118,7 @@ export function project(input: PacingInput): Pacing {
     return {
       date: shape.date,
       actual: worked,
+      scheduled: shape.hours,
       remaining,
       contribution: worked + remaining,
       ...(shape.holiday ? { holiday: shape.holiday } : {}),
