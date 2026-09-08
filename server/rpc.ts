@@ -34,6 +34,7 @@ import {
   checkClaim,
   claimAdmin,
   deny,
+  deviceCount,
   findDevice,
   listDevices,
   listPending,
@@ -190,18 +191,19 @@ export async function handle(
   switch (req.t) {
     // ---------------------------------------------------------------- access
     case "hello": {
+      // An unproved hint (see the request's own comment): it picks which button the frontend
+      // draws, and the signed claim that follows is what actually decides anything.
+      const asserted = req.publicKey ? fromBase64(req.publicKey) : session.publicKey;
       const result: HelloResult = {
         protocolVersion: PROTOCOL_VERSION,
         serverCertHash: ctx.serverCertHash,
         challenge: toBase64(ctx.challenges.issue(now)),
-        offer: session.publicKey ? purposeFor(db, session.publicKey) : "claim",
+        offer: asserted ? purposeFor(db, asserted) : deviceCount(db) === 0 ? "claim" : "request",
         version: ctx.version,
       };
-      // A device that has already been here is told its role without having to ask.
-      if (session.publicKey) {
-        const device = findDevice(db, session.publicKey);
+      if (asserted) {
+        const device = findDevice(db, asserted);
         if (device) result.role = device.role;
-        result.offer = purposeFor(db, session.publicKey);
       }
       return result;
     }

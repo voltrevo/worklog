@@ -77,8 +77,15 @@ export interface Clock {
 }
 
 export type Request =
-  /** Unauthenticated. Returns a fresh challenge and what this device should be offered. */
-  | { t: "hello" }
+  /**
+   * Unauthenticated. Returns a fresh challenge and what this device should be offered.
+   *
+   * `publicKey` is a *hint*, and the server treats it as one: on a new connection nothing has been
+   * proved yet, so without it the server cannot tell a returning device from a new one and would
+   * show "Claim admin" on every reload. It decides which button to draw and nothing else — the
+   * claim that follows still has to be signed.
+   */
+  | { t: "hello"; publicKey?: string }
   | { t: "claim-admin"; claim: WireClaim; signature: string }
   | { t: "request-access"; claim: WireClaim; signature: string }
   | { t: "authenticate"; claim: WireClaim; signature: string }

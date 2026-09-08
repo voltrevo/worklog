@@ -99,8 +99,16 @@ export function authMessage(claim: AuthClaim): Uint8Array {
 
 const ED = { name: "Ed25519" } as const;
 
+/**
+ * A device key that can sign and cannot be read.
+ *
+ * `extractable: false` is honoured for the private half; Ed25519 leaves the *public* half
+ * extractable regardless, which is what makes a non-extractable pair usable at all. So 13.4 and
+ * 20.5 are properties of the key rather than rules this code follows: there is no call that
+ * returns the private bytes, to us or to anything else running on the page.
+ */
 export async function generateDeviceKey(): Promise<CryptoKeyPair> {
-  return await crypto.subtle.generateKey(ED, true, ["sign", "verify"]) as CryptoKeyPair;
+  return await crypto.subtle.generateKey(ED, false, ["sign", "verify"]) as CryptoKeyPair;
 }
 
 export async function exportPublicKey(pair: CryptoKeyPair): Promise<Uint8Array> {

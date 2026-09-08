@@ -4,11 +4,14 @@
     "./server"
   ],
   "tasks": {
-    "check": "deno check shared/ server/",
+    "check": "deno check shared/ $(ls server/*.ts | grep -v main.ts)",
     "test": "deno test shared/ server/",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "gate": "deno fmt --check && deno lint && deno task check && deno task test"
+    "gate": "deno fmt --check && deno lint && deno task check && deno task test",
+    "serve": "deno run -A --node-modules-dir=manual server/main.ts",
+    "check:serve": "deno check --node-modules-dir=manual server/main.ts",
+    "deps": "npm install --no-audit --no-fund"
   },
   "fmt": {
     "lineWidth": 100,

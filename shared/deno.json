@@ -8,6 +8,7 @@
     "./invoice": "./invoice.ts",
     "./types": "./types.ts",
     "./auth": "./auth.ts",
-    "./protocol": "./protocol.ts"
+    "./protocol": "./protocol.ts",
+    "./client": "./client.ts"
   }
 }

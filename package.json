@@ -1,0 +1,13 @@
+{
+  "name": "worklog-server-deps",
+  "private": true,
+  "//": "npm installs the KPS listener's native addons; Deno then uses this node_modules directly.",
+  "//why": "Deno's own npm resolver cannot install @kpstreams/server today: its QUIC backend lists @infisical/quic-darwin-arm64 as an optionalDependency and that package 404s on the registry. npm skips a failing optional dependency; Deno treats it as fatal. Run `npm install` once, then `deno task serve`.",
+  "dependencies": {
+    "@kpstreams/server": "^0.2.1"
+  },
+  "//types": "Once a package.json exists Deno resolves node: specifiers through node_modules, and node:sqlite's types come from @types/node. Without it `deno check` fails on every file that touches the database.",
+  "devDependencies": {
+    "@types/node": "^22"
+  }
+}
