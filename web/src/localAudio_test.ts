@@ -40,7 +40,21 @@ interface Calls {
 function stubBrowser(): { calls: Calls; restore: () => void } {
   const calls: Calls = { play: 0, pause: 0, seeks: [], gains: [], resumed: 0, created: [] };
   const g = globalThis as Record<string, unknown>;
-  const saved = { ...g };
+
+  /**
+   * Saved as *descriptors*, and restored with `defineProperty`.
+   *
+   * The first version did `const saved = { ...globalThis }`, which copies only enumerable own
+   * properties — and `URL`, `Blob`, `Audio` and `AudioContext` are all non-enumerable. So
+   * `saved.URL` was `undefined`, `restore()` assigned `globalThis.URL = undefined`, and every
+   * later test file in the same process that says `new URL(...)` broke. It passed in isolation and
+   * failed in the suite, which is the signature of exactly this mistake and cost the same
+   * afternoon twice.
+   */
+  const NAMES = ["Audio", "AudioContext", "URL", "Blob"] as const;
+  const saved = new Map(
+    NAMES.map((n) => [n, Object.getOwnPropertyDescriptor(globalThis, n)] as const),
+  );
 
   class FakeAudio {
     loop = false;
@@ -108,10 +122,11 @@ function stubBrowser(): { calls: Calls; restore: () => void } {
   return {
     calls,
     restore: () => {
-      g.Audio = saved.Audio;
-      g.AudioContext = saved.AudioContext;
-      g.URL = saved.URL;
-      g.Blob = saved.Blob;
+      for (const name of NAMES) {
+        const descriptor = saved.get(name);
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete g[name]; // It was not there before; leaving a stub behind is its own leak.
+      }
     },
   };
 }
