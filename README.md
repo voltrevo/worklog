@@ -124,7 +124,7 @@ by `deno task shots`.
 ## Two browser harnesses, and what each is for
 
 `deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
-works — forty-one checks across three concurrent browsers: run a timer and watch the other device
+works — forty-five checks across three concurrent browsers: run a timer and watch the other device
 learn about it unasked, record time from the phone, edit an entry down to duration-only, delete
 one, write a work note and see it arrive, record a voice note through a synthetic microphone and play
 it back off the server's disk, wait for a server-initiated prompt to reach both devices, invoice a month, take delivery of the PDF, issue it, and
@@ -138,6 +138,16 @@ and device lists once on mount, so `access-request` broadcast, the store refresh
 lists carried on showing what they had. The request appeared if you navigated away and came back.
 "Show pending requests to admins" (13.25) is not much use when the showing happens before the
 request does. The lists now follow the store's snapshot, like every other screen.
+
+**The address is the credential, and nothing checked it stayed out of the bundle.** `web/dist`
+publishes to Pages on every push, and 22.5 forbids a server address in it — `<ip>:<port>:<certhash>`
+is the whole of what a stranger needs to reach the server and start asking for access, which is why
+13.41 treats it as the bootstrap secret. It was true, by argument: the address lives in device
+storage and no build step touches it. `web/bundle_test.ts` makes it a check, and runs *after*
+`web:build` so it reads the bundle that is about to ship rather than whichever one was lying around.
+The discriminator is length — a real certhash is forty-odd base64url characters, and the example on
+the connect screen is `uEiA…`, which cannot become one by accident. A guard that fired on the
+placeholder would be switched off, and then it would miss the real thing too.
 
 **A device could lose its own identity, and one reload was not enough to see it.** The device key
 lives in IndexedDB, and two modules opened that database independently: `deviceKeys.ts` at version

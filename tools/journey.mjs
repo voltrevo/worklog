@@ -17,6 +17,7 @@
  * once without one quietly connecting to the other's listener.
  */
 
+import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
@@ -47,6 +48,19 @@ const FIRST_MONDAY = (() => {
   const day = first.getUTCDate() + ((8 - first.getUTCDay()) % 7);
   return `${at("year")}-${at("month")}-${String(day).padStart(2, "0")}`;
 })();
+
+/**
+ * A minimal but real Ogg page, so `setInputFiles` hands the app something a browser will accept as
+ * audio rather than a text file with an audio MIME type.
+ *
+ * It is a fixture, not music: what section 14 stores and reloads is a name and a byte count, and
+ * playback is the browser's problem. Base64 rather than a file on disk because a binary fixture
+ * that nothing can read is the sort of thing that rots without anyone noticing.
+ */
+const OGG_BYTES = Buffer.from(
+  "T2dnUwACAAAAAAAAAABtSAAAAAAAAKvhFJ0BHgF2b3JiaXMAAAAAAUSsAAAAAAAAgLsAAAAAAAC4AQ==",
+  "base64",
+);
 
 let checks = 0;
 const failures = [];
@@ -436,6 +450,67 @@ async function main() {
       ),
     );
   }
+
+  // ---------------------------------------------------------------- the local loop
+  //
+  // Section 14, which has no end-to-end coverage at all: `gain.ts` has the decibel curve under
+  // unit test, and everything around it — storing a file, surviving a reload, and above all
+  // *staying on this device* — has none.
+  //
+  // 14.16 and 14.17 are the interesting claim, and they are a cross-device negative: two devices
+  // configure this independently and neither the server nor the other one can tell. A negative is
+  // exactly what one browser cannot check, so it is checked here by configuring the desktop and
+  // then looking at the phone.
+  console.log("\nlocal audio:");
+  await nav(desktop.page, "Settings");
+  await desktop.page.locator('input[type="file"]').setInputFiles({
+    name: "loop.ogg",
+    mimeType: "audio/ogg",
+    buffer: OGG_BYTES,
+  });
+  check(
+    "a chosen file is copied onto this device",
+    await until(
+      "loop stored",
+      desktop.page,
+      (p) => p.getByText(/loop\.ogg/).isVisible(),
+    ),
+  );
+
+  await desktop.page.reload();
+  await desktop.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+  await nav(desktop.page, "Settings");
+  check(
+    "and is still there after a reload",
+    await until(
+      "loop persisted",
+      desktop.page,
+      (p) => p.getByText(/loop\.ogg/).isVisible(),
+    ),
+  );
+
+  // 14.3–14.5, 16.1, 16.3. The phone is authorised, connected, and looking at the same server.
+  // 14.25 — and the phone has no audio card at all, which is the requirement rather than an
+  // oversight: autoplay restrictions and background suspension make 14.12 unhonourable there.
+  //
+  // The first version of this check asserted the phone did not show `loop.ogg`, with a canary
+  // waiting for its empty file chooser. The canary went red, and it was right to: the chooser is
+  // never on a phone, so "no loop.ogg here" was a sentence that could not have been false. Two
+  // checks now, because the pair is what has content — the settings screen is up, and the feature
+  // is not on it.
+  await nav(mobile.page, "Settings");
+  const phoneSettings = await until(
+    "phone settings",
+    mobile.page,
+    (p) => p.getByText("Working hours").isVisible(),
+  );
+  check("the phone's settings screen is up", phoneSettings);
+  check(
+    "and 14.25 keeps the looping audio off it entirely",
+    phoneSettings &&
+      (await mobile.page.getByText(/loop\.ogg|Choose a file|Drop an audio file/).count()) === 0,
+    await visibleText(mobile.page),
+  );
 
   // ---------------------------------------------------------------- surviving reloads
   //
