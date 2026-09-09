@@ -930,6 +930,25 @@ async function main() {
     `${lineCount}`,
   );
 
+  /*
+   * And Escape, with an edit in it.
+   *
+   * `Sheet` makes backdrop dismissal opt-in and says why — a stray click at the edge of a long
+   * invoice discards every edit — and Escape did exactly that on the same screen.
+   */
+  await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("3.25");
+  await desktop.page.keyboard.press("Escape");
+  check(
+    "an edited invoice asks before throwing the edits away",
+    await until(
+      "editor discard asked",
+      desktop.page,
+      async (p) => (await p.getByRole("button", { name: "Throw them away" }).count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+  await desktop.page.getByRole("button", { name: "Not now" }).click();
+
   await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("1.5");
   await desktop.page.getByLabel("Description on line 1", { exact: true }).fill("Revised scope");
   await desktop.page.getByRole("button", { name: "Save the draft" }).click();

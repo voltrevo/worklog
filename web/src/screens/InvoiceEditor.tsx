@@ -18,7 +18,7 @@
  * would make "cancel" mean nothing, because half the edits would already be on the server.
  */
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
   type InvoiceConfigOverride,
   OVERRIDABLE,
@@ -29,6 +29,7 @@ import type { InvoiceLine } from "@worklog/shared/invoice";
 import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
 import { money, parseNumber } from "../format.ts";
 import { Sheet } from "./Sheet.tsx";
+import { Dialog } from "./Dialog.tsx";
 
 /**
  * 25.12 — the fields a draft may say differently, and what to call them.
@@ -192,6 +193,28 @@ export function InvoiceEditor(
     Object.values(invoice.draft.config ?? {}).some((v) => v),
   );
 
+  /*
+   * Whether anything has been changed, for a dismissal that would throw it away.
+   *
+   * `Sheet` makes backdrop dismissal opt-in and says why: "a stray click at the edge of a long
+   * invoice discards every edit, with no warning and no undo". Escape did exactly that, on the
+   * same screen, for the same reason — the argument was made and then applied to one of the two
+   * ways out.
+   *
+   * A snapshot of the editable state rather than a flag set by every setter: there are six pieces
+   * of it and a flag would be six places to forget. Comparing what is on screen against what was
+   * on screen when it opened also gets "typed something and typed it back" right, which is not
+   * worth a dialog.
+   */
+  const initial = useRef<string>(undefined);
+  const shape = JSON.stringify([rows, number, override, pay, taxRate]);
+  initial.current ??= shape;
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const leave = () => {
+    if (shape === initial.current) onCancel();
+    else setConfirmDiscard(true);
+  };
+
   const currency = invoice.draft.currency;
   const set = (i: number, patch: Partial<Draft>) =>
     setRows(rows.map((r, at) => (at === i ? { ...r, ...patch } : r)));
@@ -246,7 +269,7 @@ export function InvoiceEditor(
     : undefined;
 
   return (
-    <Sheet label={`Edit ${invoice.number}`} onDismiss={onCancel}>
+    <Sheet label={`Edit ${invoice.number}`} onDismiss={leave}>
       <div className="card stack editor" style={{ gap: 14 }}>
         <div className="row between wrap">
           <h2 style={{ margin: 0 }}>Edit this draft</h2>
@@ -496,11 +519,27 @@ export function InvoiceEditor(
           >
             Save the draft
           </button>
-          <button className="btn" type="button" onClick={onCancel}>
+          <button className="btn" type="button" onClick={leave}>
             Discard these changes
           </button>
         </div>
       </div>
+
+      {/* The same question the work note asks, for the same reason. */}
+      {confirmDiscard && (
+        <Dialog
+          title={`Throw away the changes to ${invoice.number}?`}
+          body="These lines have not been saved. Closing loses them."
+          confirmLabel="Throw them away"
+          danger
+          busy={false}
+          onConfirm={() => {
+            setConfirmDiscard(false);
+            onCancel();
+          }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
     </Sheet>
   );
 }
