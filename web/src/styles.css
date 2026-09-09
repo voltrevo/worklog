@@ -1127,7 +1127,63 @@ input[aria-invalid="true"]:focus {
   text-align: right;
 }
 
+.linecell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The column heading says it on a wide screen; on a phone there are no columns. */
+.linelabel {
+  display: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 900px) {
+  /*
+   * A row becomes a small card of labelled fields.
+   *
+   * The grid was `min-width: 44rem`, so on a phone it was a two-column strip with the other five
+   * columns scrolled off to the right and nothing to say they were there — the vertical clipping
+   * fault again, turned ninety degrees. Every other list in this app stacks on a phone; so does
+   * this one now, and the headings go, because a heading with one field under it is a label and
+   * the label is already there.
+   */
+  .linehead {
+    display: none;
+  }
+
+  .linerow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-width: 0;
+    padding: var(--s-3) 0;
+  }
+
+  .linelabel {
+    display: block;
+  }
+
+  /* Description gets the full width; it is the one that is actually read. */
+  .linerow .linecell:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .linerow > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .invform-table,
+  .linetable {
+    overflow-x: visible;
+  }
+}
+
 .linerow input {
+  width: 100%;
   min-width: 0;
   padding: 5px 7px;
   font-size: 13px;

@@ -18,7 +18,7 @@
  * would make "cancel" mean nothing, because half the edits would already be on the server.
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   type InvoiceConfigOverride,
   OVERRIDABLE,
@@ -285,38 +285,71 @@ export function InvoiceEditor(
           )}
           {rows.map((row, i) => {
             const flat = row.hours.trim() === "" && row.rate.trim() === "";
+            /*
+             * Every cell carries its own label, hidden on a wide screen where the column heading
+             * says the same thing.
+             *
+             * On a phone the seven-column grid became a two-column strip with the other five
+             * scrolled off to the right and nothing to say so — the same silent clipping as the
+             * vertical case, turned ninety degrees. Under 900px the row stacks into labelled
+             * fields, which is what every other list in this app does on a phone.
+             */
+            const cell = (
+              label: string,
+              input: ReactNode,
+            ) => (
+              <label className="linecell">
+                <span className="linelabel">{label}</span>
+                {input}
+              </label>
+            );
             return (
               <div className="linerow" role="row" key={i}>
-                <input
-                  type="date"
-                  value={row.date}
-                  aria-label={`Date on line ${i + 1}`}
-                  onChange={(e) => set(i, { date: e.target.value })}
-                />
-                <input
-                  value={row.description}
-                  aria-label={`Description on line ${i + 1}`}
-                  onChange={(e) => set(i, { description: e.target.value })}
-                />
-                <input
-                  value={row.teamProject}
-                  aria-label={`Team or project on line ${i + 1}`}
-                  onChange={(e) => set(i, { teamProject: e.target.value })}
-                />
-                <input
-                  className="num"
-                  inputMode="decimal"
-                  value={row.hours}
-                  aria-label={`Hours on line ${i + 1}`}
-                  onChange={(e) => set(i, { hours: e.target.value })}
-                />
-                <input
-                  className="num"
-                  inputMode="decimal"
-                  value={row.rate}
-                  aria-label={`Rate on line ${i + 1}`}
-                  onChange={(e) => set(i, { rate: e.target.value })}
-                />
+                {cell(
+                  "Date",
+                  <input
+                    type="date"
+                    value={row.date}
+                    aria-label={`Date on line ${i + 1}`}
+                    onChange={(e) => set(i, { date: e.target.value })}
+                  />,
+                )}
+                {cell(
+                  "Description",
+                  <input
+                    value={row.description}
+                    aria-label={`Description on line ${i + 1}`}
+                    onChange={(e) => set(i, { description: e.target.value })}
+                  />,
+                )}
+                {cell(
+                  "Team / Project",
+                  <input
+                    value={row.teamProject}
+                    aria-label={`Team or project on line ${i + 1}`}
+                    onChange={(e) => set(i, { teamProject: e.target.value })}
+                  />,
+                )}
+                {cell(
+                  "Hours",
+                  <input
+                    className="num"
+                    inputMode="decimal"
+                    value={row.hours}
+                    aria-label={`Hours on line ${i + 1}`}
+                    onChange={(e) => set(i, { hours: e.target.value })}
+                  />,
+                )}
+                {cell(
+                  "Rate",
+                  <input
+                    className="num"
+                    inputMode="decimal"
+                    value={row.rate}
+                    aria-label={`Rate on line ${i + 1}`}
+                    onChange={(e) => set(i, { rate: e.target.value })}
+                  />,
+                )}
                 {
                   /*
                   25.2 — the amount is present and disabled on an hourly row rather than absent,
@@ -324,15 +357,18 @@ export function InvoiceEditor(
                   the cell empty would read as "no amount", which is a different claim.
                 */
                 }
-                <input
-                  className="num"
-                  inputMode="decimal"
-                  value={row.amount}
-                  disabled={!flat}
-                  title={flat ? undefined : "Hours times rate. Clear both to set an amount here."}
-                  aria-label={`Amount on line ${i + 1}`}
-                  onChange={(e) => set(i, { amount: e.target.value })}
-                />
+                {cell(
+                  "Amount",
+                  <input
+                    className="num"
+                    inputMode="decimal"
+                    value={row.amount}
+                    disabled={!flat}
+                    title={flat ? undefined : "Hours times rate. Clear both to set an amount here."}
+                    aria-label={`Amount on line ${i + 1}`}
+                    onChange={(e) => set(i, { amount: e.target.value })}
+                  />,
+                )}
                 <button
                   className="link danger"
                   type="button"
