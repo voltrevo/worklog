@@ -611,7 +611,7 @@ names this.
 25.10. MUST allow any number of overlapping drafts; 11.19's refusal applies at issuance and nowhere earlier.
 25.11. MUST detach a draft from the work entries when it is created: its lines are copied once and are then editable, addable and removable on the draft alone, leaving History untouched.
 25.12. MUST allow a draft to carry its own configuration, overriding the global invoice settings for that draft only.
-25.13. MUST label the download control "Download" rather than "PDF"; the invoice is a PDF.
+25.13. ~~MUST label the download control "Download" rather than "PDF"; the invoice is a PDF.~~ (superseded: 26.11)
 25.14. MUST give the invoice list a consistent row height and put separating rules only between rows, never above the first.
 25.15. MUST show the invoice configuration as an approximation of the rendered invoice, with each field positioned where its value appears on the document. Per-invoice content may be abbreviated.
 
@@ -673,3 +673,53 @@ names this.
 25.45. MUST give buttons a hover state that works in dark mode.
 25.46. MUST keep the month label a fixed width, so neither arrow moves as the month changes.
 25.47. MUST set `user-select: none` on buttons.
+
+## 26. Third review
+
+Written from a session driving the built app. Several items say a previous fix did not
+work rather than that it was the wrong fix; those name the earlier item so the two can be
+read together.
+
+### Audio
+
+26.1. MUST make the looping background audio start reliably when a timer starts; 25.19's detection is not enough on its own, because in practice it neither plays nor reports anything.
+26.2. MUST surface a control for unblocking playback wherever the failure is observable, not only on the settings card.
+26.3. MUST NOT stop the loop when the settings screen is opened or left.
+26.4. MUST apply the configured volume to playback in every case, including a loop that was already playing when the volume changed.
+26.5. MUST disable the Preview control while the loop is supposed to be playing.
+26.6. MUST explain, when a disabled Preview is pressed, that audio is believed to be playing, and offer a link to report an issue if it is not.
+
+### Prompts
+
+26.7. MUST stop the prompt tune as soon as the prompt is acknowledged — focusing or clicking the dialog counts — rather than only when a note is saved. Refines 25.39.
+
+### Dialogs
+
+26.8. MUST NOT move focus after a sheet has opened; focus is placed once and then belongs to whoever is typing.
+26.9. MUST confirm closing or cancelling a work note that has content.
+
+### Invoices
+
+26.10. MUST NOT offer a download control on the invoice list; see 26.11.
+26.11. MUST label the control "View" and open the document in a large dialog, in an iframe over the blob URL. The browser's own controls are how it is saved; the app does not need to offer that.
+26.12. MUST set an invoice's state from a dropdown rather than from a button per transition.
+26.13. MUST NOT warn that issuing freezes the PDF. That is the sensible behaviour and needs no warning; the reverse would.
+26.14. MUST NOT describe the per-invoice overrides as what the invoice "says differently": it is not different until it has been made so, which is usually never, and the phrasing is slack. Say what the control is.
+
+### Access
+
+26.15. MUST refuse to revoke the last admin, or to change its role, so the server cannot be left with no administrator.
+
+### Settings
+
+26.16. MUST make the invoice configuration resemble the rendered invoice much more closely than it does. The absence of line items is the one difference that is justified; effort is not. Refines 25.15.
+26.17. MUST align the "Ask me sometimes" control with the other controls on its line.
+
+### Notes
+
+26.18. MUST animate the recording waveform continuously. 25.36's fix did not work.
+
+### The timer screen
+
+26.19. MUST size each segment of today's progress bar exactly, with no per-segment minimum. A minimum overall width for the whole bar is acceptable; a minimum per segment is not, because it makes the total wrong. Refines 25.26.
+26.20. MUST use the whole screen on the timer page.
