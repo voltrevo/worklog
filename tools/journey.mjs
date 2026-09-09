@@ -333,6 +333,49 @@ async function main() {
   // And leave the screen as it was found: four cycles is four chances for a prompt to appear.
   await clearSheets(desktop.page);
 
+  /*
+   * And the bar is drawn, not merely sized.
+   *
+   * `.bar > span` was a child selector, and 26.19 moved the segments inside a `.bar-fill`. Nothing
+   * matched: for several commits the bar painted its track and no segments at all, on every screen
+   * that has one. The check above measures the segments' *widths*, and `flex-grow` still gave them
+   * widths — so a bar that painted nothing passed a check about how wide its paint was.
+   */
+  const painted = await desktop.page.evaluate(() => {
+    const bar = document.querySelector(".bar.segmented");
+    const seg = bar?.querySelector(".bar-fill > span");
+    if (!bar || !seg) return { seg: false };
+    const s = getComputedStyle(seg);
+    return {
+      seg: true,
+      h: seg.getBoundingClientRect().height,
+      colour: s.backgroundColor,
+      track: getComputedStyle(bar).backgroundColor,
+    };
+  });
+  check(
+    "and the segments are actually painted",
+    painted.seg === true && painted.h > 2 && painted.colour !== painted.track &&
+      painted.colour !== "rgba(0, 0, 0, 0)",
+    JSON.stringify(painted),
+  );
+
+  // 26.20 — and the screen it is on uses the window it is in.
+  const filled = await desktop.page.evaluate(() => {
+    const main = document.querySelector(".main");
+    const screen = document.querySelector(".timerscreen");
+    if (!main || !screen) return null;
+    const style = getComputedStyle(main);
+    const inner = main.clientHeight - parseFloat(style.paddingTop) -
+      parseFloat(style.paddingBottom);
+    return { inner, screen: screen.getBoundingClientRect().height };
+  });
+  check(
+    "26.20 — the timer screen fills the window it is given",
+    filled !== null && filled.inner > 300 && filled.screen >= filled.inner - 1,
+    JSON.stringify(filled),
+  );
+
   check(
     "26.19 — the bar stays the size the figures say, however many sessions",
     usable >= 3 && worstBar < 0.015,

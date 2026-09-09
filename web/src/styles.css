@@ -600,14 +600,23 @@ label.field {
   overflow: hidden;
 }
 
-.bar > span {
+/*
+ * A descendant, not a child.
+ *
+ * 26.19 put the segments inside a `.bar-fill` so the fill could be exactly `progress` wide, and
+ * this rule still said `>`. Nothing matched: the bar has been drawing its track and no segments at
+ * all since that change, on every screen that uses one. The check written for 26.19 measures the
+ * segments' *widths* against the day's arithmetic, and widths are what `flex-grow` still gave them
+ * — so a bar that painted nothing passed a check about how wide its paint was.
+ */
+.bar span {
   display: block;
   height: 100%;
   border-radius: 999px;
   background: var(--good);
 }
 
-.bar > span.over {
+.bar span.over {
   background: var(--accent);
 }
 
@@ -1824,4 +1833,102 @@ button.maskfield:disabled {
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--panel-2);
+}
+
+/*
+ * 26.20 — the timer screen uses the whole window.
+ *
+ * Two cards sat at the top of a desktop screen with two thirds of it blank below them. Nothing new
+ * goes here to fill it: what the screen is for is already on it, and it was being shown at the
+ * size a screen four times as crowded would need. So the cards take the height, and the two
+ * figures on them — today's total and the running clock — take as much of it as they can.
+ *
+ * The total gets the larger share, because that is the inversion section 3 is built on: the
+ * question asked fifty times a day is "how much have I done today", and the session clock is a
+ * detail of how.
+ */
+.timerscreen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  /* `.main` is the scroll container, so this resolves against its content box. */
+  min-height: 100%;
+}
+
+.timerscreen > .card.today,
+.timerscreen > .card.session {
+  display: flex;
+  flex-direction: column;
+}
+
+.timerscreen > .card.today {
+  flex: 1.5;
+}
+
+.timerscreen > .card.session {
+  flex: 1;
+  justify-content: center;
+}
+
+/*
+ * The figure centred in whatever the card was given; the pills still at the top of it.
+ *
+ * Centring the *row* centred both, and the two pills then floated in the middle of the card with
+ * nothing beside them — they annotate the figure, and half a card away from it they read as a
+ * separate thing that happens to be on the same screen.
+ */
+.today-head {
+  flex: 1;
+  align-items: stretch;
+}
+
+.today-figure {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/*
+ * `vh` and not `vw`: the constraint being spent here is the height nothing was using. `9vw` grew
+ * the number when the window got *wider*, which is the axis that already had a use for the space.
+ */
+.timerscreen .huge {
+  font-size: clamp(56px, 13vh, 168px);
+}
+
+.timerscreen .today-sub {
+  font-size: clamp(14px, 2vh, 22px);
+}
+
+.timerscreen .card.session .big {
+  font-size: clamp(26px, 6vh, 68px);
+}
+
+/* Pushed to the bottom of the card it belongs to, since it measures the figure above it. */
+.timerscreen .bar {
+  height: 12px;
+  margin-top: auto;
+}
+
+.timerscreen .card.session button.btn.big {
+  padding: clamp(14px, 2.2vh, 26px) clamp(26px, 3vw, 44px);
+  font-size: clamp(16px, 2.4vh, 24px);
+}
+
+/*
+ * The type has a width ceiling as well as a height one.
+ *
+ * `13vh` on a phone held sideways is a reasonable number of pixels and a ridiculous proportion of
+ * a 390px-wide screen — "12.5h" at that size runs off the edge. Height is the space being spent
+ * here, so height leads, and width is the limit on how much of it can be taken.
+ */
+@media (max-width: 700px) {
+  .timerscreen .huge {
+    font-size: clamp(40px, min(13vh, 20vw), 168px);
+  }
+
+  .today-figure {
+    /* Beside the pills rather than under them, which is what this narrow row has room for. */
+    justify-content: flex-start;
+  }
 }

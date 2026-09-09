@@ -162,7 +162,7 @@ export function Timer() {
   };
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="timerscreen">
       {lastError && (
         <div className="notice bad row between">
           <span>{lastError}</span>
@@ -177,12 +177,12 @@ export function Timer() {
         <div className="notice warn">{snapshot.holidayWarning}</div>
       )}
 
-      <div className="card">
-        <div className="row between" style={{ alignItems: "flex-start" }}>
-          <div>
+      <div className="card today">
+        <div className="row between today-head">
+          <div className="today-figure">
             <h3>Today</h3>
             <div className="huge">{duration(todayMs)}</div>
-            <div className="muted" style={{ marginTop: 4 }}>
+            <div className="muted today-sub" style={{ marginTop: 4 }}>
               {targetMs > 0 ? `of ${duration(targetMs)} scheduled` : "not a scheduled workday"}
             </div>
           </div>
@@ -215,7 +215,7 @@ export function Timer() {
           bar. The running session is the last segment and grows as you watch.
         */
         }
-        <div className="bar segmented" style={{ marginTop: 16 }}>
+        <div className="bar segmented">
           <div className="bar-fill" style={{ width: `${progress * 100}%` }}>
             {segments.map((seg) => (
               <span
@@ -231,7 +231,7 @@ export function Timer() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card session">
         <div className="row between wrap" style={{ gap: 16 }}>
           <div>
             <h3>Current session</h3>
