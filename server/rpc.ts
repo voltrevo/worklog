@@ -116,6 +116,18 @@ export interface ServerContext {
   /** Injected so tests can drive the calendar without a network. */
   now?: () => number;
   offlineHolidays?: boolean;
+  /**
+   * 12.4 — the last holiday warning written to the log, so the same one is not written again.
+   *
+   * `loadHolidays` runs on every snapshot, and a warning is a *state* rather than an event: an
+   * unreachable source stays unreachable, and a server with no region configured — which is every
+   * new one, since 24.33 forbids defaulting it — produces the same sentence on every refresh, from
+   * every device, forever. Logging it each time buries everything else in the viewer.
+   *
+   * Held on the context rather than in a module variable so two servers in one process, which is
+   * what the tests are, cannot silence each other.
+   */
+  lastHolidayWarning?: string;
 }
 
 /** 17.11 — one place decides what an invoice's file is called, since two paths now write it. */
@@ -345,7 +357,12 @@ export async function handle(
         now,
         ...(ctx.offlineHolidays ? { offline: true } : {}),
       });
-      if (holidays.warning) ctx.log("warn", "holidays", holidays.warning, { year });
+      if (holidays.warning !== ctx.lastHolidayWarning) {
+        if (holidays.warning) ctx.log("warn", "holidays", holidays.warning, { year });
+        // Cleared as well as set: a source that comes back and goes away again is worth saying
+        // twice, and only the repetition in between is not.
+        ctx.lastHolidayWarning = holidays.warning;
+      }
 
       const entries = entriesInMonth(db, req.month);
       const invoices = listInvoices(db);

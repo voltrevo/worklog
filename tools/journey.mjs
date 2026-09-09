@@ -1231,8 +1231,26 @@ async function main() {
       ),
       await visibleText(desktop.page),
     );
-    // Keep it: everything below records against this same note.
-    await desktop.page.getByRole("button", { name: "Not now" }).click();
+    /*
+     * And Escape again, with the confirmation open over the note.
+     *
+     * Two sheets, both listening on `window` in the capture phase, and `stopPropagation` does not
+     * stop a listener on the same node — so the note's handler runs as well as the dialog's. What
+     * has to come out of that is the inner one closing and the outer one staying, which is what
+     * `Sheet`'s "one Escape closes one sheet" claims and what nothing had checked.
+     */
+    await desktop.page.keyboard.press("Escape");
+    check(
+      "and Escape over a confirmation closes the confirmation, not what it is asking about",
+      await until(
+        "confirmation gone",
+        desktop.page,
+        async (p) =>
+          (await p.getByRole("button", { name: "Throw it away" }).count()) === 0 &&
+          (await p.getByText(/● recording/).count()) > 0,
+      ),
+      await visibleText(desktop.page),
+    );
     check(
       "and keeping it leaves the recording running",
       await until(

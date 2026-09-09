@@ -534,3 +534,28 @@ Deno.test("a weekend is nought hours, so the figure is not merely always eight",
   assertEquals(sunday.todayScheduledHours, 0);
   ctx.db.close();
 });
+
+/*
+ * 12.4 — a warning that is a state, not an event.
+ *
+ * `loadHolidays` runs on every snapshot, so an unreachable source — or a server with no region
+ * configured, which is every new one — produced the same sentence in the log from every device on
+ * every refresh, and buried everything else in the viewer.
+ */
+Deno.test("a holiday warning is logged once, not on every snapshot", async () => {
+  const lines: string[] = [];
+  const ctx: ServerContext = {
+    ...context(),
+    log: (level, source, message) => lines.push(`${level} ${source} ${message}`),
+  };
+  // No region: 24.33 forbids defaulting one, so this is the state every new server starts in, and
+  // the warning is permanent rather than passing.
+  setConfig(ctx.db, "pacing", { region: "" }, NOW);
+  const s: Session = { id: "x", authenticated: true, role: "admin" };
+
+  for (let i = 0; i < 3; i++) {
+    await call(ctx, s, { t: "snapshot", month: "2026-09", clock: CLOCK });
+  }
+  const warnings = lines.filter((l) => l.includes("holidays"));
+  assertEquals(warnings.length, 1, `logged ${warnings.length} times: ${warnings.join(" | ")}`);
+});
