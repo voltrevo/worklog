@@ -1060,6 +1060,53 @@ async function main() {
     );
   }
 
+  // ------------------------------------------------------------ nothing hidden sideways
+  //
+  // 23.x. A container with `overflow-x: auto` never makes the *document* overflow, so every
+  // structural check passes while most of a table sits off the right-hand edge with nothing drawn
+  // to say it is there. Two faults of exactly that shape were live at once: the invoice line
+  // editor showed a phone two of its seven columns, and the About card was 557px wide in a 390px
+  // viewport because a KPS address is forty unbroken characters and had nowhere to wrap.
+  //
+  // Neither was visible in a screenshot — one was inside a dialog, the other below the fold.
+  console.log("\nnothing clipped on a phone:");
+  const hiddenOn = async (where) =>
+    await mobile.page.evaluate((where) => {
+      const out = [];
+      const vw = document.documentElement.clientWidth;
+      for (const el of document.querySelectorAll("*")) {
+        const style = getComputedStyle(el);
+        const scrolls = style.overflowX === "auto" || style.overflowX === "scroll";
+        // Eight pixels of slack: a scrollbar gutter and sub-pixel rounding are not a fault.
+        if (scrolls && el.scrollWidth - el.clientWidth > 8) {
+          out.push(
+            `${where}: ${el.tagName.toLowerCase()}.${[...el.classList].join(".")} hides ${
+              el.scrollWidth - el.clientWidth
+            }px`,
+          );
+        }
+        if (el.getBoundingClientRect().width > vw + 4 && el.children.length === 0) {
+          out.push(`${where}: ${el.tagName.toLowerCase()} is wider than the viewport`);
+        }
+      }
+      return out;
+    }, where);
+
+  const hidden = [];
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Settings"]) {
+    await nav(mobile.page, screen);
+    await mobile.page.waitForTimeout(400);
+    hidden.push(...await hiddenOn(screen));
+  }
+  // And a dialog, which is on no screen until it is opened — where the worse of the two was.
+  await nav(mobile.page, "History");
+  await mobile.page.getByRole("button", { name: "Add past time" }).click();
+  await mobile.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  hidden.push(...await hiddenOn("the entry editor"));
+  await mobile.page.getByRole("button", { name: "Cancel" }).click();
+
+  check("no phone screen hides content off to the right", hidden.length === 0, hidden.join("; "));
+
   // ---------------------------------------------------------------- revoking, while connected
   //
   // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there

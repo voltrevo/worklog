@@ -126,7 +126,19 @@ export function Settings() {
             <h2>Worklog</h2>
             <p className="muted" style={{ margin: "4px 0 0" }}>
               Self-hosted work time tracking and invoicing.<br />
-              {phase.k === "ready" && <>v{phase.version} · connected to {phase.address}</>}
+              {phase.k === "ready" && (
+                <>
+                  v{phase.version} · connected to {
+                    /*
+                    A KPS address is `<ip>:<port>:<certhash>` — forty-odd unbroken characters with
+                    nowhere for a line break to go, so on a phone it pushed this card to 557px in a
+                    390px viewport and took the whole screen sideways with it. It was never seen
+                    because the About card is below the fold and the screenshot stops at the fold.
+                  */
+                  }
+                  <span className="breakable">{phase.address}</span>
+                </>
+              )}
             </p>
           </div>
           <div className="stack" style={{ gap: 6, alignItems: "flex-end" }}>
