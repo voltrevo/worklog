@@ -1060,6 +1060,78 @@ async function main() {
     );
   }
 
+  // ------------------------------------------------------------ text you can actually read
+  //
+  // Measured on the rendered page rather than argued from the palette, because what a colour is
+  // read against depends on what it happens to be sitting inside. The tightest case in this app is
+  // a *pill*: `--good` cleared 4.5:1 on the page and only managed 4.43:1 on `--good-wash`, which
+  // is the one place it appears as 12px text.
+  //
+  // Two tokens failed when this was first run. `--ink-faint` was 3.03:1 on white and is used for
+  // every column heading, field hint and legend in the app, at 11–13px — the size band where the
+  // threshold matters most and the one it was furthest from clearing.
+  console.log("\ncontrast:");
+  const lowContrast = (page, where) =>
+    page.evaluate((where) => {
+      const rgb = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
+      const lum = ([r, g, b]) => {
+        const c = [r, g, b].map((x) => x / 255)
+          .map((x) => x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      };
+      const ratio = (a, b) => {
+        const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      // Up the tree until something is actually painted: a transparent background means the
+      // colour behind this text belongs to an ancestor.
+      const behind = (el) => {
+        for (let n = el; n; n = n.parentElement) {
+          const bg = rgb(getComputedStyle(n).backgroundColor);
+          if (bg.length >= 3 && (bg[3] === undefined || bg[3] > 0.5)) return bg.slice(0, 3);
+        }
+        return [255, 255, 255];
+      };
+      const out = [];
+      for (const el of document.querySelectorAll("*")) {
+        // Only elements with text of their own, or every ancestor is reported for its children.
+        if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+        const style = getComputedStyle(el);
+        if (style.visibility === "hidden" || Number(style.opacity) < 0.9) continue;
+        const size = parseFloat(style.fontSize);
+        const large = (Number(style.fontWeight) >= 700 && size >= 18.66) || size >= 24;
+        const need = large ? 3 : 4.5;
+        const got = ratio(rgb(style.color).slice(0, 3), behind(el));
+        // A hundredth of slack, because these are floats and the palette is tuned to the line.
+        if (got + 0.005 < need) {
+          out.push(
+            `${where}: "${(el.textContent ?? "").trim().slice(0, 24)}" ${got.toFixed(2)}:1 ` +
+              `needs ${need} at ${Math.round(size)}px`,
+          );
+        }
+      }
+      return out;
+    }, where);
+
+  const dim = [];
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+    await nav(desktop.page, screen);
+    await desktop.page.waitForTimeout(300);
+    dim.push(...await lowContrast(desktop.page, screen));
+    // The phone renders the same palette in a different shell, and the dark device is a third set
+    // of colours entirely — the theme nobody looked at for two months.
+    if (await mobile.page.getByRole("button", { name: screen, exact: true }).count()) {
+      await nav(mobile.page, screen);
+      await mobile.page.waitForTimeout(250);
+      dim.push(...await lowContrast(mobile.page, `${screen} (phone)`));
+    }
+  }
+  check(
+    "every piece of text clears its contrast threshold",
+    dim.length === 0,
+    [...new Set(dim)].join("; "),
+  );
+
   // ------------------------------------------------------------ a modal that behaves like one
   //
   // Four sheets declared `role="dialog" aria-modal="true"` — a promise that the rest of the page

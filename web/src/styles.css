@@ -13,7 +13,15 @@
 
   --ink: #16191d;
   --ink-dim: #5c6572;
-  --ink-faint: #8b95a3;
+  /*
+   * 4.5:1 against the lightest surface it lands on, which is the page rather than a card.
+   *
+   * It was `#8b95a3`: 3.03:1 on white, and used at 11–13px for column headings, field hints, the
+   * "duration only" pill and the pacing legend. That is the size band where the ratio matters
+   * most, and the one the old value was furthest from clearing. Darkened by the least that gets
+   * there rather than by eye, so "faint" still reads as faint.
+   */
+  --ink-faint: #677282;
   --bg: #f5f6f8;
   --panel: #ffffff;
   --panel-2: #f8f9fb;
@@ -30,7 +38,12 @@
   --accent: #2563eb;
   --accent-ink: #ffffff;
   --accent-wash: #eef3ff;
-  --good: #128a4c;
+  /*
+   * 4.41:1 as `#128a4c` on white. Set against `--good-wash` rather than against the page,
+   * because the tightest place this colour appears as *text* is inside its own pill — the pace
+   * badge on the timer screen, at 12px, which was still 4.43:1 after the first correction.
+   */
+  --good: #117e46;
   --good-wash: #e8f6ee;
   --warn: #b45309;
   --warn-wash: #fdf3e3;
@@ -57,7 +70,8 @@
   :root {
     --ink: #e7ebf0;
     --ink-dim: #99a3b0;
-    --ink-faint: #6c7684;
+    /* 3.75:1 as `#6c7684`. Measured against `--panel-2`, the lightest surface in this theme. */
+    --ink-faint: #808997;
     --bg: #0f1216;
     --panel: #171b21;
     --panel-2: #1d222a;
