@@ -18,6 +18,7 @@ import {
   type Request,
   REQUIRED_ROLE,
   type SnapshotResult,
+  type StoredInvoiceWire,
   type TimerState,
   toAuthClaim,
   toBase64,
@@ -85,6 +86,7 @@ import {
   markPaid,
   paymentOverrideFor,
   revertIssue,
+  type StoredInvoice,
   unmarkPaid,
   updateDraft,
 } from "./invoices.ts";
@@ -128,6 +130,36 @@ export interface ServerContext {
    * what the tests are, cannot silence each other.
    */
   lastHolidayWarning?: string;
+}
+
+/**
+ * Write a file under the data directory, making the directory it goes in.
+ *
+ * `main.ts` creates `notes/` and `invoices/` at startup and both writers assumed it — so a data
+ * directory that has not been through that startup, which is what a test hands over, fails at the
+ * first write with `NotFound` naming a path nobody chose. The precondition was invisible and it
+ * belonged to the two lines that depend on it.
+ */
+async function writeUnderData(dataDir: string, relative: string, bytes: Uint8Array): Promise<void> {
+  const at = `${dataDir}/${relative}`;
+  await Deno.mkdir(at.slice(0, at.lastIndexOf("/")), { recursive: true });
+  await Deno.writeFile(at, bytes);
+}
+
+/**
+ * An invoice record as a device may see it.
+ *
+ * `pdfPath` is where the file sits inside the server's data directory, and it went to every
+ * authorised device on every list — nothing in any frontend has ever read it, and there is no
+ * reason a device should be told the server's file layout to ask for a PDF by invoice id. The
+ * record type serves the store, which does need it: `deleteInvoice` returns it so the caller can
+ * remove the file.
+ *
+ * Named and explicit, so that a column added to the row later is not published by default.
+ */
+function onWire(record: StoredInvoice): StoredInvoiceWire {
+  const { pdfPath: _server, ...wire } = record;
+  return wire;
 }
 
 /** 17.11 — one place decides what an invoice's file is called, since two paths now write it. */
@@ -401,7 +433,7 @@ export async function handle(
       return entriesInMonth(db, req.month);
 
     case "invoices":
-      return listInvoices(db);
+      return listInvoices(db).map(onWire);
 
     case "config-get": {
       const cfg = allConfig(db);
@@ -533,7 +565,7 @@ export async function handle(
       if (req.audioBase64) {
         if (!ctx.dataDir) throw new Refused("no-data-dir", "this server stores no files");
         audioPath = `notes/${id}.${extensionFor(req.audioType)}`;
-        await Deno.writeFile(`${ctx.dataDir}/${audioPath}`, fromBase64(req.audioBase64));
+        await writeUnderData(ctx.dataDir, audioPath, fromBase64(req.audioBase64));
       }
 
       db.prepare(
@@ -565,7 +597,7 @@ export async function handle(
         preparedOn: req.clock.today,
       }, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
-      return saved;
+      return onWire(saved);
     }
 
     case "invoice-update": {
@@ -582,7 +614,7 @@ export async function handle(
         ...(req.paymentOverride !== undefined ? { paymentOverride: req.paymentOverride } : {}),
       }, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
-      return saved;
+      return onWire(saved);
     }
 
     case "invoice-issue": {
@@ -624,7 +656,7 @@ export async function handle(
           });
         }
         const relative = pdfPathFor(issued.id);
-        await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
+        await writeUnderData(ctx.dataDir, relative, bytes);
         attachPdf(db, issued.id, relative, now);
       }
 

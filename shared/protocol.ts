@@ -342,7 +342,11 @@ export interface StoredInvoiceWire {
   status: "draft" | "issued" | "paid";
   draft: InvoiceDraft;
   snapshot?: InvoiceSnapshot;
-  pdfPath?: string;
+  /*
+   * No `pdfPath`. It is where the file sits inside the server's data directory, it went out on
+   * every list, and nothing has ever read it — a device asks for a PDF by invoice id and the
+   * server decides where that lives.
+   */
   issuedAt?: Instant;
   paidAt?: Instant;
   /**

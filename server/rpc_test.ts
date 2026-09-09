@@ -559,3 +559,47 @@ Deno.test("a holiday warning is logged once, not on every snapshot", async () =>
   const warnings = lines.filter((l) => l.includes("holidays"));
   assertEquals(warnings.length, 1, `logged ${warnings.length} times: ${warnings.join(" | ")}`);
 });
+
+/*
+ * 20.4 — a device is not told the server's file layout.
+ *
+ * `pdfPath` is where the frozen document sits inside the data directory. The record type carries
+ * it because `deleteInvoice` returns it so the caller can remove the file; the *wire* has no use
+ * for it, nothing in any frontend has ever read it, and it went out on every list to every
+ * authorised device. A device asks for a PDF by invoice id.
+ */
+Deno.test({
+  name: "20.4 -- an invoice on the wire does not carry the server's path to its file",
+  // A real directory, because the row only gets a path when a file is written into one. Without it
+  // `pdf_path` stays null, `pdfPath` is absent from the record anyway, and the check passes with
+  // the fix removed — which is how it was first written.
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "wire-" });
+    const ctx: ServerContext = { ...context(), dataDir: dir };
+    const s: Session = { id: "x", authenticated: true, role: "admin" };
+    await call(ctx, s, {
+      t: "entry-add",
+      date: "2026-08-03",
+      durationMs: 3_600_000,
+      billingTag: "x",
+    });
+    const made = await call(ctx, s, {
+      t: "invoice-create",
+      period: "2026-08",
+      clock: CLOCK,
+    }) as Record<string, unknown>;
+    assertEquals("pdfPath" in made, false, `create returned ${Object.keys(made).join(", ")}`);
+
+    await call(ctx, s, { t: "invoice-issue", id: made.id as string });
+    const listed = await call(ctx, s, { t: "invoices" }) as Record<string, unknown>[];
+    // Issued with a directory to write into, so the row has a path by now: this is the case.
+    assertEquals(
+      listed.filter((i) => "pdfPath" in i),
+      [],
+      "an issued invoice published the server's path to its PDF",
+    );
+    ctx.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});
