@@ -1077,6 +1077,22 @@ async function main() {
     "opening a sheet puts focus inside it",
     await desktop.page.evaluate(() => document.activeElement?.closest("[role=dialog]") !== null),
   );
+  // The other half of the promise: Tab stays inside. Twenty-five presses is well past the number
+  // of controls in this sheet, so a trap that only works for one lap still fails.
+  let escaped = 0;
+  for (let i = 0; i < 25; i++) {
+    await desktop.page.keyboard.press("Tab");
+    if (
+      !(await desktop.page.evaluate(() =>
+        document.activeElement?.closest("[role=dialog]") !== null
+      ))
+    ) {
+      escaped = i + 1;
+      break;
+    }
+  }
+  check("and Tab cannot walk out of it into the page behind", escaped === 0, `after ${escaped}`);
+
   await desktop.page.keyboard.press("Escape");
   await desktop.page.waitForTimeout(300);
   check("Escape closes it", (await openSheets()) === 0);

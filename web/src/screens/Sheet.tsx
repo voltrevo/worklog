@@ -18,6 +18,10 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 
+/** What a Tab can land on. Named once, because the trap and the initial focus must agree. */
+const FOCUSABLE = "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), " +
+  "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])";
+
 export function Sheet(
   { label, onDismiss, dismissOnBackdrop, children }: {
     label: string;
@@ -34,11 +38,44 @@ export function Sheet(
     const opener = document.activeElement as HTMLElement | null;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Stopped, so one Escape closes one sheet: the work-note panel can be open over a prompt,
-      // and a bubbling key would take both.
-      e.stopPropagation();
-      onDismiss();
+      if (e.key === "Escape") {
+        // Stopped, so one Escape closes one sheet: the work-note panel can be open over a prompt,
+        // and a bubbling key would take both.
+        e.stopPropagation();
+        onDismiss();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      /*
+       * The other half of `aria-modal`: Tab stays inside.
+       *
+       * Without this, tabbing off the last control lands on whatever is behind the overlay — the
+       * sidebar, the row the dialog is asking about — which is reachable, operable, and covered
+       * by a grey sheet the person cannot see past. Announcing the rest of the page as inert and
+       * then letting the keyboard walk into it is the worst of both.
+       */
+      const reachable = [...(card.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])]
+        // `offsetParent` is null for anything `display: none`; a hidden control in the tab order
+        // is a stop that appears to do nothing.
+        .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (reachable.length === 0) return;
+
+      const first = reachable[0]!;
+      const last = reachable[reachable.length - 1]!;
+      const active = document.activeElement;
+      const inside = card.current?.contains(active) ?? false;
+
+      if (!inside) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && (active === first || active === card.current)) {
+        e.preventDefault();
+        last.focus();
+      }
     };
     globalThis.addEventListener("keydown", onKey, true);
 
@@ -49,9 +86,7 @@ export function Sheet(
      * what makes "focus is inside the dialog" true even for a sheet whose only controls are
      * buttons the person has not reached yet.
      */
-    const first = card.current?.querySelector<HTMLElement>(
-      "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])",
-    );
+    const first = card.current?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? card.current)?.focus();
 
     return () => {
