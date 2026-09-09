@@ -392,6 +392,18 @@ export type Response =
  * shipping deltas that both sides then have to agree how to apply. The exception is `prompt`, which
  * carries its own payload because there is nothing to refetch: it is the event.
  */
+/**
+ * What the server pushes. **The payloads are not what the client acts on.**
+ *
+ * `state.tsx` reads `e` — and, for a prompt, its `id` and `firedAt` — and answers everything else
+ * by asking for a fresh snapshot. That is deliberate and it is the reason the timer's state is
+ * still correct after two devices race: one place decides what is true and the client re-reads it.
+ *
+ * So `timer`, `area` and `role` here go unread, on purpose. They are the obvious material for a
+ * finer-grained refresh and the trap that comes with it: acting on the copy inside an event means
+ * acting on what was true when it was sent, ordered against a snapshot that may have overtaken it.
+ * If one of them is ever wanted, the thing to establish first is what happens when it arrives late.
+ */
 export type Event =
   | { e: "timer"; timer: TimerState }
   | { e: "changed"; area: "entries" | "invoices" | "config" | "access" | "notes" | "logs" }
