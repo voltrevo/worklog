@@ -13,6 +13,7 @@ import { usePresentation } from "../App.tsx";
 import { duration, hours, longDate, monthName, timeOfDay } from "../format.ts";
 import { MonthNav } from "./MonthNav.tsx";
 import { EntryEditor } from "./EntryEditor.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { monthReport } from "@worklog/shared/reports";
 import type { StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { WorkEntry } from "@worklog/shared/types";
@@ -109,7 +110,7 @@ export function History() {
                             >
                               Edit
                             </button>
-                            <DeleteEntry id={e.id} onDone={() => void refresh()} />
+                            <DeleteEntry entry={e} onDone={() => void refresh()} />
                           </div>
                         )}
                       </div>
@@ -168,7 +169,7 @@ export function History() {
                                     Edit
                                   </button>
                                   {" · "}
-                                  <DeleteEntry id={e.id} onDone={() => void refresh()} />
+                                  <DeleteEntry entry={e} onDone={() => void refresh()} />
                                 </>
                               )}
                             </td>
@@ -241,40 +242,50 @@ function MonthTotals() {
  * One component because the row is drawn twice — stacked on a phone, a table cell on a desktop —
  * and a confirmation that exists in one of them is a confirmation you cannot rely on.
  */
-function DeleteEntry({ id, onDone }: { id: string; onDone: () => Promise<void> | void }) {
+function DeleteEntry(
+  { entry, onDone }: { entry: WorkEntry; onDone: () => Promise<void> | void },
+) {
   const { call } = useStore();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  if (!confirming) {
-    return (
-      <button className="link" type="button" onClick={() => setConfirming(true)}>
-        Delete
-      </button>
-    );
-  }
   return (
     <>
-      <span className="faint">Delete?</span>{" "}
-      <button
-        className="link danger"
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await call({ t: "entry-delete", id });
-            await onDone();
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        Yes, delete
-      </button>{" "}
-      <button className="link" type="button" onClick={() => setConfirming(false)}>
-        Keep
+      <button className="link danger" type="button" onClick={() => setConfirming(true)}>
+        Delete
       </button>
+      {
+        /*
+        25.4 — a dialog, not a second link where the first one was.
+        This used to swap "Delete" for "Delete? Yes, delete / Keep" in place. The confirming click
+        landed a few pixels from where the first one did, which for a fast double-click is no
+        confirmation at all; and on the desktop table it changed the width of the cell, so the row
+        moved under the pointer between the two clicks. The same dialog as everything else that
+        cannot be undone by clicking again.
+      */
+      }
+      {confirming && (
+        <Dialog
+          title="Delete this entry?"
+          body={`${duration(entry.durationMs)} on ${
+            longDate(entry.date)
+          }, tagged "${entry.billingTag}". There is no undo.`}
+          confirmLabel="Yes, delete"
+          danger
+          busy={busy}
+          onConfirm={async () => {
+            setBusy(true);
+            try {
+              await call({ t: "entry-delete", id: entry.id });
+              setConfirming(false);
+              await onDone();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </>
   );
 }

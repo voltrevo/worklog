@@ -13,10 +13,13 @@ import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { WorkNote } from "./WorkNote.tsx";
 import type { WorkNoteWire as NoteWire } from "@worklog/shared/protocol";
+import { Listing } from "./Listing.tsx";
+import { Dialog } from "./Dialog.tsx";
 
 export function Notes() {
   const { call, snapshot, phase, refresh } = useStore();
-  const [notes, setNotes] = useState<NoteWire[]>([]);
+  // 25.1 — `undefined` until the first answer. `[]` would say "no notes" before asking.
+  const [notes, setNotes] = useState<NoteWire[]>();
   const [open, setOpen] = useState(false);
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
@@ -36,11 +39,10 @@ export function Notes() {
       </div>
 
       <div className="card">
-        {notes.length === 0
-          ? <p className="muted" style={{ margin: 0 }}>Nothing noted yet.</p>
-          : (
+        <Listing items={notes} empty="Nothing noted yet.">
+          {(rows) => (
             <div className="entries">
-              {notes.map((n) => (
+              {rows.map((n) => (
                 <NoteRow
                   key={n.id}
                   note={n}
@@ -50,6 +52,7 @@ export function Notes() {
               ))}
             </div>
           )}
+        </Listing>
       </div>
 
       {open && <WorkNote onClose={() => setOpen(false)} />}
@@ -141,30 +144,28 @@ function NoteRow(
               </button>
             ))}
         {/* 24.6, 24.3 — deletable, and confirmed, because the recording is the only copy. */}
-        {canWrite && !confirming && (
+        {canWrite && (
           <button
-            className="link"
+            className="link danger"
             type="button"
             onClick={() => setConfirming(true)}
           >
             Delete
           </button>
         )}
+        {/* 25.4 — in a dialog. Inline, the confirming click landed where the first one had been. */}
         {confirming && (
-          <>
-            <span className="faint">Delete this note?</span>
-            <button
-              className="btn danger"
-              type="button"
-              disabled={busy}
-              onClick={() => void remove()}
-            >
-              Delete
-            </button>
-            <button className="btn" type="button" onClick={() => setConfirming(false)}>
-              Keep
-            </button>
-          </>
+          <Dialog
+            title="Delete this note?"
+            body={note.audioMs
+              ? "The recording goes with it, and it is the only copy — nothing else in this app holds the audio."
+              : "There is no undo."}
+            confirmLabel="Delete it"
+            danger
+            busy={busy}
+            onConfirm={() => void remove()}
+            onCancel={() => setConfirming(false)}
+          />
         )}
       </div>
     </div>

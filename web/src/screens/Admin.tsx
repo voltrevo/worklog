@@ -13,6 +13,7 @@ import { dateTime } from "../format.ts";
 import type { AccessRole } from "@worklog/shared/auth";
 import type { LogEntry, LogLevel } from "@worklog/shared/protocol";
 import { Dialog } from "./Dialog.tsx";
+import { Listing } from "./Listing.tsx";
 
 interface PendingWire {
   publicKey: string;
@@ -230,113 +231,125 @@ function Access() {
     <>
       <div className="card">
         <h3>Pending requests</h3>
-        {pending?.length === 0
-          ? (
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              Nothing waiting.
-            </p>
-          )
-          : stacked
-          ? (
-            <div className="entries">
-              {(pending ?? []).map((p) => (
-                <div className="stacked-row" key={p.publicKey}>
-                  <div className="what">
-                    {/* 13.38 — a name is a display string. It is not evidence of anything. */}
-                    <strong>{p.name}</strong>
-                    <span className="faint mono">{p.fingerprint}</span>
-                    <span className="faint">
-                      asked for {p.requestedRole} · {dateTime(p.requestedAt)}
-                    </span>
-                  </div>
-                  <div className="acts wrap">
-                    <PendingActions pending={p} busy={busy} act={act} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-          : (
-            <div className="scroll-x">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Device name</th>
-                    <th>Asked for</th>
-                    <th>Key fingerprint</th>
-                    <th>Requested</th>
-                    <th>Grant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(pending ?? []).map((p) => (
-                    <tr key={p.publicKey}>
-                      {/* 13.38 — a name is a display string. It is not evidence of anything. */}
-                      <td>{p.name}</td>
-                      <td>
-                        <span className="pill">{p.requestedRole}</span>
-                      </td>
-                      <td className="mono">{p.fingerprint}</td>
-                      <td className="muted">{dateTime(p.requestedAt)}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>
+        {
+          /*
+          25.1 — this said `pending?.length === 0`, which is *false* while `pending` is undefined,
+          so a screen that had not loaded yet fell through to `(pending ?? []).map` and drew an
+          empty card with no words in it. "Nothing waiting" would have been a lie; nothing at all
+          was worse.
+        */
+        }
+        <Listing items={pending} empty="Nothing waiting.">
+          {(rows) =>
+            stacked
+              ? (
+                <div className="entries">
+                  {rows.map((p) => (
+                    <div className="stacked-row" key={p.publicKey}>
+                      <div className="what">
+                        {/* 13.38 — a name is a display string. It is not evidence of anything. */}
+                        <strong>{p.name}</strong>
+                        <span className="faint mono">{p.fingerprint}</span>
+                        <span className="faint">
+                          asked for {p.requestedRole} · {dateTime(p.requestedAt)}
+                        </span>
+                      </div>
+                      <div className="acts wrap">
                         <PendingActions pending={p} busy={busy} act={act} />
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                </div>
+              )
+              : (
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Device name</th>
+                        <th>Asked for</th>
+                        <th>Key fingerprint</th>
+                        <th>Requested</th>
+                        <th>Grant</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((p) => (
+                        <tr key={p.publicKey}>
+                          {/* 13.38 — a name is a display string, not evidence of anything. */}
+                          <td>{p.name}</td>
+                          <td>
+                            <span className="pill">{p.requestedRole}</span>
+                          </td>
+                          <td className="mono">{p.fingerprint}</td>
+                          <td className="muted">{dateTime(p.requestedAt)}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <PendingActions pending={p} busy={busy} act={act} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+        </Listing>
       </div>
 
       <div className="card">
         <h3>Authorised devices</h3>
-        {stacked && (
-          <div className="entries">
-            {(devices ?? []).map((d) => (
-              <div className="stacked-row" key={d.publicKey}>
-                <div className="what">
-                  <strong>{d.name}</strong>
-                  <span className="faint mono">{fingerprintOf(d.publicKey)}</span>
-                  <span className="faint">
-                    last seen {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
-                  </span>
+        {/* 25.1 — the same fault as the pending list: undefined and empty drew the same nothing. */}
+        <Listing items={devices} empty="No devices are authorised.">
+          {(rows) => (
+            <>
+              {stacked && (
+                <div className="entries">
+                  {rows.map((d) => (
+                    <div className="stacked-row" key={d.publicKey}>
+                      <div className="what">
+                        <strong>{d.name}</strong>
+                        <span className="faint mono">{fingerprintOf(d.publicKey)}</span>
+                        <span className="faint">
+                          last seen {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
+                        </span>
+                      </div>
+                      <div className="acts wrap">
+                        <DeviceActions device={d} busy={busy} act={act} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="acts wrap">
-                  <DeviceActions device={d} busy={busy} act={act} />
+              )}
+              {!stacked && (
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Device name</th>
+                        <th>Key fingerprint</th>
+                        <th>Last seen</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((d) => (
+                        <tr key={d.publicKey}>
+                          <td>{d.name}</td>
+                          <td className="mono">{fingerprintOf(d.publicKey)}</td>
+                          <td className="muted">
+                            {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
+                          </td>
+                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                            <DeviceActions device={d} busy={busy} act={act} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {!stacked && (
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th>Device name</th>
-                  <th>Key fingerprint</th>
-                  <th>Last seen</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {(devices ?? []).map((d) => (
-                  <tr key={d.publicKey}>
-                    <td>{d.name}</td>
-                    <td className="mono">{fingerprintOf(d.publicKey)}</td>
-                    <td className="muted">
-                      {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
-                    </td>
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <DeviceActions device={d} busy={busy} act={act} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              )}
+            </>
+          )}
+        </Listing>
         <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
           Revoking takes effect at once, including on a device that is connected right now.
         </p>

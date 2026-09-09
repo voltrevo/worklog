@@ -125,3 +125,51 @@ Deno.test({
     assertEquals(missing, [], "an import resolves to a file no clone would have");
   },
 });
+
+Deno.test({
+  name: "25.1 -- a list's state starts undefined, not empty",
+  permissions: { read: ["."], run: ["git"] },
+  async fn() {
+    /*
+     * "We have not asked yet" and "there is nothing" are different facts, and `useState<T[]>([])`
+     * cannot tell them apart. Three lists in this app said the second when they meant the first:
+     * the notes screen greeted a slow connection with "Nothing noted yet.", and the admin screen
+     * — testing `pending?.length === 0`, which is false while `pending` is undefined — fell
+     * through to `(pending ?? []).map` and drew a card with no words in it at all.
+     *
+     * A guard rather than a test of any one screen, because the fault is a habit. It reappears
+     * every time somebody adds a list and reaches for the initialiser that avoids a null check,
+     * and it is invisible on a fast connection, which every connection is while you are building.
+     *
+     * **The type alone is not the signal, and the first version of this guard was wrong about
+     * that.** It flagged every `useState<T[]>([])` and found three, all of them correct: a list of
+     * unreadable field names, a waveform's rolling samples, and a sentence in a comment describing
+     * the bug. For a value this component accumulates itself, `[]` is the truth — nothing has
+     * happened yet.
+     *
+     * What makes `[]` a lie is the list being *answered by the server*. So the setter has to be
+     * one that a response is handed to: `setX(await …)` or `.then(setX)`. That is the case where
+     * "empty" is a claim about somebody's data rather than about a buffer.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const offenders: string[] = [];
+    for (const file of (await trackedFiles()).filter((f) => f.endsWith(".tsx"))) {
+      const text = await Deno.readTextFile(`${root}${file}`);
+      for (const [i, line] of text.split("\n").entries()) {
+        // Not a comment. The description of this very fault lives in `Listing.tsx` and matched.
+        if (/^\s*(\*|\/\/)/.test(line)) continue;
+        const declared = /useState<[^>]*\[\]>\(\[\]\)/.exec(line);
+        if (!declared) continue;
+        const setter = /const \[[^,]+,\s*(set\w+)\s*\]/.exec(line)?.[1];
+        if (!setter) continue;
+        const filled = new RegExp(`${setter}\\s*\\(\\s*await\\b|\\.then\\(\\s*${setter}\\s*\\)`);
+        if (filled.test(text)) offenders.push(`${file}:${i + 1} ${line.trim()}`);
+      }
+    }
+    assertEquals(
+      offenders,
+      [],
+      "a list initialised to [] renders 'nothing here' before it has asked (25.1)",
+    );
+  },
+});

@@ -842,20 +842,20 @@ async function main() {
     .first();
   await noteRow.getByRole("button", { name: "Delete" }).click();
   check(
-    "deleting a note asks first",
+    "25.4 — deleting a note asks first, in a dialog",
     await until(
       "note confirm",
       desktop.page,
       async (p) =>
-        (await p.getByRole("button", { name: "Delete", exact: true }).count()) > 0 &&
+        (await p.getByRole("dialog").count()) > 0 &&
         (await p.getByText("Delete this note?").count()) > 0,
     ),
   );
   const notesBefore = await desktop.page.locator(".stacked-row").count();
-  // Scoped to the row. `page.getByRole(...).last()` picks the *last* Delete on the page, which is
-  // the bottom note's link, so the confirm opened on one row and the click landed on another —
-  // and the check then reported "the note did not go", which was true and not the reason.
-  await noteRow.getByRole("button", { name: "Delete", exact: true }).click();
+  // The dialog's button, not the row's. This was scoped to the row when the confirmation was two
+  // links in the row itself; now the row is behind an overlay that intercepts the click, which is
+  // most of why 25.4 wanted a dialog.
+  await desktop.page.getByRole("button", { name: "Delete it" }).click();
   check(
     "and the note goes",
     await until(
