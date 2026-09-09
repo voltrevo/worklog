@@ -94,10 +94,17 @@ cannot do rather than a rule this code follows. In the desktop window it is a fi
 system protects and the page asks the shell to sign. Either way the client never sees key material,
 which a test proves by handing it a signer made of two plain functions.
 
-**Payment details never come back from the server.** They are needed to edit and to render a PDF,
-never to display, so the read path deletes them. `SENSITIVE_INVOICE_FIELDS` names them in one place,
-and `publicInvoiceConfig` deletes rather than allow-lists — a new field reaches the UI by default,
-and a newly-sensitive one leaves the wire by editing one list.
+**Payment details and the postal address never come back from the server.** They are needed to
+render a PDF, never to display, so the read path deletes them. `SENSITIVE_INVOICE_FIELDS` names
+them in one place, and `publicInvoiceConfig` deletes rather than allow-lists — a new field reaches
+the UI by default, and a newly-sensitive one leaves the wire by editing one list. The settings
+screen shows each of them as a mask you can press for an explanation, rather than an empty box and
+a chip elsewhere saying it is set.
+
+Going the other way, `setConfig` keeps only fields the section actually has. It used to merge
+whatever it was handed, which meant a client could write arbitrary keys into the config row — and
+one did: the settings screen posts its whole draft back, including the derived `paymentDetailsSet`
+flag, kept out only by the frontend remembering to blank it.
 
 **The two presentations are separate shells, not breakpoints.** A sidebar does not become a tab bar
 by getting narrower. What they share is everything below them: the same screens, the same store, the
@@ -180,22 +187,27 @@ by `deno task shots`.
 
 | | |
 | --- | --- |
-| `deno task gate` | fmt, lint, types, **221 unit tests**, the browser build, then the published-bundle guard |
-| `deno task journey` | **45 checks** driving the write path from three concurrent browsers |
+| `deno task gate` | fmt, lint, types, **292 unit tests**, the browser build, then the published-bundle guard |
+| `deno task journey` | **88 checks** driving the write path from three concurrent browsers |
 | `deno task desktop:check` | **10 checks** on the desktop bridge, ending with "does the real app mount in WebKit" |
-| `deno task shots` | 16 screenshots, both presentations, nothing mocked |
+| `deno task shots` | 18 screenshots, both presentations, nothing mocked |
 
 ## Two browser harnesses, and what each is for
 
 `deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
-works — forty-five checks across three concurrent browsers: run a timer and watch the other device
+works — eighty-eight checks across three concurrent browsers: run a timer and watch the other device
 learn about it unasked, record time from the phone, edit an entry down to duration-only, delete
 one, write a work note and see it arrive, record a voice note through a synthetic microphone and play
 it back off the server's disk, wait for a server-initiated prompt to reach both devices, invoice a month, take delivery of the PDF, issue it, and
 change the schedule and watch the projection move on another device, revoke the phone while it is
 still holding an open subscription, and confirm a `read` device is shown none of the controls it
-would be refused. They share `tools/harness.mjs` and run on different
-ports, so both can run at once.
+would be refused.
+
+Some of it is checked as geometry rather than as text, because some of the claims are about
+pixels: that the two pacing bars begin and end at the same x, or that saving the settings does not
+move the button that was pressed. A percentage in the DOM cannot tell you either of those, and a
+screenshot can only tell you afterwards. They share `tools/harness.mjs` and run on different ports,
+so both can run at once.
 
 **An admin watching the Admin screen never saw a request arrive.** That screen fetched its pending
 and device lists once on mount, so `access-request` broadcast, the store refreshed, and the two
