@@ -37,11 +37,11 @@ import { open } from "./db.ts";
 import { ChallengeStore } from "./access.ts";
 import { getConfig, setConfig } from "./config.ts";
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
-import { loggerFor } from "./logs.ts";
+import { loggerFor, query as queryLogs } from "./logs.ts";
 import { PromptHub } from "./prompts.ts";
 import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
 import { listDevices } from "./access.ts";
-import { Refused } from "./work.ts";
+import { activeTimer, Refused } from "./work.ts";
 
 const NOW = 1_788_000_000_000;
 const CERT = "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha";
@@ -127,6 +127,15 @@ Deno.test({
       billingTag: "Client feedback & updates",
     }) as WorkEntry;
 
+    // 2.7 and 17.12 — a timer that was running when the process went away. `startPromptLoop`
+    // observes the timer rather than being told about it, precisely so that one started before
+    // this process did is picked up; that only means anything if the timer is still there.
+    await call(before, admin, {
+      t: "timer-start",
+      billingTag: "Sprint review",
+      date: TODAY,
+    });
+
     // 17.3, 17.4, 17.10 — a text note and a voice note whose bytes go to a file.
     await call(before, admin, { t: "note-add", body: "Wrote the persistence test." });
     const audio = new Uint8Array([0x4f, 0x67, 0x67, 0x53, 1, 2, 3, 4]);
@@ -162,6 +171,11 @@ Deno.test({
     const back = session(after, "s2");
     back.authenticated = true;
     back.role = "admin";
+
+    // The timer is still running, on the same tag, from the same instant.
+    const running = activeTimer(after.db);
+    assertEquals(running?.billingTag, "Sprint review");
+    assertEquals(running?.startedAt, NOW);
 
     // 17.7 — the device is still authorised, with the role it was given.
     const devices = listDevices(after.db);
@@ -219,3 +233,82 @@ Deno.test({
     await Deno.remove(dir, { recursive: true });
   },
 });
+
+Deno.test({
+  name: "24.30 -- a frozen PDF that has gone missing is re-rendered, and said so out loud",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * The hole in freezing, which used to be silent.
+     *
+     * Issuing writes the bytes once and every later download reads that file, so the document
+     * cannot drift. If the file is lost — a partial restore, a tidied directory — the server falls
+     * back to re-rendering from the snapshot, which fixes the numbers but takes the letterhead,
+     * the payment details and the tax label from the configuration as it stands *now*. That is the
+     * exact drift freezing exists to prevent, arriving by the back door.
+     *
+     * Re-rendering beats refusing to hand over an invoice. Not being able to tell it happened does
+     * not, and the log said "rendered a PDF" for both paths.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "frozen-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+
+    const ctx = context(dir);
+    setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(ctx, "s1");
+    await claimAdmin(ctx, admin);
+    await call(ctx, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 3_600_000,
+      billingTag: "Product Development",
+    });
+    const draft = await call(ctx, admin, {
+      t: "invoice-create",
+      period: "2026-09",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+
+    const first = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
+      path: string;
+      pdfBase64: string;
+    };
+    // Twice, unchanged: the ordinary case, and the thing the file is for.
+    const again = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
+      pdfBase64: string;
+    };
+    assertEquals(again.pdfBase64, first.pdfBase64);
+    assertEquals(
+      wholeLog(ctx).includes("the frozen PDF is missing"),
+      false,
+      "nothing was missing yet",
+    );
+
+    // Now lose it.
+    await Deno.remove(`${dir}/${first.path}`);
+    const rerendered = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
+      pdfBase64: string;
+    };
+    assertEquals(
+      fromBase64(rerendered.pdfBase64).subarray(0, 5),
+      new TextEncoder().encode("%PDF-"),
+      "it still hands over an invoice",
+    );
+    assertEquals(
+      wholeLog(ctx).includes("the frozen PDF is missing"),
+      true,
+      "and it did not do that silently",
+    );
+
+    ctx.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});
+
+/** Every log line, as one string. Admin, so nothing is filtered out (12.17). */
+function wholeLog(ctx: ServerContext): string {
+  return queryLogs(ctx.db, { admin: true, limit: 10_000, minLevel: "debug" })
+    .map((e) => `${e.message} ${JSON.stringify(e.context ?? {})}`).join("\n");
+}

@@ -620,15 +620,42 @@ export async function handle(
       let bytes: Uint8Array;
       if (frozen) {
         bytes = frozen;
+        ctx.log("debug", "invoice", "served the frozen PDF", {
+          number: invoice.number,
+          bytes: bytes.length,
+        });
       } else {
-        // A draft, or an issued invoice whose file has gone missing. 8.15, 11.4 — rendering
-        // changes no accounting state either way.
+        /*
+         * A draft, or an issued invoice whose file has gone missing. 8.15, 11.4 — rendering
+         * changes no accounting state either way.
+         *
+         * **The second case is a hole in 24.30 and it used to be silent.** The snapshot fixes the
+         * numbers, but the letterhead, the payment details and the tax label come from the
+         * configuration as it is *now*, so an issued invoice whose file was lost comes back
+         * subtly different from the one that was sent — which is the exact failure freezing the
+         * bytes was introduced to prevent. Re-rendering is still better than refusing to hand
+         * over an invoice at all; being unable to tell it happened is not.
+         *
+         * Both paths logged, distinguishably, and the lossy one at `warn`.
+         */
+        if (invoice.status !== "draft") {
+          ctx.log("warn", "invoice", "the frozen PDF is missing; re-rendering it", {
+            number: invoice.number,
+            status: invoice.status,
+            expected: invoice.pdfPath ?? null,
+            note: "letterhead and payment details come from the current settings, not from the " +
+              "ones in force when it was issued",
+          });
+        }
         requireInvoiceConfig(db);
         bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, getConfig(db, "invoice"));
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, invoice.id, relative, now);
+        ctx.log("info", "invoice", "rendered a PDF", {
+          number: invoice.number,
+          bytes: bytes.length,
+        });
       }
-      ctx.log("info", "invoice", "rendered a PDF", { number: invoice.number, bytes: bytes.length });
       // 8.33 -- and back down the wire, because a file on the server's disk is not an export. The
       // frontend that asked may be a phone on the other side of the room; `path` tells it where the
       // canonical copy lives (17.11) and `pdfBase64` is the copy it can actually open.
