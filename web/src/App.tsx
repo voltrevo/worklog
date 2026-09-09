@@ -99,16 +99,35 @@ function Screen({ id }: { id: ScreenId }) {
   }
 }
 
-/** What the header says about the connection. One ladder, used by the dot and by the words. */
+/**
+ * What the header says about the connection. One ladder, used by the dot and by the words.
+ *
+ * A `read` device says so here, and here only. Its controls are disabled all over the app — Start,
+ * Save, Delete, the whole invoice editor — and a disabled control does not say why it is disabled;
+ * it looks the same as one that is broken, or one you have not filled the form for yet. Saying it
+ * once in the one place every screen carries is cheaper for the reader than a note beside each of
+ * them, and it is the truth about the device rather than about the button.
+ */
 function connectionLabel(phase: Phase, reconnecting: boolean): string {
   if (reconnecting) return "Reconnecting…";
-  if (phase.k === "ready") return "Connected";
+  if (phase.k === "ready") {
+    return phase.role === "read" ? "Connected · read-only access" : "Connected";
+  }
   if (phase.k === "connecting") return "Connecting…";
   if (phase.k === "failed") return "Disconnected";
   return "Not connected";
 }
 
-function ConnectionDot() {
+/**
+ * The dot, and — where nothing else says it — the words.
+ *
+ * The dot is decorative, so it needs a text equivalent; the desktop sidebar already prints that
+ * text underneath in `.conn`, and rendering both meant a screen reader said "Connected, Worklog,
+ * Connected". The phone's header has no room for the sentence and no `.conn`, so there the hidden
+ * label is the only thing carrying it. One prop rather than two components, because the ladder
+ * behind the words is shared and was two copies of itself once already.
+ */
+function ConnectionDot({ spoken = true }: { spoken?: boolean }) {
   const { phase, reconnecting } = useStore();
   /*
    * 22.8 — a transient loss keeps the app on screen and says so here.
@@ -128,7 +147,7 @@ function ConnectionDot() {
   return (
     <>
       <span className={`dot ${tone}`} aria-hidden="true" />
-      <span className="visually-hidden">{label}</span>
+      {spoken && <span className="visually-hidden">{label}</span>}
     </>
   );
 }
@@ -142,7 +161,7 @@ function DesktopShell(
     <div className="app desktop">
       <nav className="sidebar">
         <div className="brand">
-          <ConnectionDot />
+          <ConnectionDot spoken={false} />
           Worklog
         </div>
         {/* One source for this sentence and the dot's: they were two copies of the same ladder. */}

@@ -358,6 +358,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 13.39. MUST reject an admin claim once any device has been authorized, deciding the race on the server rather than in the frontend.
 13.40. MUST let a frontend whose claim was rejected fall back to “Request access” without losing what the user had already entered.
 13.41. MUST treat the KPS address of section 22 as the out-of-band capability that gates 13.6; no separate bootstrap code is required.
+13.42. MUST say when a device's access is read-only, once and somewhere every screen carries, rather than leaving disabled controls to explain themselves. A disabled control looks the same as a broken one.
 
 ## 14. Local looping audio
 

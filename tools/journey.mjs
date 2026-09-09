@@ -1629,6 +1629,39 @@ async function main() {
    *
    * `colorScheme` is fixed when a context is made, so this is a device rather than a toggle.
    */
+  /*
+   * 13.32 — and a device that can only read, which nothing had ever drawn.
+   *
+   * Its controls are disabled all over the app, and a disabled control does not say why: it looks
+   * the same as one that is broken. The app says it once, in the header every screen carries.
+   */
+  const reader = await rig.open("reader", DESKTOP, "Read Only Laptop");
+  await reader.page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
+  await reader.page.getByLabel("Access needed").selectOption("read");
+  await reader.page.getByRole("button", { name: "Ask for access" }).click();
+  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
+  await desktop.page.getByRole("row", { name: /Read Only Laptop/ })
+    .getByRole("button", { name: /^Approve as/ }).click();
+  const readerIn = reader.page.getByRole("button", { name: "Continue" });
+  await readerIn.waitFor({ timeout: 30_000 });
+  await readerIn.click();
+  await reader.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+
+  check(
+    "a read-only device says so, once, where every screen carries it",
+    (await reader.page.getByText("read-only access").count()) === 1,
+    await visibleText(reader.page),
+  );
+  check(
+    "and it cannot start a timer",
+    await reader.page.getByRole("button", { name: /Start/ }).isDisabled(),
+  );
+  check(
+    "and access administration is not in its navigation",
+    (await reader.page.getByRole("button", { name: "Admin", exact: true }).count()) === 0,
+  );
+
   const dark = await rig.open("dark", DESKTOP, "Night Desktop", { colorScheme: "dark" });
   await dark.page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
   await dark.page.getByLabel("Access needed").selectOption("admin");

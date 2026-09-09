@@ -211,6 +211,17 @@ function Access() {
   const [pending, setPending] = useState<PendingWire[]>();
   const [devices, setDevices] = useState<DeviceWire[]>();
   const [busy, setBusy] = useState(false);
+  /**
+   * What went wrong on this screen, said on this screen.
+   *
+   * Both of the async helpers below used to let a rejection out: `load` is called from an effect
+   * with `void`, and `act` was `try`/`finally` with nothing in between. The store records a failed
+   * `call` in its own error strip, but the rejection still escaped to the window as an uncaught
+   * error — which is what the harness kept catching as an intermittent "this device has not
+   * authenticated": this screen's effect fires on every snapshot, and one of those arrives while a
+   * newly-approved device is still finishing its handshake.
+   */
+  const [problem, setProblem] = useState<string>();
 
   /**
    * 26.15 — the key of the only admin, when there is only one.
@@ -222,8 +233,13 @@ function Access() {
   const onlyAdmin = admins.length === 1 ? admins[0]!.publicKey : undefined;
 
   const load = async () => {
-    setPending(await call<PendingWire[]>({ t: "access-pending" }));
-    setDevices(await call<DeviceWire[]>({ t: "access-devices" }));
+    try {
+      setPending(await call<PendingWire[]>({ t: "access-pending" }));
+      setDevices(await call<DeviceWire[]>({ t: "access-devices" }));
+      setProblem(undefined);
+    } catch (err) {
+      setProblem((err as Error).message);
+    }
   };
 
   /**
@@ -243,9 +259,12 @@ function Access() {
 
   const act = async (body: () => Promise<unknown>) => {
     setBusy(true);
+    setProblem(undefined);
     try {
       await body();
       await load();
+    } catch (err) {
+      setProblem((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -253,6 +272,7 @@ function Access() {
 
   return (
     <>
+      {problem && <div className="notice bad">{problem}</div>}
       <div className="card">
         <h3>Pending requests</h3>
         {
@@ -408,17 +428,25 @@ function Logs() {
   const [sinceHours, setSinceHours] = useState(24);
 
   const [loadedAt, setLoadedAt] = useState<number>();
+  const [problem, setProblem] = useState<string>();
 
   const load = async (level: LogLevel, since: number) => {
-    setEntries(
-      await call<LogEntry[]>({
-        t: "logs",
-        minLevel: level,
-        from: Date.now() - since * 3_600_000,
-        limit: 300,
-      }),
-    );
-    setLoadedAt(Date.now());
+    // Every way in here is `void load(...)`: an effect on mount, the two filters, and the refresh
+    // button. A rejection from any of them had nowhere to go but the window.
+    try {
+      setEntries(
+        await call<LogEntry[]>({
+          t: "logs",
+          minLevel: level,
+          from: Date.now() - since * 3_600_000,
+          limit: 300,
+        }),
+      );
+      setLoadedAt(Date.now());
+      setProblem(undefined);
+    } catch (err) {
+      setProblem((err as Error).message);
+    }
   };
 
   /**
@@ -437,6 +465,7 @@ function Logs() {
 
   return (
     <div className="card">
+      {problem && <div className="notice bad" style={{ marginBottom: 12 }}>{problem}</div>}
       <div className="row between wrap" style={{ marginBottom: 12 }}>
         <h3>Server logs</h3>
         {/* 12.12 */}

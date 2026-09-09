@@ -92,6 +92,18 @@ async function main() {
   await approveFrom(desktop.page, dark.page, "Dark Desktop");
   await capture(dark.page, "dark");
 
+  /*
+   * 13.33 — and the third role, which nothing has ever drawn.
+   *
+   * A `read` device is a whole presentation: no Start, no Save, no Delete, no editor. Every
+   * screenshot in this repo is of a device that can write, so the screens as somebody with a
+   * read-only key sees them have never been looked at — and "the control is hidden" and "the
+   * control is there and does nothing" look identical until somebody presses it.
+   */
+  const viewer = await rig.open("viewer", DESKTOP, "Read Only Laptop");
+  await approveFrom(desktop.page, viewer.page, "Read Only Laptop", "read");
+  await capture(viewer.page, "readonly");
+
   // 23.6 — the phone has been a `write` device up to here, so its tab bar has five tabs and the
   // admin screen has never been photographed on a phone at all. Promote it and look: six tabs is
   // the widest that bar ever gets, and the admin screen is the densest thing in the app.
@@ -180,9 +192,9 @@ async function main() {
 }
 
 /** Ask from `page`, approve from `admin`. The dark device needs the same route in as the phone. */
-async function approveFrom(admin, page, name) {
+async function approveFrom(admin, page, name, role = "admin") {
   await page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
-  await page.getByLabel("Access needed").selectOption("admin");
+  await page.getByLabel("Access needed").selectOption(role);
   await page.getByRole("button", { name: "Ask for access" }).click();
   await admin.getByRole("button", { name: "Admin", exact: true }).click();
   await admin.getByRole("button", { name: "Device access" }).click();
