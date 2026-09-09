@@ -247,10 +247,18 @@ function ScheduleCard(
                   // differs between the two presentations — and on a phone the second input landed
                   // on a row of its own.
                   <div className="daytimes">
+                    {
+                      /*
+                      Named, because the day is on the checkbox's label two elements away and
+                      these are not inside it. Read aloud, ten of these announced themselves as
+                      "time" and nothing else — no day, no idea which end of the interval.
+                    */
+                    }
                     <input
                       type="time"
                       value={interval.start}
                       disabled={!canWrite}
+                      aria-label={`${WEEKDAY_NAMES[day]} starts at`}
                       onChange={(e) => setDay(day, { ...interval, start: e.target.value })}
                     />
                     <span className="faint">to</span>
@@ -258,6 +266,7 @@ function ScheduleCard(
                       type="time"
                       value={interval.end}
                       disabled={!canWrite}
+                      aria-label={`${WEEKDAY_NAMES[day]} ends at`}
                       onChange={(e) => setDay(day, { ...interval, end: e.target.value })}
                     />
                   </div>

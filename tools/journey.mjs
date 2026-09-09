@@ -1107,6 +1107,50 @@ async function main() {
 
   check("no phone screen hides content off to the right", hidden.length === 0, hidden.join("; "));
 
+  // ------------------------------------------------------------ every field says what it is
+  //
+  // A control with no accessible name is announced as "time" or "edit text" and nothing else. It
+  // is invisible to a screenshot by definition — the *sighted* layout is what makes it look fine,
+  // because the thing naming it is a heading two elements away.
+  //
+  // Written after 25.15 left two inputs under a column heading with an empty `<label>`, which I
+  // caught by reading the diff. Run against the whole app it found ten more: every weekday time
+  // field on the settings screen, which had been that way since the schedule was built.
+  const unnamed = (page, where) =>
+    page.evaluate((where) => {
+      const out = [];
+      for (const el of document.querySelectorAll("input, select, textarea")) {
+        const input = el;
+        if (input.type === "hidden") continue;
+        if (input.getAttribute("aria-label")?.trim()) continue;
+        const byId = input.id
+          ? document.querySelector(`label[for="${CSS.escape(input.id)}"]`)
+          : null;
+        // A wrapping `<label>` counts, which is how most of this app labels a field.
+        const holder = byId ?? input.closest("label");
+        // The value is inside the label's `textContent` when the label wraps the input, so it has
+        // to come out or every filled-in field looks named.
+        const text = (holder?.textContent ?? "").replace(input.value ?? "", "").trim();
+        if (text) continue;
+        out.push(`${where}: <${input.tagName.toLowerCase()} type=${input.type ?? "?"}>`);
+      }
+      return out;
+    }, where);
+
+  const nameless = [];
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+    await nav(desktop.page, screen);
+    await desktop.page.waitForTimeout(300);
+    nameless.push(...await unnamed(desktop.page, screen));
+  }
+  await nav(desktop.page, "Invoices");
+  await desktop.page.getByRole("button", { name: "Edit lines" }).first().click();
+  await desktop.page.getByRole("button", { name: "Add a line" }).waitFor({ timeout: 15_000 });
+  nameless.push(...await unnamed(desktop.page, "the invoice editor"));
+  await desktop.page.getByRole("button", { name: "Discard these changes" }).click();
+
+  check("every field has a name to be announced by", nameless.length === 0, nameless.join("; "));
+
   // ---------------------------------------------------------------- revoking, while connected
   //
   // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there
