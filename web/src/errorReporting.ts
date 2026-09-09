@@ -98,7 +98,20 @@ export async function flushQueue(send: Sender): Promise<number> {
       failed.push(item);
     }
   }
-  if (failed.length) writeQueue(failed);
+  if (failed.length) {
+    /*
+     * Merged in front of whatever arrived while this was running, not written over it.
+     *
+     * The queue is emptied above so that a report arriving mid-flush is not sent twice. That
+     * leaves a window: `report` appends to a store this function has already read, and
+     * `writeQueue(failed)` used to replace the lot — dropping the new one. Narrow, and exactly
+     * the case the queue exists for, because sending only fails when the connection is down and
+     * that is when a flush is slow enough for another error to happen.
+     *
+     * `failed` first, because it is older, and `writeQueue` keeps the newest when it trims.
+     */
+    writeQueue([...failed, ...readQueue()]);
+  }
   return queued.length - failed.length;
 }
 

@@ -136,3 +136,38 @@ Deno.test("flushing an empty queue does nothing and says so", async () => {
   fakeStorage();
   assertEquals(await flushQueue(broken), 0);
 });
+
+Deno.test("a report that arrives during a flush is not lost", async () => {
+  /*
+   * The queue's whole job is not to lose reports, and it had a window where it did.
+   *
+   * `flushQueue` empties the store before it starts sending, so that a report arriving mid-flush
+   * is not sent twice. But it then wrote the failures back with `writeQueue(failed)` — a
+   * *replacement* — and anything `report` had added in the meantime was replaced along with it.
+   *
+   * Narrow, and it is precisely the case the queue exists for: the connection is down, so sending
+   * fails, so the flush is slow, so there is time for another error. The moment it is most likely
+   * to happen is the moment it costs something.
+   */
+  fakeStorage();
+  await report(broken, describeError(new Error("queued before"), "x"));
+  assertEquals(queuedCount(), 1);
+
+  const racing: Sender = async () => {
+    await report(broken, describeError(new Error("arrived during"), "x"));
+    throw new Error("still not connected");
+  };
+  assertEquals(await flushQueue(racing), 0);
+  assertEquals(queuedCount(), 2, "the report that arrived during the flush was dropped");
+
+  // And both are the real ones, in the order they happened.
+  const sent: ReportedError[] = [];
+  await flushQueue((e) => {
+    sent.push(e as ReportedError);
+    return Promise.resolve();
+  });
+  assertEquals(sent.map((e) => e.message), [
+    "Error: queued before",
+    "Error: arrived during",
+  ]);
+});
