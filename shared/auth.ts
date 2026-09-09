@@ -108,7 +108,29 @@ const ED = { name: "Ed25519" } as const;
  * returns the private bytes, to us or to anything else running on the page.
  */
 export async function generateDeviceKey(): Promise<CryptoKeyPair> {
-  return await crypto.subtle.generateKey(ED, false, ["sign", "verify"]) as CryptoKeyPair;
+  try {
+    return await crypto.subtle.generateKey(ED, false, ["sign", "verify"]) as CryptoKeyPair;
+  } catch (err) {
+    /*
+     * A browser with Web Crypto and no Ed25519 in it.
+     *
+     * `kpsTransport.ts` guards the case with no `crypto.subtle` at all, for exactly this reason —
+     * a failure deep in the connect flow whose message names none of its causes — and then this
+     * one goes unguarded: Safari before 17 and Firefox before 130 have `crypto.subtle` and reject
+     * this call, so what a person sees is `NotSupportedError` and nothing about what to do.
+     *
+     * Translated here rather than at the call site because every route to a device key comes
+     * through this function, and the sentence is the same wherever it is asked from.
+     */
+    if ((err as Error)?.name === "NotSupportedError") {
+      throw new Error(
+        "this browser cannot make an Ed25519 key, which is how a device proves who it is to a " +
+          "server. A current Chrome, Firefox or Safari can; older ones cannot, and neither can " +
+          "the desktop app's own window — where the key lives in a file instead.",
+      );
+    }
+    throw err;
+  }
 }
 
 export async function exportPublicKey(pair: CryptoKeyPair): Promise<Uint8Array> {
