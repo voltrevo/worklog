@@ -160,8 +160,9 @@ function InvoiceRow(
       <div className="acts wrap">
         <StatusPill status={invoice.status} />
 
+        {/* 25.13 — what the button does is download; that it is a PDF is what it downloads. */}
         <button className="btn" type="button" disabled={busy} onClick={() => void act(generate)}>
-          PDF
+          Download
         </button>
         {saved && (
           <span className="faint">

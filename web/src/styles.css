@@ -629,11 +629,24 @@ i.swatch.off {
  * beside: a role select and four buttons do not share a line with a device name on a 390px screen,
  * and the desktop table put every one of them off the right-hand edge of a scroller.
  */
+/*
+ * 25.14 — a rule *between* rows.
+ *
+ * `border-top` on every row drew one above the first as well, a few pixels under the top edge of
+ * the card, which reads as an empty header rather than as a separator. The row is also given a
+ * floor so a paid invoice with two buttons is the same height as a draft with four, and the list
+ * does not step up and down as statuses change.
+ */
 .stacked-row {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
   padding: var(--s-3) 0;
+  min-height: 62px;
+  justify-content: center;
+}
+
+.stacked-row + .stacked-row {
   border-top: 1px solid var(--line);
 }
 

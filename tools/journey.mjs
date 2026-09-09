@@ -321,7 +321,7 @@ async function main() {
   const firstDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
     undefined
   );
-  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  await invoiceRow().getByRole("button", { name: "Download" }).click();
   const draftPdf = await firstDownload;
   check("a draft's PDF downloads", draftPdf !== undefined);
   if (draftPdf) {
@@ -361,7 +361,7 @@ async function main() {
   const secondDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
     undefined
   );
-  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  await invoiceRow().getByRole("button", { name: "Download" }).click();
   const issuedPdf = await secondDownload;
   check("an issued invoice's PDF downloads", issuedPdf !== undefined);
   let frozenBytes;
@@ -373,7 +373,7 @@ async function main() {
   const thirdDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
     undefined
   );
-  await invoiceRow().getByRole("button", { name: "PDF" }).click();
+  await invoiceRow().getByRole("button", { name: "Download" }).click();
   const again = await thirdDownload;
   check(
     "and it is frozen: the same bytes every time",

@@ -179,7 +179,10 @@ export function invoiceContent(draft: InvoiceDraft, config: InvoiceConfig): Invo
     paymentHeading: "METHOD OF PAYMENT",
     paymentMethod: {
       label: "Payment request in:",
-      value: [cur, config.payMethod && `(${config.payMethod})`].filter(Boolean).join(" "),
+      // 25.18 — verbatim. It used to print `AUD (Bank transfer)`, which reads as the currency with
+      // the method as a parenthetical afterthought; the currency is already stated two lines up on
+      // "Hourly rate in", and what the client needs here is how to pay.
+      value: config.payMethod,
     },
     account: set([
       ["Name", config.payName],

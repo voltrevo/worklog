@@ -181,3 +181,25 @@ Deno.test("an invoice with no work at all renders, because a bonus-only month is
   const bytes = await renderInvoicePdf(draftWith(0, 25_000), CONFIG);
   assertEquals((await PDFDocument.load(bytes)).getPageCount(), 1);
 });
+
+Deno.test("25.18 -- the payment method is printed as configured", () => {
+  const c = invoiceContent(draftWith(3, 25_000), CONFIG);
+  // It used to be `${currency} (${payMethod})` -- "AUD (Wire Transfer)" -- which reads as the
+  // currency with the method as an afterthought. The currency is already on "Hourly rate in" two
+  // lines above; what a client needs on this line is how to send the money.
+  assertEquals(c.paymentMethod.value, CONFIG.payMethod);
+  assertEquals(c.paymentMethod.value.includes("("), false);
+  assertEquals(c.paymentMethod.value.includes(CONFIG.currency), false);
+});
+
+Deno.test("25.7 -- the totals on the page are the sum of the lines on the page", () => {
+  // Read off the rendered content rather than the draft, because the claim is about the document:
+  // whatever the arithmetic did, a client adding up the Amount column must reach the Sub-total.
+  const c = invoiceContent(draftWith(17, 25_000), CONFIG);
+  const cents = (s: string) => Math.round(Number(s.replace(/[^0-9.-]/g, "")) * 100);
+  const rows = c.rows.reduce((t, r) => t + cents(r[5]!), 0);
+  assertEquals(cents(c.totalRow[5]!), rows);
+  // And the Hours column adds up to the Total hours cell beside it.
+  const hours = c.rows.reduce((t, r) => t + Number(r[3]), 0);
+  assertEquals(Number(c.totalRow[3]), Math.round(hours * 10) / 10);
+});

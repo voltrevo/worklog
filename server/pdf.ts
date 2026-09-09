@@ -179,6 +179,24 @@ function labelled(ctx: Ctx, label: string, value: string, y: number, labelW: num
   text(ctx, value, M + labelW, y);
 }
 
+/**
+ * Where the value goes, given the labels it has to clear (25.17).
+ *
+ * These three rows — "Time period", "Hourly rate in", "Work Approver" — were all hard-coded to
+ * `M + 118`, a number chosen once and never revisited. The widest of the labels is about 68pt, so
+ * every row carried fifty points of white space and the value read as unrelated to the label
+ * beside it.
+ *
+ * Measured rather than nudged, so the gap stays right when a label changes. `LABEL_GAP` is the
+ * thing being decided; the offset is a consequence of it.
+ */
+const LABEL_GAP = 10;
+
+function valueColumn(ctx: Ctx, labels: readonly string[]): number {
+  const widest = Math.max(...labels.map((l) => ctx.regular.widthOfTextAtSize(l, 9)));
+  return Math.ceil(widest) + LABEL_GAP;
+}
+
 // ------------------------------------------------------------------ sections
 
 function header(ctx: Ctx, c: InvoiceContent): void {
@@ -209,7 +227,9 @@ function header(ctx: Ctx, c: InvoiceContent): void {
 function billTo(ctx: Ctx, c: InvoiceContent): void {
   // 8.7, 8.25 — set apart, as the format does.
   text(ctx, "BILL TO:", M, ctx.y, { font: ctx.bold, size: 10, color: NAVY, spacing: 1 });
-  ctx.y -= 14;
+  // 25.16 — 14pt put the heading's descenders almost on the box below it, so the two read as one
+  // run-on block rather than a label and the thing it labels.
+  ctx.y -= 22;
   if (c.billTo.length === 0) return;
 
   const height = c.billTo.length * 13 + 14;
@@ -231,7 +251,7 @@ function billTo(ctx: Ctx, c: InvoiceContent): void {
 function period(ctx: Ctx, c: InvoiceContent): void {
   ctx.y -= 20;
   text(ctx, c.period.label, M, ctx.y, { color: DIM });
-  highlighted(ctx, c.period.value, M + 118, ctx.y, 210);
+  highlighted(ctx, c.period.value, M + valueColumn(ctx, [c.period.label]), ctx.y, 210);
   ctx.y -= 34;
 }
 
@@ -296,8 +316,9 @@ function totals(ctx: Ctx, c: InvoiceContent): void {
   const top = ctx.y;
 
   // 8.28 — on the left, the currency the rate is in and who approves the work.
+  const asideColumn = valueColumn(ctx, c.aside.map((p) => p.label));
   for (const pair of c.aside) {
-    labelled(ctx, pair.label, pair.value, ctx.y, 118);
+    labelled(ctx, pair.label, pair.value, ctx.y, asideColumn);
     ctx.y -= 15;
   }
 
