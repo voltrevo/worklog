@@ -37,6 +37,15 @@
 
   --accent: #2563eb;
   --accent-ink: #ffffff;
+  /*
+   * Ink for a solid `--bad` surface, and it flips with the theme exactly as `--accent-ink` does.
+   *
+   * The danger button was `color: #fff` outright while the primary beside it took a token. In the
+   * dark theme `--bad` becomes a *light* red (#f87171) and white text on it measures 2.77:1 —
+   * below the threshold, on the one control in the app whose whole job is to look like it should
+   * be read before it is pressed.
+   */
+  --bad-ink: #ffffff;
   --accent-wash: #eef3ff;
   /*
    * 4.41:1 as `#128a4c` on white. Set against `--good-wash` rather than against the page,
@@ -81,6 +90,7 @@
 
     --accent: #5b8cf5;
     --accent-ink: #0b1220;
+    --bad-ink: #2b0f0f;
     --accent-wash: #172136;
     --good: #4ade80;
     --good-wash: #12251b;
@@ -434,7 +444,7 @@ button.btn.primary {
 button.btn.danger {
   background: var(--bad);
   border-color: var(--bad);
-  color: #fff;
+  color: var(--bad-ink);
 }
 
 button.btn.big {

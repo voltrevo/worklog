@@ -20,7 +20,7 @@
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
+import { claimAndApprove, DESKTOP, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
 const dataDir = join(root, ".journey-data");
 const PORT = 41778;
@@ -1515,15 +1515,27 @@ async function main() {
         if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
         const style = getComputedStyle(el);
         if (style.visibility === "hidden" || Number(style.opacity) < 0.9) continue;
+        // Something that is on the page rather than merely in the document. `<title>` has a text
+        // node and a computed colour, and in the dark theme that colour came out white against the
+        // white this falls back to for an element with nothing painted behind it: 1.00:1, reported
+        // on every screen, for a string that is drawn in the browser's tab bar.
+        if (el.getClientRects().length === 0) continue;
         const size = parseFloat(style.fontSize);
         const large = (Number(style.fontWeight) >= 700 && size >= 18.66) || size >= 24;
         const need = large ? 3 : 4.5;
         const got = ratio(rgb(style.color).slice(0, 3), behind(el));
         // A hundredth of slack, because these are floats and the palette is tuned to the line.
         if (got + 0.005 < need) {
+          // Named as well as quoted. "Worklog 1.00:1" was reported for something that is plainly
+          // legible on screen, and there was no way to tell from the message which of the several
+          // elements carrying that word was meant, or what either colour was.
+          const at = `${el.tagName.toLowerCase()}${
+            el.className ? `.${String(el.className).trim().split(/\s+/).join(".")}` : ""
+          }`;
           out.push(
-            `${where}: "${(el.textContent ?? "").trim().slice(0, 24)}" ${got.toFixed(2)}:1 ` +
-              `needs ${need} at ${Math.round(size)}px`,
+            `${where}: ${at} "${(el.textContent ?? "").trim().slice(0, 24)}" ${got.toFixed(2)}:1 ` +
+              `needs ${need} at ${Math.round(size)}px ` +
+              `(${style.color} on rgb(${behind(el).join(" ")}))`,
           );
         }
       }
@@ -1534,6 +1546,30 @@ async function main() {
 
   const leaks = [];
   const offLine = [];
+  /*
+   * A third device, in the other theme.
+   *
+   * The harness pins `colorScheme: "light"` so a run does not depend on the machine's preference,
+   * which means every check above has only ever seen half the stylesheet. The dark palette is a
+   * second value for every colour in this app and the only thing that has ever looked at it is a
+   * person looking at a screenshot — which is how `button.link.danger` rendered four Delete
+   * controls in accent blue for as long as it did.
+   *
+   * `colorScheme` is fixed when a context is made, so this is a device rather than a toggle.
+   */
+  const dark = await rig.open("dark", DESKTOP, "Night Desktop", { colorScheme: "dark" });
+  await dark.page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
+  await dark.page.getByLabel("Access needed").selectOption("admin");
+  await dark.page.getByRole("button", { name: "Ask for access" }).click();
+  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
+  await desktop.page.getByRole("row", { name: /Night Desktop/ })
+    .getByRole("button", { name: /^Approve as/ }).click();
+  const continueIn = dark.page.getByRole("button", { name: "Continue" });
+  await continueIn.waitFor({ timeout: 30_000 });
+  await continueIn.click();
+  await dark.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+
   for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(300);
@@ -1549,6 +1585,11 @@ async function main() {
       leaks.push(...await sourceOnScreen(mobile.page, `${screen} (phone)`));
       offLine.push(...await checkboxAlignment(mobile.page, `${screen} (phone)`));
     }
+    await nav(dark.page, screen);
+    await dark.page.waitForTimeout(250);
+    dim.push(...await lowContrast(dark.page, `${screen} (dark)`));
+    leaks.push(...await sourceOnScreen(dark.page, `${screen} (dark)`));
+    offLine.push(...await checkboxAlignment(dark.page, `${screen} (dark)`));
   }
   check(
     "every piece of text clears its contrast threshold",
