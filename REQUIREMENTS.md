@@ -661,7 +661,7 @@ names this.
 
 25.36. MUST update the recording waveform continuously; a trace that is mostly flat with occasional static is not showing the input.
 25.37. MUST present one control for playing a voice note, which shows that it is loading and then plays, rather than a button that becomes a player which must be pressed again.
-25.38. SHOULD stream a voice note into the player rather than downloading it whole before anything can start.
+25.38. ~~SHOULD stream a voice note into the player rather than downloading it whole before anything can start.~~ (declined: 26.29)
 
 ### Prompts
 
@@ -741,3 +741,4 @@ read together.
 26.26. MUST confirm before a dismissal throws away unsaved work, on every way out of the panel that holds it: a work note still recording, and an invoice with edited lines. `Sheet` already makes backdrop dismissal opt-in for this reason; Escape is the same act.
 26.27. MUST say when a list is showing only part of what there is. A screen holding exactly its limit looks like a screen holding everything, so the notes list and the log viewer each say which part they are showing rather than letting a reader conclude the rest is gone.
 26.28. MUST refuse to proceed when the frontend and the server disagree about the protocol version, saying which of the two is behind. `hello` has carried the number since there was a protocol and nothing read it; the frontend is a static site, so a browser holding yesterday's build against a server updated this morning is the ordinary case.
+26.29. MAY deliver a voice note whole rather than streaming it, declining 25.38. 26.25 bounds a note at what one request carries — about five minutes of speech, some 750 kB — and the server is on the same network as the device asking, so the wait streaming would remove is a fraction of a second. The cost is a second delivery path for audio, with its own ordering and failure cases, for a gain nobody can perceive. If 26.25's bound is ever lifted this should be reconsidered with it.
