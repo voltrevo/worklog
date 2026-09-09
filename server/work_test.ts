@@ -65,8 +65,13 @@ Deno.test("2.12 -- an entry converts between forms in both directions", () => {
   assertEquals(bare.durationMs, 2 * HOUR);
   assertEquals(getEntry(db, e.id)?.timing, undefined);
 
+  // 25.28 — and adding times back sets the duration to what they say. This used to leave the old
+  // two hours in place beside a one-hour interval: the row read 09:00–10:00 and the month total
+  // counted two, and the invoice billed the total.
   const timed = updateEntry(db, e.id, { timing: { startedAt: T0, endedAt: T0 + HOUR } }, T0);
   assertEquals(timed.timing?.endedAt, T0 + HOUR);
+  assertEquals(timed.durationMs, HOUR);
+  assertEquals(getEntry(db, e.id)?.durationMs, HOUR);
   db.close();
 });
 
@@ -277,5 +282,91 @@ Deno.test("a start in the future or two days back is refused", () => {
 Deno.test("moving the start of a timer that is not running is refused", () => {
   const db = fresh();
   assertThrows(() => restartTimerAt(db, T0 - HOUR, T0), Refused, "no timer is running");
+  db.close();
+});
+
+Deno.test("25.3 -- the server refuses an entry it could not show anybody", () => {
+  /*
+   * All of these were accepted, and stored, and the client's validation was the only thing
+   * stopping them. 1.8 makes the server the authority; a rule enforced only by the sender is not
+   * enforced.
+   *
+   * The date is the one that matters. Every view groups by month, so an entry dated "banana" is
+   * in no month — not on the history screen, not in a total, not on an invoice, and not reported
+   * missing either. It is simply somewhere nobody looks.
+   */
+  const db = fresh();
+  const bad = (why: string, input: Parameters<typeof addEntry>[1]) =>
+    assertThrows(() => addEntry(db, input), Refused, why);
+
+  bad("not a calendar date", { date: "banana" as never, durationMs: HOUR, billingTag: "x" });
+  bad("not a calendar date", { date: "2026-13-45" as never, durationMs: HOUR, billingTag: "x" });
+  // The shape alone admits this one; `Date` would roll it into March without a word.
+  bad("not a calendar date", { date: "2026-02-31" as never, durationMs: HOUR, billingTag: "x" });
+  bad("needs a billing tag", { date: "2026-09-01", durationMs: HOUR, billingTag: "   " });
+  bad("at most 200", { date: "2026-09-01", durationMs: HOUR, billingTag: "z".repeat(201) });
+  bad("negative or unreadable", { date: "2026-09-01", durationMs: -HOUR, billingTag: "x" });
+
+  // 29 February 2028 is real; 2026 is not a leap year, so the check has to know which.
+  addEntry(db, { date: "2028-02-29", durationMs: HOUR, billingTag: "x" });
+  bad("not a calendar date", { date: "2026-02-29" as never, durationMs: HOUR, billingTag: "x" });
+  db.close();
+});
+
+Deno.test("a timed entry whose interval disagrees with its duration is refused", () => {
+  // The invoice bills `durationMs`; the history screen shows the interval. Accepting both means
+  // the same entry says two different things depending on where you read it, and one of them is
+  // what gets paid.
+  const db = fresh();
+  assertThrows(
+    () =>
+      addEntry(db, {
+        date: "2026-09-01",
+        durationMs: HOUR,
+        billingTag: "x",
+        timing: { startedAt: T0, endedAt: T0 + 3 * HOUR },
+      }),
+    Refused,
+    "these do not match",
+  );
+  // And the honest version goes in.
+  const ok = addEntry(db, {
+    date: "2026-09-01",
+    durationMs: 3 * HOUR,
+    billingTag: "x",
+    timing: { startedAt: T0, endedAt: T0 + 3 * HOUR },
+  });
+  assertEquals(ok.durationMs, 3 * HOUR);
+  db.close();
+});
+
+Deno.test("and an edit is held to the same rules as an insert", () => {
+  // An edit reaches every field an insert does, so a check on `addEntry` alone guarded the easier
+  // half — and editing is where a person actually retypes a date.
+  const db = fresh();
+  const e = addEntry(db, { date: "2026-09-01", durationMs: HOUR, billingTag: "x" });
+  assertThrows(() => updateEntry(db, e.id, { date: "banana" as never }), Refused, "calendar date");
+  assertThrows(() => updateEntry(db, e.id, { billingTag: "  " }), Refused, "billing tag");
+  // Both, and disagreeing. Timing *alone* is a complete statement and sets the duration — see
+  // 25.28 above; it is only saying two different things at once that is refused.
+  assertThrows(
+    () =>
+      updateEntry(db, e.id, {
+        durationMs: HOUR,
+        timing: { startedAt: T0, endedAt: T0 + 5 * HOUR },
+      }),
+    Refused,
+    "do not match",
+  );
+  // Unchanged by any of them.
+  assertEquals(getEntry(db, e.id)?.date, "2026-09-01");
+  db.close();
+});
+
+Deno.test("a tag is stored trimmed, so two spellings are one tag", () => {
+  const db = fresh();
+  const e = addEntry(db, { date: "2026-09-01", durationMs: HOUR, billingTag: "  Product  " });
+  assertEquals(e.billingTag, "Product");
+  assertEquals(getEntry(db, e.id)?.billingTag, "Product");
   db.close();
 });

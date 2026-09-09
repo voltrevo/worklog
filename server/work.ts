@@ -75,7 +75,79 @@ export interface NewEntry {
   timing?: { startedAt: Instant; endedAt: Instant };
 }
 
-export function addEntry(db: Db, input: NewEntry, now: Instant = Date.now()): WorkEntry {
+/**
+ * What a work entry has to be, checked where every route passes.
+ *
+ * **The server used to accept all of this**, and the client's validation was the only thing
+ * stopping it: `date: "banana"` stored verbatim, `"2026-13-45"` likewise, a tag of three spaces, a
+ * 10,000-character tag, a 400-hour day, and a `timing` whose interval disagreed with the duration
+ * beside it.
+ *
+ * The date is the one that matters most. Every view groups by month, so an entry dated "banana"
+ * is in no month: it is not on the history screen, not in a total, not on an invoice, and not
+ * missing either — it is simply somewhere nobody looks. Silent, and permanent.
+ *
+ * A disagreeing `timing` is the second. The invoice bills `durationMs` and the history screen
+ * shows the interval, so the same entry says two different things depending on where you read it,
+ * and one of them is what gets paid. 25.28 made that impossible in the editor; this makes it
+ * impossible at all.
+ *
+ * 1.8 is the reason this is here rather than only in the frontend: the server is the authority,
+ * and a rule enforced only by the thing sending the request is not enforced.
+ */
+const MAX_TAG = 200;
+
+function validate(input: NewEntry): NewEntry {
+  const billingTag = input.billingTag.trim();
+  if (!billingTag) throw new Refused("no-billing-tag", "a work entry needs a billing tag");
+  if (billingTag.length > MAX_TAG) {
+    throw new Refused("tag-too-long", `a billing tag is at most ${MAX_TAG} characters`);
+  }
+
+  // `YYYY-MM-DD`, *and* a day that exists: the shape alone admits 2026-02-31, and `Date` would
+  // roll it forward to March without complaining.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !isRealDate(input.date)) {
+    throw new Refused("bad-date", `${JSON.stringify(input.date)} is not a calendar date`);
+  }
+
+  const durationMs = Math.round(input.durationMs);
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    throw new Refused("bad-duration", "a duration cannot be negative or unreadable");
+  }
+  /*
+   * **No upper bound, deliberately.** I added a 24-hour cap here and `work_test.ts` refused it,
+   * correctly: 2.16 says warn about an implausibly long timer and 2.17 says do not silently guess
+   * corrections for one. Refusing to *store* thirty hours is a harsher version of guessing — the
+   * record is destroyed rather than adjusted, and the person is left with nothing where they had
+   * a wrong number they could fix.
+   *
+   * Everything else this function checks is about *coherence*: a date that is a date, a tag that
+   * is a tag, an interval that agrees with the duration printed beside it. Plausibility is a
+   * different question and it is answered by a warning on screen.
+   */
+
+  if (input.timing) {
+    const span = input.timing.endedAt - input.timing.startedAt;
+    if (span !== durationMs) {
+      throw new Refused(
+        "timing-disagrees",
+        "a timed entry's duration is its interval; these do not match",
+      );
+    }
+  }
+
+  return { ...input, billingTag, durationMs };
+}
+
+function isRealDate(date: string): boolean {
+  const [y, m, d] = date.split("-").map(Number);
+  if (m! < 1 || m! > 12 || d! < 1) return false;
+  // Day 0 of the next month is the last day of this one.
+  return d! <= new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+}
+
+export function addEntry(db: Db, raw: NewEntry, now: Instant = Date.now()): WorkEntry {
+  const input = validate(raw);
   const id = crypto.randomUUID();
   db.prepare(
     `INSERT INTO work_entry (id, date, duration_ms, billing_tag, started_at, ended_at,
@@ -124,7 +196,27 @@ export function updateEntry(
       ...(patch.billingTag !== undefined ? { billingTag: patch.billingTag } : {}),
     };
     if (patch.timing === null) delete next.timing;
-    else if (patch.timing !== undefined) next.timing = patch.timing;
+    else if (patch.timing !== undefined) {
+      next.timing = patch.timing;
+      /*
+       * 25.28 — the duration of a timed entry *is* its interval.
+       *
+       * Setting the times without saying a duration is a complete statement, so the duration
+       * follows. It used to keep whatever was there: an entry could say two hours in the total
+       * and 09:00–10:00 on the row, and the invoice billed the first. Saying both, and
+       * disagreeing, is refused by `validate`; saying one is answered.
+       */
+      if (patch.durationMs === undefined) {
+        next.durationMs = patch.timing.endedAt - patch.timing.startedAt;
+      }
+    }
+
+    // The same rules as adding one. An edit can reach every field an insert can, so a check that
+    // only guarded `addEntry` guarded the easier half.
+    const checked = validate(next);
+    next.date = checked.date;
+    next.durationMs = checked.durationMs;
+    next.billingTag = checked.billingTag;
 
     db.prepare(
       `UPDATE work_entry SET date = ?, duration_ms = ?, billing_tag = ?, started_at = ?,
