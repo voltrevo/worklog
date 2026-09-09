@@ -472,6 +472,31 @@ textarea:focus {
   outline-offset: -1px;
 }
 
+/*
+ * The same ring on everything else that can hold focus.
+ *
+ * Fields had this and controls did not, so a keyboard walking the app got 2px of accent blue on an
+ * input and the browser's default — 1px of near-black — on every button and link. On the dark
+ * sidebar that is faint; in dark mode it is black on near-black, which is no indicator at all.
+ *
+ * `:focus-visible` and not `:focus`, so a mouse click does not leave a ring behind on the button
+ * it pressed. Offset *outside* the control rather than inset, because a primary button is already
+ * filled with `--accent` and an inset accent ring on it is invisible for the opposite reason.
+ */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The sheet itself takes focus when it opens (see `Sheet.tsx`); ringing the whole backdrop is
+ * noise, and the thing that has focus is the dialog, which is already obvious. */
+.sheet:focus-visible {
+  outline: none;
+}
+
 label.field {
   display: flex;
   flex-direction: column;

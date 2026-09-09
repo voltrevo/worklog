@@ -1060,6 +1060,37 @@ async function main() {
     );
   }
 
+  // ------------------------------------------------------------ you can see where you are
+  //
+  // Fields had an explicit focus ring and controls did not, so a keyboard walking this app got 2px
+  // of accent blue on an input and the browser's default — 1px of near-black — on every button and
+  // link. Faint on the dark sidebar; in dark mode, black on near-black, which is no indicator.
+  //
+  // Tabbed rather than focused programmatically, because `:focus-visible` is exactly the
+  // distinction between the two and it is the one that decides whether a ring is drawn.
+  console.log("\nfocus:");
+  await nav(desktop.page, "Timer");
+  await desktop.page.evaluate(() => document.activeElement?.blur?.());
+  const ringless = [];
+  for (let i = 0; i < 12; i++) {
+    await desktop.page.keyboard.press("Tab");
+    const at = await desktop.page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return null;
+      const s = getComputedStyle(el);
+      const drawn = s.outlineStyle !== "none" && parseFloat(s.outlineWidth) >= 2;
+      return drawn
+        ? null
+        : `${el.tagName.toLowerCase()} "${(el.textContent ?? "").trim().slice(0, 16)}"`;
+    });
+    if (at) ringless.push(at);
+  }
+  check(
+    "every control shows where the keyboard is",
+    ringless.length === 0,
+    [...new Set(ringless)].join("; "),
+  );
+
   // ------------------------------------------------------------ text you can actually read
   //
   // Measured on the rendered page rather than argued from the palette, because what a colour is
