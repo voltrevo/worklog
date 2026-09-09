@@ -210,6 +210,42 @@ export function retagTimer(db: Db, billingTag: string): ActiveTimer {
   });
 }
 
+/**
+ * 25.27 — move a running timer's start.
+ *
+ * The case this is for is forgetting to press Start: you notice at 11:20 that you began at 09:30,
+ * and the only remedies were to stop the timer and hand-add a past entry, or to let it record the
+ * wrong thing. Both lose the fact that you are still working.
+ *
+ * Refused in the future, because a session that has not begun is not running, and every figure
+ * downstream — today's total, the pace, the segments on the bar — would go negative from a value
+ * the UI would then have to defend against one screen at a time.
+ */
+export function restartTimerAt(db: Db, startedAt: Instant, now: Instant = Date.now()): ActiveTimer {
+  return transact(db, () => {
+    const running = activeTimer(db);
+    if (!running) throw new Refused("no-timer-running", "no timer is running");
+    if (startedAt > now) {
+      throw new Refused("start-in-the-future", "a timer cannot have started in the future");
+    }
+    if (now - startedAt > IMPLAUSIBLE_START_MS) {
+      throw new Refused(
+        "start-too-long-ago",
+        "that start is more than two days ago; add it as a past entry instead",
+      );
+    }
+    db.prepare("UPDATE active_timer SET started_at = ? WHERE id = 1").run(startedAt);
+    return { ...running, startedAt };
+  });
+}
+
+/**
+ * Two days. Not a policy about how long anyone works — 2.19's implausible-timer warning already
+ * covers that — but a bound on what this message can be used to invent, since a start moved back
+ * far enough files today's work under a date nobody is looking at.
+ */
+const IMPLAUSIBLE_START_MS = 2 * 24 * 3_600_000;
+
 /** 2.5 — stopping persists the work. The entry is timed, since the times are genuinely known. */
 export function stopTimer(db: Db, now: Instant = Date.now()): WorkEntry {
   return transact(db, () => {

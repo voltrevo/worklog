@@ -10,18 +10,9 @@
 import { useState } from "react";
 import { useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
-import {
-  duration,
-  hours,
-  instantAt,
-  longDate,
-  monthName,
-  parseDuration,
-  timeOfDay,
-  timeValue,
-} from "../format.ts";
-import { today } from "@worklog/shared/dates";
+import { duration, hours, longDate, monthName, timeOfDay } from "../format.ts";
 import { MonthNav } from "./MonthNav.tsx";
+import { EntryEditor } from "./EntryEditor.tsx";
 import { monthReport } from "@worklog/shared/reports";
 import type { StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { WorkEntry } from "@worklog/shared/types";
@@ -30,7 +21,13 @@ export function History() {
   const { snapshot, month, setMonth, refresh, phase } = useStore();
   const presentation = usePresentation();
   const canWrite = phase.k === "ready" && phase.role !== "read";
-  const [editing, setEditing] = useState<string | null>(null);
+  /**
+   * 25.30 — one editor, and what it is editing.
+   *
+   * `"new"` for adding, an id for editing. It used to be an id or null, with adding handled by a
+   * separate form permanently mounted above the list, which is how the two drifted apart.
+   */
+  const [editing, setEditing] = useState<string | "new" | null>(null);
 
   if (!snapshot) return <p className="muted">Loading…</p>;
 
@@ -51,7 +48,25 @@ export function History() {
 
       <MonthTotals />
 
-      {canWrite && <AddEntry onAdded={() => void refresh()} />}
+      {/* 25.30 — a control in the list, not a form standing permanently above it. */}
+      {canWrite && (
+        <div className="row">
+          <button className="btn" type="button" onClick={() => setEditing("new")}>
+            Add past time
+          </button>
+        </div>
+      )}
+
+      {editing !== null && (
+        <EntryEditor
+          entry={editing === "new"
+            ? undefined
+            : snapshot.entries.find((e: WorkEntry) => e.id === editing)}
+          tags={snapshot.recentTags}
+          onClose={() => setEditing(null)}
+          onSaved={() => refresh()}
+        />
+      )}
 
       {days.length === 0
         ? (
@@ -113,67 +128,52 @@ export function History() {
                         </tr>
                       </thead>
                       <tbody>
-                        {entries.map((e) =>
-                          editing === e.id
-                            ? (
-                              <EditRow
-                                key={e.id}
-                                entry={e}
-                                tags={snapshot.recentTags}
-                                onDone={async () => {
-                                  setEditing(null);
-                                  await refresh();
-                                }}
-                              />
-                            )
-                            : (
-                              <tr key={e.id}>
-                                <td>
-                                  {/* 19.6 */}
-                                  {e.timing
-                                    ? (
-                                      <span className="tabular">
-                                        {timeOfDay(e.timing.startedAt)} –{" "}
-                                        {timeOfDay(e.timing.endedAt)}
-                                      </span>
-                                    )
-                                    : (
-                                      <span className="pill">
-                                        duration only
-                                      </span>
-                                    )}
-                                </td>
-                                {/* 19.5 — the tag is visible while reviewing, not hidden behind an edit. */}
-                                <td>{e.billingTag}</td>
-                                <td
-                                  className="tabular"
-                                  style={{ textAlign: "right" }}
-                                >
-                                  {duration(e.durationMs)}
-                                </td>
-                                <td
-                                  style={{
-                                    textAlign: "right",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {canWrite && (
-                                    <>
-                                      <button
-                                        className="link"
-                                        type="button"
-                                        onClick={() => setEditing(e.id)}
-                                      >
-                                        Edit
-                                      </button>
-                                      {" · "}
-                                      <DeleteEntry id={e.id} onDone={() => void refresh()} />
-                                    </>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                        )}
+                        {entries.map((e) => (
+                          <tr key={e.id}>
+                            <td>
+                              {/* 19.6 */}
+                              {e.timing
+                                ? (
+                                  <span className="tabular">
+                                    {timeOfDay(e.timing.startedAt)} – {timeOfDay(e.timing.endedAt)}
+                                  </span>
+                                )
+                                : (
+                                  <span className="pill">
+                                    duration only
+                                  </span>
+                                )}
+                            </td>
+                            {/* 19.5 — the tag is visible while reviewing, not hidden behind an edit. */}
+                            <td>{e.billingTag}</td>
+                            <td
+                              className="tabular"
+                              style={{ textAlign: "right" }}
+                            >
+                              {duration(e.durationMs)}
+                            </td>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {canWrite && (
+                                <>
+                                  <button
+                                    className="link"
+                                    type="button"
+                                    onClick={() => setEditing(e.id)}
+                                  >
+                                    Edit
+                                  </button>
+                                  {" · "}
+                                  <DeleteEntry id={e.id} onDone={() => void refresh()} />
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -231,156 +231,6 @@ function MonthTotals() {
   );
 }
 
-function AddEntry({ onAdded }: { onAdded: () => void }) {
-  const { call, snapshot } = useStore();
-  const [date, setDate] = useState(today());
-  const [text, setText] = useState("");
-  const [tag, setTag] = useState("");
-  /**
-   * 24.11 — a past entry is a duration *or* an interval.
-   *
-   * 2.9's duration-only form exists so nobody has to invent a start and an end to record that they
-   * worked three hours on Tuesday, and it stays. It was the only form available, which is a
-   * different thing: when the times are known, typing them should not require inventing a
-   * duration instead.
-   */
-  const [mode, setMode] = useState<"duration" | "times">("duration");
-  /**
-   * 24.9's fix, applied to the other copy of the same field.
-   *
-   * The timer screen's tag box used the last-used tag as a *placeholder* while the value stayed
-   * empty, so grey text that looks like an empty field silently became the tag. This one did the
-   * same thing. It is a real prefilled value here too — and, because 24.1 now refuses an empty
-   * tag, leaving it as a placeholder would have turned the confusion into a rejection.
-   */
-  const [prefilled, setPrefilled] = useState(false);
-  if (!prefilled && snapshot?.recentTags.length) {
-    setPrefilled(true);
-    setTag(snapshot.recentTags[0]!);
-  }
-  const [from, setFrom] = useState("09:00");
-  const [to, setTo] = useState("17:00");
-  const [problem, setProblem] = useState<string | null>(null);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const ms = parseDuration(text);
-    // 24.1 — the tag is required, and a missing one is refused rather than filled in.
-    const billingTag = tag.trim();
-    if (!billingTag) {
-      setProblem("A billing tag is needed.");
-      return;
-    }
-
-    let durationMs: number;
-    let timing: { startedAt: number; endedAt: number } | undefined;
-
-    if (mode === "times") {
-      const startedAt = instantAt(date, from);
-      const endedAt = instantAt(date, to);
-      if (startedAt === undefined || endedAt === undefined) {
-        setProblem("Both times are needed, as HH:MM.");
-        return;
-      }
-      if (endedAt <= startedAt) {
-        // Deliberately not wrapped to the next day: 2.21 files a session under the day it began,
-        // and silently inventing a midnight crossing from two times on one date would file work
-        // somewhere nobody asked for.
-        setProblem("The end time is not after the start time.");
-        return;
-      }
-      timing = { startedAt, endedAt };
-      durationMs = endedAt - startedAt;
-    } else {
-      if (ms === null || ms <= 0) {
-        setProblem("Try 2h 30m, 2:30, 2.5 or 150m.");
-        return;
-      }
-      durationMs = ms;
-    }
-
-    setProblem(null);
-    await call({
-      t: "entry-add",
-      date,
-      durationMs,
-      billingTag,
-      ...(timing ? { timing } : {}),
-    });
-    setText("");
-    onAdded();
-  };
-
-  return (
-    <form className="card" onSubmit={submit}>
-      <h3>Add past time</h3>
-      <div
-        className="row wrap"
-        style={{ marginTop: 8, alignItems: "flex-end" }}
-      >
-        <label className="field">
-          Date
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          Record as
-          <select value={mode} onChange={(e) => setMode(e.target.value as "duration" | "times")}>
-            <option value="duration">a duration</option>
-            <option value="times">start and end</option>
-          </select>
-        </label>
-        {mode === "duration"
-          ? (
-            <label className="field">
-              How long
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="2h 30m"
-                style={{ width: 110 }}
-              />
-            </label>
-          )
-          : (
-            <>
-              <label className="field">
-                From
-                <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
-              </label>
-              <label className="field">
-                To
-                <input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
-              </label>
-            </>
-          )}
-        <label className="field" style={{ flex: 1, minWidth: 160 }}>
-          Billing tag
-          <input
-            list="recent-tags-history"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder="Product Development"
-          />
-        </label>
-        <datalist id="recent-tags-history">
-          {snapshot?.recentTags.map((t: string) => (
-            <option
-              key={t}
-              value={t}
-            />
-          ))}
-        </datalist>
-        <button className="btn primary" type="submit">Add</button>
-      </div>
-      {problem && <div className="notice warn" style={{ marginTop: 10 }}>{problem}</div>}
-    </form>
-  );
-}
-
 /**
  * Delete, with a confirmation (24.13, 24.3).
  *
@@ -426,128 +276,5 @@ function DeleteEntry({ id, onDone }: { id: string; onDone: () => Promise<void> |
         Keep
       </button>
     </>
-  );
-}
-
-function EditRow(
-  { entry, tags, onDone }: {
-    entry: WorkEntry;
-    tags: string[];
-    onDone: () => Promise<void>;
-  },
-) {
-  const { call } = useStore();
-  const [text, setText] = useState(duration(entry.durationMs));
-  const [tag, setTag] = useState(entry.billingTag);
-  const [date, setDate] = useState(entry.date);
-  /**
-   * 24.12 — the times are editable.
-   *
-   * The only edit available to a timed entry used to be a "drop the times" checkbox, which is the
-   * one change to an interval nobody needs: an interval that is wrong is wrong by a few minutes,
-   * not wrong by being an interval. 2.12's conversion is gone with it — deleting the entry and
-   * adding a duration-only one does the same thing without a checkbox that means "discard data".
-   */
-  const [from, setFrom] = useState(entry.timing ? timeValue(entry.timing.startedAt) : "");
-  const [to, setTo] = useState(entry.timing ? timeValue(entry.timing.endedAt) : "");
-  const [problem, setProblem] = useState<string>();
-
-  const save = async () => {
-    const billingTag = tag.trim();
-    if (!billingTag) {
-      setProblem("A billing tag is needed.");
-      return;
-    }
-
-    // A timed entry's duration is its interval; there is no third number to disagree with.
-    if (entry.timing) {
-      const startedAt = instantAt(date, from);
-      const endedAt = instantAt(date, to);
-      if (startedAt === undefined || endedAt === undefined) {
-        setProblem("Both times are needed, as HH:MM.");
-        return;
-      }
-      if (endedAt <= startedAt) {
-        setProblem("The end time is not after the start time.");
-        return;
-      }
-      await call({
-        t: "entry-update",
-        id: entry.id,
-        date,
-        billingTag,
-        durationMs: endedAt - startedAt,
-        timing: { startedAt, endedAt },
-      });
-      await onDone();
-      return;
-    }
-
-    const ms = parseDuration(text);
-    if (ms === null || ms <= 0) {
-      setProblem("Try 2h 30m, 2:30, 2.5 or 150m.");
-      return;
-    }
-    await call({ t: "entry-update", id: entry.id, date, durationMs: ms, billingTag });
-    await onDone();
-  };
-
-  return (
-    <tr>
-      <td>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        {entry.timing && (
-          <div className="row" style={{ gap: 4, marginTop: 4 }}>
-            <input
-              type="time"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              aria-label="Start time"
-            />
-            <span className="faint">–</span>
-            <input
-              type="time"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              aria-label="End time"
-            />
-          </div>
-        )}
-        {problem && <div className="faint" style={{ fontSize: 12 }}>{problem}</div>}
-      </td>
-      <td>
-        <input
-          list="recent-tags-history"
-          value={tag}
-          onChange={(e) => setTag(e.target.value)}
-        />
-        <datalist id="recent-tags-history">
-          {tags.map((t) => <option key={t} value={t} />)}
-        </datalist>
-      </td>
-      <td style={{ textAlign: "right" }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          style={{ width: 90 }}
-        />
-      </td>
-      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-        <button
-          className="btn primary"
-          type="button"
-          onClick={() => void save()}
-        >
-          Save
-        </button>{" "}
-        <button className="btn" type="button" onClick={() => void onDone()}>
-          Cancel
-        </button>
-      </td>
-    </tr>
   );
 }

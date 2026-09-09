@@ -66,6 +66,7 @@ import {
   entriesOn,
   recentBillingTags,
   Refused,
+  restartTimerAt,
   retagTimer,
   runningMs,
   startTimer,
@@ -410,6 +411,13 @@ export async function handle(
     case "timer-retag": {
       const timer = retagTimer(db, req.billingTag);
       ctx.log("info", "timer", "retagged", { billingTag: timer.billingTag });
+      broadcast(ctx, { e: "timer", timer: timerState(ctx) });
+      return timer;
+    }
+
+    case "timer-set-start": {
+      const timer = restartTimerAt(db, req.startedAt, now);
+      ctx.log("info", "timer", "start moved", { startedAt: timer.startedAt });
       broadcast(ctx, { e: "timer", timer: timerState(ctx) });
       return timer;
     }

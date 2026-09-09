@@ -445,6 +445,7 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "timer-start",
     "timer-stop",
     "timer-retag",
+    "timer-set-start",
     "timer-discard",
     "entries",
     "entry-add",

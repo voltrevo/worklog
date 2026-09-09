@@ -226,6 +226,10 @@ async function main() {
   const before = await monthTotal(desktop.page);
   check("the desktop's history screen shows a month total", before !== undefined);
 
+  // 25.30 — reached from a control in the list rather than from a form pinned above it, and it is
+  // the same editor the Edit link opens.
+  await mobile.page.getByRole("button", { name: "Add past time" }).click();
+  await mobile.page.getByRole("dialog").waitFor({ timeout: 15_000 });
   await mobile.page.getByLabel("How long").fill("2h 30m");
   await mobile.page.getByLabel("Billing tag").fill("Phone entry");
   await mobile.page.getByRole("button", { name: "Add", exact: true }).click();
@@ -492,6 +496,49 @@ async function main() {
     (p) => p.getByText("Draft", { exact: true }).first().isVisible(),
   );
 
+  // 25.27 — the start of a running session is editable. The case is forgetting to press Start:
+  // you notice at 11:20 that you began at 09:30, and the choice used to be between stopping and
+  // hand-adding a past entry, or recording the wrong thing.
+  console.log("\nmoving a running start:");
+  await nav(desktop.page, "Timer");
+  await desktop.page.getByRole("button", { name: /Start/ }).click();
+  const startLink = desktop.page.locator(".muted button.link").first();
+  await startLink.waitFor({ timeout: 15_000 });
+  check(
+    "the start of the running session is shown",
+    /^\d{2}:\d{2}$/.test(
+      (await startLink.textContent())?.trim() ?? "",
+    ),
+  );
+  await startLink.click();
+  await desktop.page.getByLabel("Started at").fill("06:15");
+  await desktop.page.getByRole("button", { name: "Move the start" }).click();
+  check(
+    "25.27 — and it can be moved",
+    await until(
+      "start moved",
+      desktop.page,
+      async (p) =>
+        (await p.locator(".muted button.link").first().textContent())?.trim() === "06:15",
+    ),
+  );
+  // A future start is refused rather than making every figure below it negative.
+  await startLink.click();
+  await desktop.page.getByLabel("Started at").fill("23:59");
+  await desktop.page.getByRole("button", { name: "Move the start" }).click();
+  check(
+    "and a start in the future is refused, on screen",
+    await until(
+      "future refused",
+      desktop.page,
+      async (p) => (await p.getByText(/cannot have started in the future/).count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+  await desktop.page.getByRole("button", { name: "Cancel" }).click();
+  await desktop.page.getByRole("button", { name: /Stop/ }).click();
+  await desktop.page.waitForTimeout(600);
+
   // ---------------------------------------------------------------- editing what was recorded
   console.log("\nediting:");
   await nav(desktop.page, "History");
@@ -499,13 +546,27 @@ async function main() {
   // The timer above ran for about two seconds; editing it to 09:00–11:30 replaces that with 2.5h.
   const shortSessionHours = 2 / 3600;
 
-  // 24.12 — the times are editable. This used to tick a "drop the times" checkbox, which was the
-  // only edit a timed entry allowed and the one nobody wants: an interval that is wrong is wrong
-  // by minutes, not wrong by being an interval.
+  // 24.12 — the times are editable, in the shared editor (25.30). The fields were called "Start
+  // time" and "End time" when they were a table row of their own; the one editor calls them From
+  // and To, the same as when adding, which is most of the point of there being one.
   const row = desktop.page.getByRole("row").filter({ hasText: TAG }).first();
   await row.getByRole("button", { name: "Edit" }).click();
-  await desktop.page.getByLabel("Start time").fill("09:00");
-  await desktop.page.getByLabel("End time").fill("11:30");
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+
+  // 25.28 — the duration is the interval, and the field says so by being unavailable rather than
+  // by accepting a number and discarding it, which is what it used to do.
+  const howLong = desktop.page.getByLabel("How long");
+  check("25.28 — a timed entry's duration cannot be typed into", await howLong.isDisabled());
+
+  const spanBefore = await howLong.inputValue();
+  await desktop.page.getByLabel("From").fill("09:00");
+  await desktop.page.getByLabel("To").fill("11:30");
+  // 25.29 — before saving, not after.
+  check(
+    "25.29 — and it recomputes as the times are typed",
+    (await howLong.inputValue()) === "2.5h",
+    `${spanBefore} -> ${await howLong.inputValue()}`,
+  );
   await desktop.page.getByRole("button", { name: "Save", exact: true }).click();
 
   check(
@@ -1016,8 +1077,11 @@ async function main() {
 
   await nav(spare.page, "History");
   check(
+    // The control, not the dialog's submit button. 25.30 moved adding behind "Add past time", and
+    // `{name: "Add"}` then matched nothing for anybody — a check that had stopped being able to
+    // fail while still reading as though it were guarding something.
     "and cannot add past time",
-    (await spare.page.getByRole("button", { name: "Add", exact: true }).count()) === 0,
+    (await spare.page.getByRole("button", { name: "Add past time" }).count()) === 0,
   );
 
   await nav(spare.page, "Invoices");

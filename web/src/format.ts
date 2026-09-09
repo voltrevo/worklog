@@ -186,3 +186,19 @@ export function timeValue(instant: number): string {
   const d = new Date(instant);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+/**
+ * The local calendar date an instant falls on, as `YYYY-MM-DD`.
+ *
+ * The companion to `timeValue`, and needed for the same reason: a running session that began
+ * before midnight is still running now, so reading its start time back against *today* would move
+ * it a day forward and land it in the future. It belongs to the day it began on (2.21).
+ *
+ * Built from the local parts rather than `toISOString`, which is UTC and would name yesterday for
+ * anyone east of Greenwich in the small hours.
+ */
+export function dateValue(instant: number): DateString {
+  const d = new Date(instant);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` as DateString;
+}

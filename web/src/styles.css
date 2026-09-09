@@ -1119,12 +1119,22 @@ input[aria-invalid="true"]:focus {
 }
 
 /*
- * 25.2 — a derived amount is disabled, not missing. It has to still look like a value, or the row
- * reads as though it has no amount at all, which is a different and untrue claim.
+ * 25.2 — a value that is derived rather than chosen is disabled, not missing.
+ *
+ * It has to still look like a value: an empty space where a number belongs reads as "there is no
+ * amount", which is a different and untrue claim. But it also has to look unavailable, or the
+ * first thing anyone does is click it and get nothing.
+ *
+ * Global, not per-screen. This started life scoped to `.linerow` and the entry editor's
+ * read-only duration then rendered as an ordinary editable box — the same fault the scoping was
+ * invented to fix, one screen along.
  */
-.linerow input:disabled {
+input:disabled,
+select:disabled,
+textarea:disabled {
   background: var(--panel-2);
   color: var(--ink-dim);
+  border-style: dashed;
   cursor: not-allowed;
 }
 

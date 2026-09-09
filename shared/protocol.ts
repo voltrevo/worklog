@@ -101,6 +101,8 @@ export type Request =
   | { t: "timer-stop" }
   /** 24.10 — correct a running timer's tag without stopping it. */
   | { t: "timer-retag"; billingTag: string }
+  /** 25.27 — the start of the running session, corrected. */
+  | { t: "timer-set-start"; startedAt: Instant }
   | { t: "timer-discard" }
   | { t: "entries"; month: string }
   | {
@@ -409,6 +411,7 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "timer-start": "write",
   "timer-stop": "write",
   "timer-retag": "write",
+  "timer-set-start": "write",
   "timer-discard": "write",
   "entry-add": "write",
   "entry-update": "write",

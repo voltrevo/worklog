@@ -11,7 +11,16 @@
 
 import { useState } from "react";
 import { useStore } from "../state.tsx";
-import { clock, duration, hours, pace } from "../format.ts";
+import {
+  clock,
+  dateValue,
+  duration,
+  hours,
+  instantAt,
+  pace,
+  timeOfDay,
+  timeValue,
+} from "../format.ts";
 import { today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
@@ -36,6 +45,15 @@ export function Timer() {
     setTag(running ?? snapshot!.recentTags[0]!);
   }
   const [busy, setBusy] = useState(false);
+  /**
+   * 25.27. Held as text while it is being typed into, per 25.44.
+   *
+   * Up here with the other hooks and not beside `moveStart`, which is below `if (!snapshot)
+   * return` — a `useState` after an early return is called on some renders and not others, and
+   * React's response to that is to throw and take the whole screen with it.
+   */
+  const [startEdit, setStartEdit] = useState<string | undefined>(undefined);
+  const [startProblem, setStartProblem] = useState<string>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   if (!snapshot) return <p className="muted">Loading…</p>;
@@ -79,6 +97,26 @@ export function Timer() {
       percent: targetMs > 0 ? (seg.ms / targetMs) * 100 * scale : 0,
     }));
   const paced = pace(snapshot.pacing.paceHours);
+
+  const moveStart = async () => {
+    if (!active || startEdit === undefined) return;
+    // Against the date the *session* began on, not against today: a session started before
+    // midnight is still running now, and reading its new start against today would move it a day
+    // forward and land it in the future.
+    const startedAt = instantAt(dateValue(active.startedAt), startEdit);
+    if (startedAt === undefined) return setStartProblem("A start time is needed, as HH:MM.");
+    setStartProblem(undefined);
+    setBusy(true);
+    try {
+      await call({ t: "timer-set-start", startedAt });
+      setStartEdit(undefined);
+      await refresh();
+    } catch (err) {
+      setStartProblem((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const retag = async () => {
     const wanted = tag.trim();
@@ -197,11 +235,52 @@ export function Timer() {
               {active
                 ? (
                   <>
-                    Working on <strong>{active.billingTag}</strong>
+                    Working on <strong>{active.billingTag}</strong>, since{" "}
+                    <button
+                      className="link"
+                      type="button"
+                      disabled={!canWrite}
+                      onClick={() => setStartEdit(timeValue(active.startedAt))}
+                    >
+                      {timeOfDay(active.startedAt)}
+                    </button>
                   </>
                 )
                 : "Not working"}
             </div>
+            {
+              /*
+              25.27 — the case is forgetting to press Start. You notice at 11:20 that you began at
+              09:30, and the only remedies were to stop and hand-add a past entry, or to record
+              the wrong thing. Both throw away the fact that you are still working.
+            */
+            }
+            {active && startEdit !== undefined && (
+              <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+                <input
+                  type="time"
+                  value={startEdit}
+                  aria-label="Started at"
+                  onChange={(e) =>
+                    setStartEdit(e.target.value)}
+                />
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void moveStart()}
+                >
+                  Move the start
+                </button>
+                <button className="btn" type="button" onClick={() => setStartEdit(undefined)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            {startProblem && (
+              <div className="notice bad" style={{ marginTop: 8 }}>{startProblem}</div>
+            )}
           </div>
           <button
             className={`btn big ${active ? "danger" : "primary"}`}

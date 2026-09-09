@@ -11,6 +11,7 @@ import {
   getEntry,
   recentBillingTags,
   Refused,
+  restartTimerAt,
   retagTimer,
   runningMs,
   startTimer,
@@ -235,5 +236,46 @@ Deno.test("24.10 -- a running timer can be retagged, and nothing else about it m
 Deno.test("retagging when nothing is running is refused", () => {
   const db = fresh();
   assertThrows(() => retagTimer(db, "Anything"), Refused, "no timer is running");
+  db.close();
+});
+
+Deno.test("25.27 -- a running timer's start can be corrected", () => {
+  const db = fresh();
+  startTimer(db, { billingTag: "Product Development", date: "2026-09-08", now: T0 });
+  // Noticed at T0 + 2h that it should have begun 90 minutes before that.
+  const moved = restartTimerAt(db, T0 - 90 * 60_000, T0 + 2 * HOUR);
+  assertEquals(moved.startedAt, T0 - 90 * 60_000);
+  assertEquals(activeTimer(db)?.startedAt, T0 - 90 * 60_000);
+  // The tag is untouched: this message moves one thing.
+  assertEquals(moved.billingTag, "Product Development");
+  db.close();
+});
+
+Deno.test("and the corrected start is what the entry records when it stops", () => {
+  // Without this the correction would be cosmetic — visible on the timer screen and absent from
+  // the work, which is the only place it matters.
+  const db = fresh();
+  startTimer(db, { billingTag: "Product Development", date: "2026-09-08", now: T0 });
+  restartTimerAt(db, T0 - HOUR, T0);
+  const entry = stopTimer(db, T0 + HOUR);
+  assertEquals(entry.durationMs, 2 * HOUR);
+  assertEquals(entry.timing?.startedAt, T0 - HOUR);
+  db.close();
+});
+
+Deno.test("a start in the future or two days back is refused", () => {
+  const db = fresh();
+  startTimer(db, { billingTag: "Product Development", date: "2026-09-08", now: T0 });
+  // Every figure downstream is `now - startedAt`; a future start makes all of them negative.
+  assertThrows(() => restartTimerAt(db, T0 + HOUR, T0), Refused, "future");
+  assertThrows(() => restartTimerAt(db, T0 - 3 * 24 * HOUR, T0), Refused, "past entry instead");
+  // Unchanged by either refusal.
+  assertEquals(activeTimer(db)?.startedAt, T0);
+  db.close();
+});
+
+Deno.test("moving the start of a timer that is not running is refused", () => {
+  const db = fresh();
+  assertThrows(() => restartTimerAt(db, T0 - HOUR, T0), Refused, "no timer is running");
   db.close();
 });
