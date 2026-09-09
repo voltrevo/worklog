@@ -20,7 +20,7 @@
  */
 
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
-import type { DateString, Instant, PacingConfig, WorkEntry } from "./types.ts";
+import type { DateString, Instant, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
 import type {
   InvoiceConfigOverride,
@@ -274,7 +274,12 @@ export interface SnapshotResult {
   todayScheduledHours: number;
   recentTags: string[];
   invoiceWarnings: InvoiceWarning[];
-  pacingConfig: PacingConfig;
+  /*
+   * No `pacingConfig`. It was the whole pacing configuration — target, schedule, region — sent to
+   * every device on every snapshot, and nothing read it: the one screen that edits it fetches it
+   * with `config-get`, which is where a thing being edited should come from. Two copies of a
+   * schedule in flight is a second answer to "what are my hours" waiting to be read by mistake.
+   */
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

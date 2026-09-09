@@ -424,7 +424,6 @@ export async function handle(
         }).hours,
         recentTags: recentBillingTags(db),
         invoiceWarnings: invoiceWarnings(allEntries(db), invoices),
-        pacingConfig,
       };
       return result;
     }
