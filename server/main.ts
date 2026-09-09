@@ -161,6 +161,16 @@ async function serveStream(ctx: ServerContext, session: Session, stream: KpsStre
 
     const verdict = authorize(session, req.t);
     if (!verdict.ok) {
+      /*
+       * 12.4 — said out loud, because until now it was not said anywhere.
+       *
+       * A failed *signature* is logged in `rpc.ts`; a request refused for want of authority was
+       * refused in silence. That is the one an administrator most wants to see — a device asking
+       * for things it has not been granted, or one whose session has gone — and 12.10 exists to
+       * put the log in front of them. The client is expected not to ask, so anything here is
+       * either a device that has lost its footing or something worth looking at.
+       */
+      ctx.log("warn", "access", `refused a ${req.t}`, { reason: verdict.code });
       await writer.write(encodeJson(verdict satisfies Response));
       await writer.close();
       return;

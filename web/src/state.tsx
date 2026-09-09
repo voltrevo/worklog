@@ -160,6 +160,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [reconnecting, setReconnecting] = useState(false);
   const senderRef = useRef<Sender>(null);
   const monthRef = useRef(month);
+  /**
+   * The current phase, for the heartbeat, which is a timer and not a render.
+   *
+   * Written on every render below, beside the other refs that exist because a callback installed
+   * once has to see what is true now rather than what was true when it was installed.
+   */
+  const phaseRef = useRef<Phase>(null);
   monthRef.current = month;
 
   const refresh = useCallback(async () => {
@@ -357,6 +364,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return;
         }
         /*
+         * Only while this device is somebody the server will answer.
+         *
+         * A revoked device keeps its page open and its transport alive — the unauthorised screen
+         * needs it to ask for access again — and a ping from it is refused. Refusals are logged
+         * (12.4), so pinging on regardless writes a warning into the server's log every eight
+         * seconds for as long as the tab is open.
+         */
+        if (phaseRef.current?.k !== "ready") return;
+        /*
          * With a deadline, because the failure being looked for does not produce an error.
          *
          * A request sent over a peer connection whose other end has stopped existing does not
@@ -369,7 +385,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error("no answer")), HEARTBEAT_TIMEOUT_MS)
           ),
-        ]).catch(() => {
+        ]).catch((err) => {
+          /*
+           * A refusal is an answer.
+           *
+           * The server said no — it is there, the transport works, and nothing about that is a
+           * lost connection. Treating it as one turned a revoked device into a reconnect loop:
+           * ping, refused, "connection lost", redial, re-authenticate, refused, every few seconds.
+           * Only silence counts, which is what the deadline above is for.
+           */
+          if (err instanceof ServerRefusal) return;
           clearInterval(beat);
           lost();
         });
@@ -407,6 +432,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    */
   const connectToRef = useRef<typeof connectTo>(null);
   connectToRef.current = connectTo;
+  phaseRef.current = phase;
 
   const claimAdmin = useCallback(async () => {
     const client = clientRef.current;

@@ -1052,17 +1052,32 @@ async function main() {
       (await startLink.textContent())?.trim() ?? "",
     ),
   );
+  /*
+   * A minute before it started, rather than a time of day written down here.
+   *
+   * This filled in `06:15` on the reasoning that a session begun moments ago started later than
+   * that. True for eighteen hours a day: run it between midnight and quarter past six and 06:15 is
+   * in the *future*, which the server refuses — correctly, and the check then reads as a broken
+   * feature. It failed three times in a row at ten past midnight before anybody looked at the
+   * clock rather than at the diff.
+   */
+  const shown = (await startLink.textContent())?.trim() ?? "";
+  const [hh, mm] = shown.split(":").map(Number);
+  const earlier = (hh ?? 0) * 60 + (mm ?? 0) - 1;
+  const target = `${String(Math.floor(earlier / 60)).padStart(2, "0")}:${
+    String(earlier % 60).padStart(2, "0")
+  }`;
   await startLink.click();
-  await desktop.page.getByLabel("Started at").fill("06:15");
+  await desktop.page.getByLabel("Started at").fill(target);
   await desktop.page.getByRole("button", { name: "Move the start" }).click();
   check(
     "25.27 — and it can be moved",
-    await until(
+    earlier >= 0 && await until(
       "start moved",
       desktop.page,
-      async (p) =>
-        (await p.locator(".muted button.link").first().textContent())?.trim() === "06:15",
+      async (p) => (await p.locator(".muted button.link").first().textContent())?.trim() === target,
     ),
+    `${shown} -> ${target}: ${await desktop.page.locator(".card.session").innerText()}`,
   );
   // A future start is refused rather than making every figure below it negative.
   await startLink.click();
@@ -2128,6 +2143,36 @@ async function main() {
       async (p) => (await p.getByText("Spare Tablet").count()) > 0,
     ),
   );
+
+  /*
+   * 12.4, 22.10 — and a device that is waiting says nothing while it waits.
+   *
+   * The spare has a live transport and no authentication: it needs the connection to ask, and the
+   * server will answer nothing else until an admin approves it. The heartbeat added for 22.10 would
+   * have pinged from it every eight seconds, each one refused and each refusal written to the log,
+   * for as long as somebody left the tablet on that screen. A revoked device does not show this —
+   * the server closes its connection, so there is nothing left to ping with — which is why the
+   * check is here and not there.
+   *
+   * In front, because Chromium throttles a hidden page's timers to about one a minute and the
+   * heartbeat is a timer; backgrounded, the tab is quiet whether this is fixed or not.
+   */
+  await spare.page.bringToFront();
+  await spare.page.waitForTimeout(20_000);
+  await desktop.page.bringToFront();
+  await nav(desktop.page, "Admin");
+  await desktop.page.getByRole("button", { name: "Server logs" }).click();
+  await desktop.page.getByRole("button", { name: "Refresh" }).click();
+  await desktop.page.waitForTimeout(800);
+  // The whole log. `visibleText` truncates to three hundred characters to keep a failure message
+  // readable, which of a two-hundred-line log is the page heading.
+  const logText = await desktop.page.locator("body").innerText();
+  check(
+    "a device waiting for approval does not fill the log with refusals",
+    !/refused a ping/.test(logText),
+    logText.split("\n").filter((l) => /refused/.test(l)).slice(0, 4).join(" | "),
+  );
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
 
   // 1.12 again, on the other list that used to load once: an invoice issued on this device must
   // reach a second one without it being told to look. The phone is still authorised at this point,
