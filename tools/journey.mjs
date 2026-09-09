@@ -2152,9 +2152,14 @@ async function main() {
    * The spare has a live transport and no authentication: it needs the connection to ask, and the
    * server will answer nothing else until an admin approves it. The heartbeat added for 22.10 would
    * have pinged from it every eight seconds, each one refused and each refusal written to the log,
-   * for as long as somebody left the tablet on that screen. A revoked device does not show this —
-   * the server closes its connection, so there is nothing left to ping with — which is why the
-   * check is here and not there.
+   * for as long as somebody left the tablet on that screen.
+   *
+   * The revoked phone below does not show this, and not for the reason it first looked like: the
+   * server de-authenticates the *session* and leaves the connection up, so there is plenty left to
+   * ping with. What stops it there is the client — `access-revoked` moves it off `ready`, and the
+   * heartbeat only beats while the connection is one the server will answer. A device that never
+   * got that event is caught by the ladder instead: an `unauthenticated` refusal is the one
+   * refusal that does mean reconnect.
    *
    * In front, because Chromium throttles a hidden page's timers to about one a minute and the
    * heartbeat is a timer; backgrounded, the tab is quiet whether this is fixed or not.

@@ -387,14 +387,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
         ]).catch((err) => {
           /*
-           * A refusal is an answer.
+           * A refusal is an answer — except for the one that says this device is nobody.
            *
-           * The server said no — it is there, the transport works, and nothing about that is a
-           * lost connection. Treating it as one turned a revoked device into a reconnect loop:
-           * ping, refused, "connection lost", redial, re-authenticate, refused, every few seconds.
-           * Only silence counts, which is what the deadline above is for.
+           * The server saying no means it is there and the transport works, so treating that as a
+           * lost connection turns a device it refuses into a reconnect loop: ping, refused,
+           * "connection lost", redial, re-authenticate, refused, every few seconds.
+           *
+           * `unauthenticated` is the exception, and ignoring it was the other half of the same
+           * mistake. It means the session is no longer one the server knows — a server restarted
+           * onto a fresh database, a session dropped, anything that did not arrive as an
+           * `access-revoked` event. The connection is fine and *this device* is not, and the
+           * reconnect ladder is exactly the right response: it re-authenticates, fails honestly,
+           * and lands on the screen that offers to ask for access. Without it the app sits on
+           * "Connected" while every action fails.
            */
-          if (err instanceof ServerRefusal) return;
+          if (err instanceof ServerRefusal && err.code !== "unauthenticated") return;
           clearInterval(beat);
           lost();
         });
