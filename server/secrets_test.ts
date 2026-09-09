@@ -12,7 +12,12 @@
  * because the failure will arrive in a call nobody thought to test.
  */
 
-import { assertEquals, assertNotEquals, assertRejects } from "jsr:@std/assert@^1";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "jsr:@std/assert@^1";
 import { exportPublicKey, generateDeviceKey, signClaim } from "@worklog/shared/auth";
 import {
   fromBase64,
@@ -338,5 +343,69 @@ Deno.test("13.38 -- and a name is stored exactly as sent, markup and all", async
 
   const pending = await call(ctx, admin, { t: "access-pending" }) as { name: string }[];
   assertEquals(pending[0]!.name, nasty);
+  ctx.db.close();
+});
+
+Deno.test("20.1/20.3 -- nothing secret comes back in a response either, across the same slice", async () => {
+  /*
+   * The other direction, and the one that had no sweep at all.
+   *
+   * The log test above exists because the code satisfies its rule by *not* doing something. The
+   * wire has exactly the same shape of rule — `publicInvoiceConfig` deletes the payment block on
+   * the way out — and exactly the same failure mode: a field added to a response somewhere else
+   * carries a value nobody meant to publish, and nothing is red.
+   *
+   * It is not hypothetical. Two changes want to put more into these responses: a per-invoice
+   * payment override (25.12, currently absent for this reason) and freezing the resolved
+   * configuration alongside an invoice snapshot so a lost PDF re-renders identically (24.30). Both
+   * are safe to write once *this* is here to catch them getting it wrong, and neither is safe
+   * before.
+   *
+   * Every response is collected rather than the interesting ones, because the interesting one is
+   * whichever nobody thought about.
+   */
+  const ctx = context();
+  const s = session(ctx, "a");
+  const dev = await device();
+  await claimAdmin(ctx, s, dev);
+  await call(ctx, s, { t: "config-set", section: "invoice", value: { ...SECRETS } });
+
+  const seen: unknown[] = [];
+  const watch = async (req: Request) => {
+    const result = await call(ctx, s, req);
+    seen.push(result);
+    return result;
+  };
+
+  await watch({
+    t: "entry-add",
+    date: "2026-09-01",
+    durationMs: 3_600_000,
+    billingTag: "Feature development",
+  });
+  await watch({ t: "note-add", body: "a note", prompted: false });
+  const draft = await watch({
+    t: "invoice-create",
+    period: "2026-09",
+    clock: { today: "2026-09-08", nowMinutes: 600 },
+  }) as { id: string };
+  await watch({ t: "invoice-issue", id: draft.id });
+  await watch({ t: "invoice-mark-paid", id: draft.id });
+  await watch({ t: "invoices" });
+  await watch({ t: "entries", month: "2026-09" });
+  await watch({ t: "notes", limit: 50 });
+  await watch({ t: "snapshot", month: "2026-09", clock: { today: "2026-09-08", nowMinutes: 600 } });
+  await watch({ t: "config-get" });
+  await watch({ t: "hello" });
+  await watch({ t: "logs", limit: 200, minLevel: "debug" });
+
+  const responses = JSON.stringify(seen);
+  for (const [field, value] of Object.entries(SECRETS)) {
+    assertEquals(responses.includes(value), false, `${field} came back in a response`);
+  }
+  // And the flags that stand in for them are there, or the assertions above pass by the values
+  // simply never having been set.
+  assertStringIncludes(responses, "paymentDetailsSet");
+
   ctx.db.close();
 });
