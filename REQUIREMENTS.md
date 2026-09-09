@@ -734,3 +734,4 @@ read together.
 ### Fourth pass — found while checking the third
 
 26.21. MUST save the invoice PDF and say where it went, in a presentation whose engine cannot display one inline. 26.11's iframe is blank in the desktop window: WebKitGTK draws nothing for a PDF from a blob URL or a data URL while reporting `navigator.pdfViewerEnabled` as true, and an HTML blob in the same iframe loads. Refines 26.11.
+26.22. MUST NOT offer a spoken note in a presentation that cannot record one. WebKitGTK has `MediaRecorder`, supports no container at all, and throws `NotSupportedError` from the constructor, so 5.25's "fall back to the browser's default" is the path that fails. Text notes are unaffected, and 5.3 is met by any device that can record.

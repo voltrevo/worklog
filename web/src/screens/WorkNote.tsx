@@ -23,9 +23,15 @@ const BITS_PER_SECOND = 20_000;
 /**
  * 5.25 — Opus, in whichever container this browser will give it to us in.
  *
- * Chromium records `audio/webm;codecs=opus`, Firefox `audio/ogg;codecs=opus`, Safari neither. Asked
- * in order and the first supported one wins; if none is, the recorder falls back to the browser's
- * default and the server stores whatever arrives rather than refusing the note.
+ * Chromium records `audio/webm;codecs=opus`, Firefox `audio/ogg;codecs=opus`, Safari `audio/mp4`.
+ * Asked in order and the first supported one wins.
+ *
+ * **Where none is, there is no recorder at all.** This used to fall through to the browser's
+ * default on the reasoning that a container the app cannot name might still be one it can store —
+ * and in the engine where that actually happens, `deno desktop`'s WebKitGTK, the *constructor*
+ * throws `NotSupportedError: The MediaRecorder is unsupported on this platform`. So supporting no
+ * type is not a gap in `isTypeSupported`; it is the answer. `desktop/selftest.ts` records both
+ * facts against the real engine.
  */
 const PREFERRED = [
   "audio/webm;codecs=opus",
@@ -150,7 +156,8 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
           {!recorder.supported
             ? (
               <p className="faint" style={{ margin: 0, fontSize: 13 }}>
-                This browser will not record audio here. Text still works.
+                This window cannot record audio. Text still works, and a device that can record — a
+                phone, or a browser tab — can add a spoken note to its own.
               </p>
             )
             : recorder.state === "recording"
@@ -347,7 +354,9 @@ function useRecorder() {
   };
 
   return {
-    supported: typeof MediaRecorder !== "undefined",
+    // Not merely that the class exists: WebKitGTK has the class, supports no container, and
+    // throws from the constructor. Offering a Record button there is offering an error message.
+    supported: typeof MediaRecorder !== "undefined" && pickMimeType() !== undefined,
     trace,
     state,
     recording,

@@ -159,6 +159,35 @@ globalThis.__run = async () => {
       f.src = url;
       document.body.appendChild(f);
     });
+  /*
+   * 5.3, 5.23 — can this engine record at all.
+   *
+   * isTypeSupported answers false for every container here, which may mean the recorder cannot
+   * write one or may mean the method is simply unimplemented -- the two are indistinguishable from
+   * the outside, and the app treats the second as the first. So record something: an
+   * AudioContext destination node is a real MediaStream and needs no microphone, which there is
+   * none of under a virtual display anyway.
+   */
+  out.recorded = await new Promise((res) => {
+    let settled = false;
+    const done = (why) => { if (!settled) { settled = true; res(String(why)); } };
+    try {
+      const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+      const ctx = new Ctx();
+      const dest = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      osc.connect(dest);
+      osc.start();
+      const rec = new MediaRecorder(dest.stream);
+      let bytes = 0;
+      rec.ondataavailable = (e) => { bytes += e.data.size; };
+      rec.onerror = (e) => done("error:" + (e.error ? e.error.name : "unknown"));
+      rec.onstop = () => done(bytes > 0 ? "bytes:" + bytes + " type:" + rec.mimeType : "no bytes");
+      rec.start();
+      setTimeout(() => { try { rec.stop(); osc.stop(); } catch (e) { done("stop threw:" + e.name); } }, 700);
+      setTimeout(() => done("never stopped"), 5000);
+    } catch (e) { done("threw:" + e.name + " " + e.message); }
+  });
   out.htmlBlobFrame = await frameLoads(
     URL.createObjectURL(new Blob(["<p>hello</p>"], { type: "text/html" })),
   );
@@ -289,6 +318,7 @@ try {
     savedTo: parsed.savedTo ?? "",
     pdfViewer: parsed.pdfViewer ?? "",
     pdfFrame: parsed.pdfFrame ?? "",
+    recorded: parsed.recorded ?? "",
     htmlBlobFrame: parsed.htmlBlobFrame ?? "",
     pdfDataFrame: parsed.pdfDataFrame ?? "",
     pdfMime: parsed.pdfMime ?? "",
@@ -352,6 +382,7 @@ try {
     setAlwaysOnTop?: (on: boolean) => void;
     isAlwaysOnTop?: () => boolean;
   };
+  console.log(`  · recording a synthetic stream here: ${out.recorded}`);
   console.log(
     `  · navigator.pdfViewerEnabled = ${out.pdfViewer}, application/pdf = ${out.pdfMime}, ` +
       `html blob = ${out.htmlBlobFrame}, pdf blob = ${out.pdfFrame}, ` +
@@ -369,6 +400,24 @@ try {
    * rather than leaving it as a thing somebody once observed. If WebKitGTK grows a PDF viewer this
    * goes red, and the right response is to delete the branch in `Invoices.tsx`.
    */
+  /*
+   * 5.3, 5.23 — and the recorder, which is not merely missing a container.
+   *
+   * `MediaRecorder` exists here, `isTypeSupported` answers false for everything including
+   * `audio/wav`, and the constructor throws `NotSupportedError` over a stream that needs no
+   * microphone. Those three together are why `WorkNote` treats "no container" as "no recorder"
+   * rather than falling through to the engine's default: the fallback it used to take is the path
+   * that throws.
+   *
+   * Asserted rather than reported, so that an engine which grows a recorder shows up here as a
+   * red check next to the code that assumes it has not.
+   */
+  check(
+    "this engine still cannot record, which is why a spoken note is not offered here",
+    out.recorded.startsWith("threw:NotSupportedError"),
+    out.recorded,
+  );
+
   check(
     "an iframe still cannot show a PDF here, which is why the desktop saves instead",
     out.pdfFrame === "no load event" && out.pdfDataFrame === "no load event",
@@ -479,7 +528,34 @@ try {
       ["CSS overflow-wrap: anywhere", "CSS.supports('overflow-wrap', 'anywhere')"],
       ["CSS color-scheme", "CSS.supports('color-scheme', 'light dark')"],
       ["CSS minmax in grid", "CSS.supports('grid-template-columns', 'minmax(0, 1fr)')"],
+      /*
+       * The features this app is actually built on, which this list had never named.
+       *
+       * It grew from one blank window — `Temporal`, Chromium-only — and stayed a list of small
+       * language and CSS things. Meanwhile the two largest features in the product are a
+       * `MediaRecorder` writing Opus and an `AudioContext` playing a loop, neither of which is
+       * mentioned here, and the invoice viewer turned out to be unsupported in this engine while
+       * nothing checked.
+       */
+      ["indexedDB", "typeof indexedDB === 'object'"],
+      ["URL.createObjectURL", "typeof URL.createObjectURL === 'function'"],
+      [
+        "AudioContext",
+        "typeof (globalThis.AudioContext ?? globalThis.webkitAudioContext) === 'function'",
+      ],
+      ["navigator.mediaDevices", "typeof navigator.mediaDevices?.getUserMedia === 'function'"],
+      ["CSS clamp with min", "CSS.supports('font-size', 'clamp(40px, min(13vh, 20vw), 168px)')"],
+      ["CSS custom properties", "CSS.supports('--inv-navy', 'rgb(1 2 3)')"],
     ];
+    const supported = await js(
+      "typeof MediaRecorder === 'function' ? " +
+        "(['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/mp4'," +
+        "'audio/wav','audio/mpeg','audio/aac']" +
+        ".filter((t) => MediaRecorder.isTypeSupported(t)).join(', ') || '(none)') " +
+        ": 'no MediaRecorder'",
+    ).catch(() => "(could not ask)");
+    console.log(`  · MediaRecorder here will write: ${supported}`);
+
     const absent: string[] = [];
     for (const [name, expr] of capabilities) {
       const present = await js(`(() => { try { return ${expr}; } catch { return false; } })()`)
