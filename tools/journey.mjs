@@ -643,14 +643,17 @@ async function main() {
   );
 
   // 14.3–14.5, 16.1, 16.3. The phone is authorised, connected, and looking at the same server.
-  // 14.25 — and the phone has no audio card at all, which is the requirement rather than an
-  // oversight: autoplay restrictions and background suspension make 14.12 unhonourable there.
   //
-  // The first version of this check asserted the phone did not show `loop.ogg`, with a canary
-  // waiting for its empty file chooser. The canary went red, and it was right to: the chooser is
-  // never on a phone, so "no loop.ogg here" was a sentence that could not have been false. Two
-  // checks now, because the pair is what has content — the settings screen is up, and the feature
-  // is not on it.
+  // 25.20 reversed 14.25, and this check went with it. It used to assert the phone had no audio
+  // card *at all* — and passing was the problem, because what a phone actually showed was a
+  // settings screen with a section silently missing and nothing to say why. The reasoning behind
+  // 14.25 was about the autoplay policy, which turned out to apply to the desktop too (25.19); the
+  // answer to a policy that wants a gesture is a button, not an absence.
+  //
+  // Two checks, because the pair is what has content: the settings screen is up, and the feature
+  // is on it. An earlier version asserted only the negative, with a canary waiting for the file
+  // chooser — the canary went red and was right to, since the chooser is never on a phone and so
+  // "no loop.ogg here" was a sentence that could not have been false.
   await nav(mobile.page, "Settings");
   const phoneSettings = await until(
     "phone settings",
@@ -659,11 +662,57 @@ async function main() {
   );
   check("the phone's settings screen is up", phoneSettings);
   check(
-    "and 14.25 keeps the looping audio off it entirely",
+    "and 25.20 puts the looping audio on it",
     phoneSettings &&
-      (await mobile.page.getByText(/loop\.ogg|Choose a file|Drop an audio file/).count()) === 0,
+      (await mobile.page.getByText(/Background audio, on this device/).count()) > 0,
     await visibleText(mobile.page),
   );
+
+  // ------------------------------------------------------------- numbers you can type
+  //
+  // 25.44 and 25.3, on the field that had both faults. The rate went out through the model and
+  // came back formatted on every keystroke, so "1" became "1.00" with the caret past the end; and
+  // `Number(v) || 0` meant anything unparseable was stored as zero and saved without a word.
+  //
+  // Typed a character at a time on purpose. `fill()` sets the value in one go and would pass
+  // against the old code, because the round trip only shows up between keystrokes.
+  console.log("\nnumber fields:");
+  await nav(desktop.page, "Settings");
+  const rate = desktop.page.getByLabel("Hourly rate");
+  await rate.waitFor({ timeout: 15_000 });
+  await rate.fill("");
+  await rate.pressSequentially("125");
+  check(
+    "25.44 — typing 125 leaves 125 in the field",
+    await rate.inputValue() === "125",
+    await rate.inputValue(),
+  );
+
+  await desktop.page.getByLabel("Currency").click();
+  check(
+    "and leaving it is when the formatting arrives",
+    await rate.inputValue() === "125.00",
+    await rate.inputValue(),
+  );
+
+  await rate.fill("abc");
+  const saveInvoice = desktop.page.getByRole("button", { name: "Save invoice details" });
+  check(
+    "25.3 — an unreadable rate is kept, not silently replaced",
+    await rate.inputValue() === "abc",
+  );
+  check(
+    "and it is named, marked, and blocks the save",
+    (await rate.getAttribute("aria-invalid")) === "true" &&
+      (await saveInvoice.isDisabled()) &&
+      (await desktop.page.getByText(/the hourly rate is\s+not a number/i).count()) > 0,
+    await visibleText(desktop.page),
+  );
+  // 25.2 — refused, not removed. A vanished button reads as "you cannot do this at all".
+  check("and the save button is still on the screen", await saveInvoice.isVisible());
+
+  await rate.fill("120");
+  check("and the save comes back once it parses", !(await saveInvoice.isDisabled()));
 
   // 24.6 — and a note can be deleted, recording and all.
   await nav(desktop.page, "Notes");

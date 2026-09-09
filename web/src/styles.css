@@ -912,3 +912,34 @@ input[type="range"] {
     grid-template-columns: 1fr;
   }
 }
+
+/*
+ * A field that is holding something unreadable says so where you are looking (25.3). Colour alone
+ * would not do it — `aria-invalid` carries the same fact to a screen reader, and the note carries
+ * it to anyone who cannot tell this border from the ordinary one.
+ */
+input.invalid,
+input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+/*
+ * The focus ring is `outline: 2px solid var(--accent)`, which sits outside the border and hides
+ * it — so a field you were told is wrong went blue the moment you clicked back into it to fix it,
+ * and the only remaining sign was the small note underneath. Focus and invalid are both true at
+ * once here; invalid is the one worth the colour.
+ */
+input.invalid:focus,
+input[aria-invalid="true"]:focus {
+  outline-color: var(--bad);
+}
+
+.field-note {
+  font-size: 11px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.field-note.bad {
+  color: var(--bad);
+}

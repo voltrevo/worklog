@@ -110,6 +110,25 @@ export function dateTime(instant: number): string {
   }).format(new Date(instant));
 }
 
+/**
+ * A plain number typed into a field, or `undefined` when what is there is not one (25.3).
+ *
+ * `Number(x) || 0` was in four places and is wrong twice over: `Number("abc")` is `NaN`, which
+ * `|| 0` turns into a confident zero, and `Number("")` is already `0` with no `||` needed. Both
+ * spellings mean a typo is stored as a real value and saved without a word — an hourly rate of
+ * nothing, a prompt interval of forty-five minutes you did not ask for.
+ *
+ * Whitespace is tolerated because a value pasted from a spreadsheet carries it. Nothing else is:
+ * `Number` alone would accept `"0x10"`, `"1e3"` and `"Infinity"`, none of which anybody types
+ * into a rate box on purpose, and `"12abc"` is rejected rather than read as 12.
+ */
+export function parseNumber(text: string): number | undefined {
+  const t = text.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(t)) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /** `2h 30m` typed as `2:30`, `2.5`, `150m` or `2h30`. Returns null when it is not a duration. */
 export function parseDuration(text: string): number | null {
   const t = text.trim().toLowerCase();

@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { today } from "@worklog/shared/dates";
 import { useStore } from "../state.tsx";
-import { hours } from "../format.ts";
+import { hours, parseNumber } from "../format.ts";
 import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
 import { LocalAudioCard } from "./LocalAudio.tsx";
 import { WEEKDAY_NAMES } from "@worklog/shared/schedule";
@@ -81,7 +81,12 @@ export function Settings() {
     setProblem(undefined);
     setSaved(false);
     try {
-      await call({ t: "config-set", section, value, clock: { today: today() } });
+      await call({
+        t: "config-set",
+        section,
+        value,
+        clock: { today: today() },
+      });
       setCfg(await call<ConfigWire>({ t: "config-get" }));
       await refresh();
       setSaved(true);
@@ -147,7 +152,12 @@ function ScheduleCard(
   },
 ) {
   const [schedule, setSchedule] = useState(cfg.schedule);
-  const [target, setTarget] = useState(String(cfg.monthlyTargetHours));
+  // The text is `Num`'s; what this holds is the number behind it, and `undefined` when the field
+  // says something a number cannot be read out of (25.3).
+  const [targetHours, setTargetHours] = useState<number | undefined>(
+    cfg.monthlyTargetHours,
+  );
+  const target = String(targetHours ?? cfg.monthlyTargetHours);
   const [region, setRegion] = useState(cfg.region);
 
   const total = (Object.values(schedule) as DayInterval[]).reduce((t, i) => {
@@ -218,15 +228,13 @@ function ScheduleCard(
         className="row wrap"
         style={{ marginTop: 16, alignItems: "flex-end" }}
       >
-        <label className="field">
-          Monthly target (hours)
-          <input
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            disabled={!canWrite}
-            style={{ width: 110 }}
-          />
-        </label>
+        <Num
+          label="Monthly target (hours)"
+          value={target}
+          set={setTargetHours}
+          can={canWrite}
+          width={130}
+        />
         <label className="field">
           Holiday region
           <input
@@ -246,10 +254,12 @@ function ScheduleCard(
           <button
             className="btn primary"
             type="button"
+            disabled={targetHours === undefined}
+            title={targetHours === undefined ? "The monthly target is not a number." : undefined}
             onClick={() =>
               void save("pacing", {
                 schedule,
-                monthlyTargetHours: Number(target) || 0,
+                monthlyTargetHours: targetHours!,
                 region: region.trim().toUpperCase(),
               })}
           >
@@ -286,10 +296,28 @@ function InvoiceCard(
     v: PublicInvoiceConfig[K],
   ) => setDraft({ ...draft, [k]: v });
 
+  // 25.3 — a field holding text that is not a number leaves the last good value in the draft, so
+  // without this the Save button would happily write it back and the typo would vanish unnoticed.
+  // Named rather than counted, because "one field is wrong" is not enough to go on.
+  const [unreadable, setUnreadable] = useState<string[]>([]);
+  const num = (
+    name: string,
+    n: number | undefined,
+    apply: (v: number) => void,
+  ) => {
+    setUnreadable((prev) =>
+      n === undefined
+        ? (prev.includes(name) ? prev : [...prev, name])
+        : prev.filter((x) => x !== name)
+    );
+    if (n !== undefined) apply(n);
+  };
+
   const missing = [
     !draft.fromName && "your name or trading name",
     !draft.clientName && "the client's name",
-    draft.rateMinor <= 0 && "an hourly rate",
+    draft.rateMinor <= 0 && !unreadable.includes("the hourly rate") &&
+    "an hourly rate",
     !cfg.paymentDetailsSet && !pay.payAccountNumber && "payment details",
   ].filter(Boolean) as string[];
 
@@ -352,10 +380,10 @@ function InvoiceCard(
           set={(v) => set("currency", v)}
           can={canWrite}
         />
-        <Text
+        <Num
           label="Hourly rate"
           value={(draft.rateMinor / 100).toFixed(2)}
-          set={(v) => set("rateMinor", Math.round(Number(v) * 100) || 0)}
+          set={(n) => num("the hourly rate", n, (v) => set("rateMinor", Math.round(v * 100)))}
           can={canWrite}
         />
         <Text
@@ -364,10 +392,10 @@ function InvoiceCard(
           set={(v) => set("taxLabel", v)}
           can={canWrite}
         />
-        <Text
+        <Num
           label="Tax rate (%)"
           value={String(Math.round(draft.taxRate * 1000) / 10)}
-          set={(v) => set("taxRate", (Number(v) || 0) / 100)}
+          set={(n) => num("the tax rate", n, (v) => set("taxRate", v / 100))}
           can={canWrite}
         />
         <Text
@@ -448,6 +476,10 @@ function InvoiceCard(
         <button
           className="btn primary"
           type="button"
+          // 25.2 -- the button stays, and says why it will not go. Removing it would leave the
+          // screen looking read-only for what is really one mistyped character.
+          disabled={unreadable.length > 0}
+          title={unreadable.length > 0 ? `Fix ${unreadable.join(" and ")} first.` : undefined}
           onClick={() =>
             void save("invoice", {
               ...draft,
@@ -461,6 +493,12 @@ function InvoiceCard(
           Save invoice details
         </button>
       )}
+      {unreadable.length > 0 && (
+        <div className="notice bad" style={{ marginTop: 8 }}>
+          {unreadable.join(" and ")} {unreadable.length > 1 ? "are" : "is"}{" "}
+          not a number, so nothing here can be saved yet.
+        </div>
+      )}
     </div>
   );
 }
@@ -472,9 +510,8 @@ function PromptCard(
     save: (s: "prompt", v: Record<string, unknown>) => Promise<void>;
   },
 ) {
-  const [minutes, setMinutes] = useState(
-    String(Math.round(cfg.meanIntervalMs / 60_000)),
-  );
+  const stored = Math.round(cfg.meanIntervalMs / 60_000);
+  const [minutes, setMinutes] = useState<number | undefined>(stored);
   return (
     <div className="card">
       <h3>Work-detail prompts</h3>
@@ -493,22 +530,24 @@ function PromptCard(
           />
           Ask me sometimes
         </label>
-        <label className="field">
-          About every (minutes)
-          <input
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-            disabled={!canWrite}
-            style={{ width: 90 }}
-          />
-        </label>
+        <Num
+          label="About every (minutes)"
+          value={String(minutes ?? stored)}
+          set={setMinutes}
+          can={canWrite}
+          width={110}
+        />
         {canWrite && (
           <button
             className="btn"
             type="button"
+            // It used to fall back to 45 when this did not parse, which is a number nobody chose
+            // arriving on the server as though they had.
+            disabled={minutes === undefined}
+            title={minutes === undefined ? "The interval is not a number." : undefined}
             onClick={() =>
               void save("prompt", {
-                meanIntervalMs: (Number(minutes) || 45) * 60_000,
+                meanIntervalMs: minutes! * 60_000,
               })}
           >
             Save
@@ -516,6 +555,73 @@ function PromptCard(
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A number field that does not rewrite what you are typing (25.44), and does not quietly invent a
+ * number you did not (25.3).
+ *
+ * The hourly rate was `value={(rateMinor / 100).toFixed(2)}` with the parse in `onChange`, so every
+ * keystroke went out through the model and came back formatted. Typing `1` gave you `1.00` with the
+ * caret past the end, and the only way to reach that `1` again was to select the whole field; `12`
+ * had to be typed as `1`, select-all, `12`. It was unusable, and it looked like a bug in the
+ * keyboard rather than in this file.
+ *
+ * The fix is that the text belongs to the field while you are in it. `typed` being set means the
+ * field is yours; `undefined` means it follows the stored value, which is what lets a save from
+ * another device land in a box you are not currently typing in. Leaving with something parseable
+ * hands it back, and *that* is when the canonical formatting appears.
+ *
+ * Unparseable text is kept, said out loud, and reported upward as `undefined` so the card can
+ * refuse to save. It is deliberately not snapped back to the last good value: silently discarding
+ * what somebody typed is the other half of the same fault.
+ */
+function Num(
+  { label, value, set, can, width, unit }: {
+    label: string;
+    /** The stored number as text — shown whenever the field is not being edited. */
+    value: string;
+    /** The parsed number, or `undefined` when the field does not hold one. */
+    set: (n: number | undefined) => void;
+    can: boolean;
+    width?: number;
+    unit?: string;
+  },
+) {
+  const [typed, setTyped] = useState<string | undefined>(undefined);
+  const shown = typed ?? value;
+  // Empty is not an error to shout about — it is a field you are half way through clearing, and
+  // the card's own "still needs" notice covers a value that never arrives.
+  const bad = typed !== undefined && typed.trim() !== "" &&
+    parseNumber(typed) === undefined;
+
+  return (
+    <label className="field">
+      {label}
+      <input
+        value={shown}
+        disabled={!can}
+        inputMode="decimal"
+        aria-invalid={bad || undefined}
+        className={bad ? "invalid" : undefined}
+        style={width ? { width } : undefined}
+        onChange={(e) => {
+          setTyped(e.target.value);
+          set(parseNumber(e.target.value));
+        }}
+        onBlur={() => {
+          if (
+            typed !== undefined && parseNumber(typed) !== undefined
+          ) setTyped(undefined);
+        }}
+      />
+      {bad
+        ? <span className="field-note bad">not a number</span>
+        : unit
+        ? <span className="field-note faint">{unit}</span>
+        : null}
+    </label>
   );
 }
 
