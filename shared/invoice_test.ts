@@ -328,3 +328,70 @@ Deno.test("11.8 -- editing work does not reach through into an issued invoice", 
 Deno.test("totalsFor is the sum of the lines and nothing else", () => {
   assertEquals(totalsFor([], 0.1), { subtotalMinor: 0, taxMinor: 0, totalMinor: 0 });
 });
+
+/*
+ * The other direction, which nothing was watching.
+ *
+ * 11.25 asks about an entry that is *not* in the snapshot, and that is the case somebody thought
+ * of: you issue September, then remember two hours on the 12th. The reverse — an entry that was on
+ * the invoice and has since been shortened or deleted — leaves every id in the snapshot still
+ * accounted for, so the set difference is empty and nothing is said. It is also the worse of the
+ * two, because the invoice is then claiming money the records no longer support.
+ */
+Deno.test("work behind an issued invoice that has since been deleted", () => {
+  const original = [entry("a", "2026-09-01", 8), entry("b", "2026-09-02", 4)];
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: original });
+  const invoices: InvoiceRecord[] = [{
+    id: "1",
+    period: "2026-09",
+    number: "INV-2026-09",
+    status: "issued",
+    snapshot: { ...draft, issuedAt: 1_759_000_000_000 },
+  }];
+  assertEquals(invoiceWarnings(original, invoices).length, 0);
+
+  const warnings = invoiceWarnings([original[0]!], invoices);
+  assertEquals(warnings.length, 1);
+  assertEquals(warnings[0]?.kind, "invoiced-work-changed");
+  assertEquals(
+    warnings[0]?.kind === "invoiced-work-changed" && warnings[0].wasHours,
+    12,
+  );
+  assertEquals(warnings[0]?.kind === "invoiced-work-changed" && warnings[0].nowHours, 8);
+});
+
+Deno.test("and work behind an issued invoice that has since been shortened", () => {
+  const original = [entry("a", "2026-09-01", 8)];
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: original });
+  const invoices: InvoiceRecord[] = [{
+    id: "1",
+    period: "2026-09",
+    number: "INV-2026-09",
+    status: "issued",
+    snapshot: { ...draft, issuedAt: 1_759_000_000_000 },
+  }];
+
+  // The same entry, same id, two hours shorter. Every id the snapshot names is still present, so
+  // 11.25's set difference sees nothing at all.
+  const warnings = invoiceWarnings([entry("a", "2026-09-01", 6)], invoices);
+  assertEquals(warnings.length, 1);
+  assertEquals(warnings[0]?.kind, "invoiced-work-changed");
+  assertEquals(warnings[0]?.kind === "invoiced-work-changed" && warnings[0].nowHours, 6);
+});
+
+Deno.test("adding work to an invoiced month is reported once, as the addition it is", () => {
+  // The aggregate check looks only at the entries the invoice was built from, so an addition does
+  // not also read as a change to them — otherwise every 11.25 warning would arrive with a vaguer
+  // duplicate beside it.
+  const original = [entry("a", "2026-09-01", 8)];
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: original });
+  const invoices: InvoiceRecord[] = [{
+    id: "1",
+    period: "2026-09",
+    number: "INV-2026-09",
+    status: "issued",
+    snapshot: { ...draft, issuedAt: 1_759_000_000_000 },
+  }];
+  const warnings = invoiceWarnings([...original, entry("late", "2026-09-12", 2)], invoices);
+  assertEquals(warnings.map((w) => w.kind), ["missing-from-invoice"]);
+});

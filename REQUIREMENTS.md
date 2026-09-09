@@ -291,6 +291,8 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 11.24. MUST warn when a month containing work has no issued or paid invoice while a later month does.
 11.25. MUST warn when a work entry's date falls inside an invoiced month but the entry is absent from that invoice's snapshot.
 11.26. MUST NOT block issuance on the warnings of 11.24 or 11.25.
+11.27. MUST warn when the work an issued invoice was built from no longer adds up to the hours that invoice states, whether because an entry was shortened or because it was deleted. 11.25 is a set difference over the snapshot's ids and cannot see either.
+11.28. MUST NOT block anything on the warning of 11.27, per 11.26; and MUST NOT report an addition under 11.27 as well as under 11.25, since one event should not arrive as two warnings.
 
 ## 12. Server logging & diagnostics
 

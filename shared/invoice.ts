@@ -223,19 +223,36 @@ export interface BuildOptions {
  * split — which reads as a mistake even though it is not. Several tags on one day still print
  * several rows, which is what 4.4 asks for.
  */
-export function buildLines(opts: BuildOptions): InvoiceLine[] {
-  const inPeriod = opts.entries.filter((e) => monthOf(e.date) === opts.period);
-
+/**
+ * One row per date and tag, in the order the document prints them.
+ *
+ * Shared with `printedHours` below rather than inlined here, because the second caller has to
+ * aggregate and round *exactly* as this does — a comparison against what an invoice states is
+ * only a comparison if both sides went through the same rounding.
+ */
+function rowsOf(
+  entries: readonly WorkEntry[],
+  period: string,
+): Array<{ date: DateString; tag: string; ms: number }> {
   const byKey = new Map<string, { date: DateString; tag: string; ms: number }>();
-  for (const e of inPeriod) {
+  for (const e of entries) {
+    if (monthOf(e.date) !== period) continue;
     const key = `${e.date}\0${e.billingTag}`;
     const row = byKey.get(key) ?? { date: e.date, tag: e.billingTag, ms: 0 };
     row.ms += e.durationMs;
     byKey.set(key, row);
   }
+  return [...byKey.values()]
+    .sort((a, b) => (a.date === b.date ? a.tag.localeCompare(b.tag) : a.date < b.date ? -1 : 1));
+}
 
-  const timeLines: InvoiceLine[] = [...byKey.values()]
-    .sort((a, b) => (a.date === b.date ? a.tag.localeCompare(b.tag) : a.date < b.date ? -1 : 1))
+/** The hours an invoice for this period would print in its Total row, from these entries. */
+export function printedHours(entries: readonly WorkEntry[], period: string): number {
+  return rowsOf(entries, period).reduce((total, row) => total + hoursOf(row.ms), 0);
+}
+
+export function buildLines(opts: BuildOptions): InvoiceLine[] {
+  const timeLines: InvoiceLine[] = rowsOf(opts.entries, opts.period)
     .map((row) => {
       // 25.7 — the rounded figure is the official one, and the amount is computed from it rather
       // than from `row.ms`. Otherwise the column prints `2.5` and the total is struck from
@@ -390,7 +407,14 @@ export function previousInvoice<T extends InvoiceRecord>(
 
 export type InvoiceWarning =
   | { kind: "uninvoiced-month"; month: string; hours: number; laterInvoice: InvoiceRecord }
-  | { kind: "missing-from-invoice"; entry: WorkEntry; invoice: InvoiceRecord };
+  | { kind: "missing-from-invoice"; entry: WorkEntry; invoice: InvoiceRecord }
+  /** 11.27 — the work the invoice *was* built from, no longer adding up to what it says. */
+  | {
+    kind: "invoiced-work-changed";
+    invoice: InvoiceRecord;
+    wasHours: number;
+    nowHours: number;
+  };
 
 /**
  * Work that looks like it has been billed but has not (11.24, 11.25). Neither blocks (11.26).
@@ -433,6 +457,34 @@ export function invoiceWarnings(
     const ids = inv.snapshot?.entryIds;
     if (ids && !ids.includes(e.id)) {
       out.push({ kind: "missing-from-invoice", entry: e, invoice: inv });
+    }
+  }
+
+  /*
+   * 11.27 -- and the direction 11.25 cannot see.
+   *
+   * 11.25 is a set difference over ids, so it reports an entry that is *not* in the snapshot. An
+   * entry that is in the snapshot and has since been shortened or deleted leaves that difference
+   * empty and says nothing — and it is the worse case, because the invoice is then claiming money
+   * the records no longer support.
+   *
+   * Restricted to the entries the invoice was actually built from. Over the whole month, adding
+   * work would trip this as well as 11.25, and one event would arrive as two warnings, the second
+   * of them vaguer than the first.
+   *
+   * The comparison is of *line* hours rather than of raw durations: `buildLines` aggregates by
+   * date and tag and rounds each line to a tenth (25.7), so summing milliseconds and summing the
+   * printed column are different numbers, and the printed column is the one the invoice asserts.
+   */
+  for (const inv of committed) {
+    const snap = inv.snapshot;
+    if (!snap) continue;
+    const kept = entries.filter((e) => snap.entryIds.includes(e.id));
+    const nowHours = printedHours(kept, inv.period);
+    // A tenth is the resolution the document prints at, so anything smaller is not a disagreement
+    // the reader could see. Half of one, to stay clear of binary addition.
+    if (Math.abs(nowHours - snap.workHours) > 0.05) {
+      out.push({ kind: "invoiced-work-changed", invoice: inv, wasHours: snap.workHours, nowHours });
     }
   }
 

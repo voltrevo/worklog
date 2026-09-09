@@ -401,6 +401,16 @@ function Warning({ warning }: { warning: InvoiceWarning }) {
       </div>
     );
   }
+  if (warning.kind === "invoiced-work-changed") {
+    return (
+      <div className="notice warn">
+        <strong>{warning.invoice.number}</strong> was issued for {hours(warning.wasHours)}{" "}
+        of work in {monthName(warning.invoice.period)}, and that work now adds up to{" "}
+        {hours(warning.nowHours)}. The invoice is frozen and has not changed; the entries behind it
+        have.
+      </div>
+    );
+  }
   return (
     <div className="notice warn">
       {hours(warning.entry.durationMs / 3_600_000)} on{" "}
