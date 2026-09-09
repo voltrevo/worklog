@@ -211,3 +211,63 @@ Deno.test("transact rolls back on a throw and nests without a second BEGIN", () 
   assertEquals(count(), 2, "the insert before the throw did not survive");
   db.close();
 });
+
+Deno.test({
+  name:
+    "17.8 -- a migration added later runs against an existing database, once, without touching what is there",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * The case every release is, and the only one that can lose data.
+     *
+     * "A fresh database runs every migration" and "a second call runs none" are both above, and
+     * between them they miss it: they never have an *old file* meet a *new list*. I found the gap
+     * by trying to make the persistence test fail — I added a destructive migration and it changed
+     * nothing, because on a fresh database it ran before there was anything to destroy. A
+     * mutation that cannot fail the test is a test that is not making the claim.
+     *
+     * On disk rather than `:memory:`, because "the same database, later" is the whole subject and
+     * an in-memory one does not survive being closed.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "migrate-" });
+    const path = `${dir}/m.sqlite`;
+
+    const first = open({ path });
+    first.prepare(
+      "INSERT INTO work_entry (id, date, duration_ms, billing_tag, created_at, updated_at)" +
+        " VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("e1", "2026-09-09", 3_600_000, "Product Development", 1, 1);
+    first.close();
+
+    // The next release. `later` is observable, and `MIGRATIONS` re-running would throw on its own
+    // `CREATE TABLE` — so "ran exactly the new one" is checked by the return value *and* by the
+    // fact that this call does not blow up.
+    const later = {
+      id: 10_001,
+      name: "test-added-later",
+      sql: `CREATE TABLE arrived_later (id TEXT PRIMARY KEY) STRICT;`,
+    };
+    const second = open({ path, migrations: [...MIGRATIONS, later] });
+
+    assertEquals(
+      appliedMigrations(second).includes(later.id),
+      true,
+      "the new migration did not run",
+    );
+    assertEquals(
+      second.prepare("SELECT count(*) AS n FROM arrived_later").get(),
+      { n: 0 },
+      "the new migration ran but did not take effect",
+    );
+    // And the row that was already there is still there, unchanged.
+    assertEquals(
+      second.prepare("SELECT id, billing_tag, duration_ms FROM work_entry").all(),
+      [{ id: "e1", billing_tag: "Product Development", duration_ms: 3_600_000 }],
+    );
+    // Once: a third open with the same list adds nothing.
+    assertEquals(migrate(second, [...MIGRATIONS, later]), []);
+    second.close();
+
+    await Deno.remove(dir, { recursive: true });
+  },
+});

@@ -1,0 +1,7 @@
+Scratch space for tests that need a real file on disk — the persistence and migration
+tests, which cannot use `:memory:` because their whole subject is closing a database and
+opening it again.
+
+Tracked (empty) so it always exists: the test task grants `--allow-write=.tmp` and
+nothing wider, and a test cannot create the one directory it is allowed to write in.
+Everything inside is ignored.

@@ -1,0 +1,221 @@
+/**
+ * Everything section 17 says must be preserved, preserved across a restart.
+ *
+ * **Every other test in this repo opens `:memory:`.** That is the right default — they are fast
+ * and they cannot leak into each other — but it means no test has ever closed a database and
+ * opened it again, and the whole of section 17 is about what is still there when you do. A
+ * migration that dropped a column, a `CREATE TABLE` that quietly ran twice against an existing
+ * file, a value written in a shape SQLite would not give back: all of them pass a suite of
+ * fresh in-memory databases and all of them lose somebody's work.
+ *
+ * 17.8 is what makes this necessary rather than paranoid. Migrations run on open, so every
+ * release runs new code against an old file, and the only occasion it is ever exercised is the
+ * one that matters.
+ *
+ * So this writes one of each thing the section names — a timed entry and a duration-only one
+ * (17.1, 17.13), tags (17.2), a text note and a voice note with its file on disk (17.3, 17.4,
+ * 17.10), an invoice taken through draft → issued → paid (17.5, 17.6, 17.11), an authorised
+ * device (17.7) — then closes the database, opens the same file again, and reads it all back.
+ *
+ * Driven through `handle` rather than through the modules underneath, because the notes path
+ * exists only there, and because "the server was restarted" is a claim about the server.
+ */
+
+import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1";
+import { exportPublicKey, generateDeviceKey, signClaim } from "@worklog/shared/auth";
+import {
+  fromBase64,
+  type HelloResult,
+  type Request,
+  type StoredInvoiceWire,
+  toBase64,
+  toWireClaim,
+  type WorkNoteWire,
+} from "@worklog/shared/protocol";
+import type { WorkEntry } from "@worklog/shared/types";
+import { open } from "./db.ts";
+import { ChallengeStore } from "./access.ts";
+import { getConfig, setConfig } from "./config.ts";
+import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
+import { loggerFor } from "./logs.ts";
+import { PromptHub } from "./prompts.ts";
+import { authorize, handle, type ServerContext, type Session } from "./rpc.ts";
+import { listDevices } from "./access.ts";
+import { Refused } from "./work.ts";
+
+const NOW = 1_788_000_000_000;
+const CERT = "uEiEXAMPLEcerthashEXAMPLEcerthashEXAMPLEcertha";
+const TODAY = "2026-09-09";
+
+/** A context over a real directory, so the audio and the PDF have somewhere to be. */
+function context(dataDir: string): ServerContext {
+  const db = open({ path: `${dataDir}/worklog.sqlite` });
+  return {
+    db,
+    challenges: new ChallengeStore(),
+    hub: new PromptHub(),
+    log: loggerFor(db),
+    dataDir,
+    serverCertHash: CERT,
+    version: "0.0.0-test",
+    sessions: new Map(),
+    now: () => NOW,
+    offlineHolidays: true,
+  };
+}
+
+function session(ctx: ServerContext, id: string): Session {
+  const s: Session = { id, authenticated: false, push: () => {} };
+  ctx.sessions.set(id, s);
+  return s;
+}
+
+async function call(ctx: ServerContext, s: Session, req: Request): Promise<unknown> {
+  const verdict = authorize(s, req.t);
+  if (!verdict.ok) throw new Refused(verdict.code, verdict.message);
+  return await handle(ctx, s, req);
+}
+
+/** Claim admin on this context, and return the key so a second context can authenticate with it. */
+async function claimAdmin(ctx: ServerContext, s: Session) {
+  const pair = await generateDeviceKey();
+  const publicKey = await exportPublicKey(pair);
+  const hello = await call(ctx, s, { t: "hello" }) as HelloResult;
+  const claim = {
+    purpose: "claim" as const,
+    deviceName: "Studio Desktop",
+    role: "admin" as const,
+    publicKey,
+    timestamp: NOW,
+    challenge: fromBase64(hello.challenge),
+    serverCertHash: hello.serverCertHash,
+  };
+  await call(ctx, s, {
+    t: "claim-admin",
+    claim: toWireClaim(claim),
+    signature: toBase64(await signClaim(claim, pair.privateKey)),
+  });
+  return { pair, publicKey };
+}
+
+Deno.test({
+  name: "17.1-17.13 -- everything survives the server being restarted",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "persistence-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+
+    // ------------------------------------------------------------------ the first run
+    const before = context(dir);
+    setConfig(before.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(before, "s1");
+    const device = await claimAdmin(before, admin);
+
+    // 17.1, 17.2, 17.13 — one of each kind of entry, both tagged.
+    const timed = await call(before, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 2 * 3_600_000,
+      billingTag: "Product Development",
+      timing: { startedAt: NOW, endedAt: NOW + 2 * 3_600_000 },
+    }) as WorkEntry;
+    const untimed = await call(before, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 90 * 60_000,
+      billingTag: "Client feedback & updates",
+    }) as WorkEntry;
+
+    // 17.3, 17.4, 17.10 — a text note and a voice note whose bytes go to a file.
+    await call(before, admin, { t: "note-add", body: "Wrote the persistence test." });
+    const audio = new Uint8Array([0x4f, 0x67, 0x67, 0x53, 1, 2, 3, 4]);
+    await call(before, admin, {
+      t: "note-add",
+      body: "Said it out loud too.",
+      audioBase64: toBase64(audio),
+      audioType: "audio/ogg",
+      audioMs: 4200,
+    });
+
+    // 17.5, 17.6, 17.11 — an invoice all the way through, so there is a snapshot, two timestamps
+    // and a frozen PDF on disk.
+    const draft = await call(before, admin, {
+      t: "invoice-create",
+      period: "2026-09",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    await call(before, admin, { t: "invoice-issue", id: draft.id });
+    const paid = await call(before, admin, {
+      t: "invoice-mark-paid",
+      id: draft.id,
+    }) as StoredInvoiceWire;
+    assertNotEquals(paid.issuedAt, undefined, "the first run issued it");
+    assertNotEquals(paid.paidAt, undefined, "and marked it paid");
+
+    before.db.close();
+
+    // ------------------------------------------------------------------ the second run
+    // The same file. Migrations run again here, against a database that already has everything in
+    // it, which is the case that only ever happens in production.
+    const after = context(dir);
+    const back = session(after, "s2");
+    back.authenticated = true;
+    back.role = "admin";
+
+    // 17.7 — the device is still authorised, with the role it was given.
+    const devices = listDevices(after.db);
+    assertEquals(devices.length, 1);
+    assertEquals(devices[0]!.role, "admin");
+    assertEquals(toBase64(devices[0]!.publicKey), toBase64(device.publicKey));
+
+    // 17.1, 17.2, 17.13 — both entries, and which kind each was.
+    const entries = await call(after, back, { t: "entries", month: "2026-09" }) as WorkEntry[];
+    assertEquals(entries.length, 2);
+    const rebuiltTimed = entries.find((e) => e.id === timed.id)!;
+    const rebuiltUntimed = entries.find((e) => e.id === untimed.id)!;
+    assertEquals(rebuiltTimed.billingTag, "Product Development");
+    assertEquals(rebuiltTimed.durationMs, 2 * 3_600_000);
+    assertEquals(rebuiltTimed.timing, { startedAt: NOW, endedAt: NOW + 2 * 3_600_000 });
+    assertEquals(rebuiltUntimed.billingTag, "Client feedback & updates");
+    // The distinction 17.1 is about, and the one a careless migration would flatten.
+    assertEquals(rebuiltUntimed.timing, undefined);
+    // 17.13 — a plain calendar date, not an instant that a timezone could move.
+    assertEquals(rebuiltTimed.date, TODAY);
+
+    // 17.3, 17.4 — both notes, and the recording still plays back byte for byte.
+    const notes = await call(after, back, { t: "notes", limit: 50 }) as WorkNoteWire[];
+    assertEquals(notes.length, 2);
+    const spoken = notes.find((n) => n.audioMs !== undefined)!;
+    assertEquals(spoken.body, "Said it out loud too.");
+    assertEquals(spoken.audioMs, 4200);
+    const fetched = await call(after, back, { t: "note-audio", id: spoken.id }) as {
+      audioBase64: string;
+    };
+    assertEquals(fromBase64(fetched.audioBase64), audio);
+    assertEquals(notes.some((n) => n.body === "Wrote the persistence test."), true);
+
+    // 17.5, 17.6 — the snapshot and both timestamps, unchanged.
+    const invoices = await call(after, back, { t: "invoices" }) as StoredInvoiceWire[];
+    assertEquals(invoices.length, 1);
+    assertEquals(invoices[0]!.status, "paid");
+    assertEquals(invoices[0]!.issuedAt, paid.issuedAt);
+    assertEquals(invoices[0]!.paidAt, paid.paidAt);
+    assertEquals(invoices[0]!.snapshot?.subtotalMinor, paid.snapshot?.subtotalMinor);
+
+    // 17.11 — and the frozen PDF is served from the file the first run wrote, not re-rendered.
+    const pdf = await call(after, back, { t: "invoice-pdf", id: draft.id }) as {
+      pdfBase64: string;
+    };
+    assertEquals(fromBase64(pdf.pdfBase64).subarray(0, 5), new TextEncoder().encode("%PDF-"));
+
+    // And the configuration, including the fields the read path hides.
+    assertEquals(
+      getConfig(after.db, "invoice").payAccountNumber,
+      COMPLETE_INVOICE_CONFIG.payAccountNumber,
+    );
+
+    after.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});

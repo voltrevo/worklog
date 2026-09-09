@@ -30,3 +30,7 @@ worklog-check/
 
 # Screens captured for the validation but not committed; only the four the README embeds are.
 .screenshots/
+
+# Test scratch; the directory itself is tracked so a narrow write grant works.
+.tmp/*
+!.tmp/.gitkeep
