@@ -52,18 +52,23 @@ export function loadAlwaysOnTop(): boolean {
 }
 
 /**
- * 15.2–15.4 — store it and apply it now.
+ * 15.2–15.4 — store it, apply it now, and say what the window actually did.
  *
  * Stored whether or not the window accepts it, so a platform that cannot honour the request still
  * remembers the preference for one that can. That is also why it is reapplied at startup.
+ *
+ * The return value is the window's state *after* being asked, not the request. It used to be
+ * `Promise<void>` — the shell has always reported back and this discarded it, so a window manager
+ * that ignores the hint left a ticked box above a window sitting behind everything else. "Where
+ * supported" cannot mean anything unless somebody finds out whether it is.
  */
-export async function setAlwaysOnTop(on: boolean): Promise<void> {
+export async function setAlwaysOnTop(on: boolean): Promise<boolean> {
   deviceStorage().set(ALWAYS_ON_TOP, on ? "1" : "0");
   try {
-    await call.setAlwaysOnTop(on);
+    return await call.setAlwaysOnTop(on);
   } catch {
-    // "where supported" (15.4). A window manager that ignores the hint is not an error, and there
-    // is nobody to report it to.
+    // No shell, or a shell that does not answer: the preference is stored and nothing is claimed.
+    return on;
   }
 }
 

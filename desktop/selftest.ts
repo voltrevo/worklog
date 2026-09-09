@@ -265,6 +265,43 @@ try {
   // nothing on screen, which is exactly how the `bind` fault presented.
   check("a handler that throws rejects", out.boom.startsWith("rejected:"), out.boom);
   check("an unknown call rejects", out.unknown.startsWith("rejected:"), out.unknown);
+
+  /*
+   * 15.4 — and the one window call the app makes for itself.
+   *
+   * Every other handler here is a fixture standing in for `main.ts`, because what is under test is
+   * the bridge. Always-on-top is different: the handler is one line that calls straight through to
+   * the runtime, so the only question worth asking is whether the runtime does anything with it.
+   * 15.4 says "where supported", and a toggle that flips a stored boolean while the window ignores
+   * it is a control that does nothing — the app would have no way to know, and neither would we.
+   */
+  const win = window as unknown as {
+    setAlwaysOnTop?: (on: boolean) => void;
+    isAlwaysOnTop?: () => boolean;
+  };
+  // `main.ts` declares both on a hand-written `BrowserWindowLike` and casts to it, so the type
+  // checker has never confirmed either exists. If they do not, the toggle throws.
+  const exposed = typeof win.setAlwaysOnTop === "function" &&
+    typeof win.isAlwaysOnTop === "function";
+  check("15.4 — the window exposes always-on-top", exposed);
+  if (exposed) {
+    /*
+     * Whether it is *honoured* is a property of the display, not of this code: under `xvfb-run`
+     * there is no window manager to keep anything above anything, and the runtime says so by
+     * reporting `false` after being asked for `true`. That is the right answer, and it is the
+     * answer the app now shows instead of a ticked box over a window sitting behind everything.
+     *
+     * So this reports rather than asserts. The thing worth asserting is that the shell passes the
+     * window's own answer back, which is what `desktop.ts` believes.
+     */
+    const wasOnTop = win.isAlwaysOnTop!();
+    win.setAlwaysOnTop!(!wasOnTop);
+    const honoured = win.isAlwaysOnTop!() === !wasOnTop;
+    win.setAlwaysOnTop!(wasOnTop);
+    console.log(
+      `  · always-on-top is ${honoured ? "honoured" : "not honoured"} by this display`,
+    );
+  }
 } catch (err) {
   check("the selftest ran", false, (err as Error).message);
 }

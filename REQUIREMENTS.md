@@ -397,6 +397,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 15.5. MUST NOT expose Always on top in the GitHub Pages version.
 15.6. MUST NOT store Always on top state on the server.
 15.7. MUST NOT give the server awareness of Always on top state.
+15.8. MUST show the window's actual state rather than the request when Always on top is not honoured. 15.4's "where supported" is unmeetable unless the app finds out whether it is: a ticked box above a window sitting behind everything is a claim, not a setting.
 
 ## 16. Local-only boundary
 
