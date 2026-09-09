@@ -10,6 +10,7 @@
     "./auth": "./auth.ts",
     "./protocol": "./protocol.ts",
     "./client": "./client.ts",
-    "./reports": "./reports.ts"
+    "./reports": "./reports.ts",
+    "./rounding": "./rounding.ts"
   }
 }

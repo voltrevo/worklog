@@ -141,19 +141,58 @@ Deno.test("amounts are integer minor units and the totals add up", () => {
   assertEquals(Number.isInteger(draft.totalMinor), true);
 });
 
-Deno.test("an awkward duration still lands on a whole cent", () => {
-  // 20 minutes at 75.00 is 25.00 exactly; 25 minutes is 31.25; 1 minute is 1.25.
-  const entries = [entry("a", "2026-09-01", 1 / 60)];
-  const draft = buildDraft({ ...BASE, period: "2026-09", entries });
-  assertEquals(draft.subtotalMinor, 125);
-  // ...and something genuinely fractional rounds rather than trailing a fraction of a cent.
-  const odd = buildDraft({
+Deno.test("25.7 -- the invoice adds up to the hours printed on it", () => {
+  // The check that would have caught the old behaviour. Each of these is 2h30m30s, which prints as
+  // `2.5`; three of them at 75.00 must come to 562.50, the number a client gets by multiplying what
+  // they can see. Computing from the unrounded 2.5083h gave 564.38 — a total that cannot be
+  // reconstructed from any figure on the page, which is the kind of discrepancy that costs an email.
+  const awkward = (2 * 3600 + 30 * 60 + 30) / 3600;
+  const draft = buildDraft({
     ...BASE,
     period: "2026-09",
-    entries: [entry("a", "2026-09-01", 1 / 7)],
+    entries: [
+      entry("a", "2026-09-01", awkward),
+      entry("b", "2026-09-02", awkward),
+      entry("c", "2026-09-03", awkward),
+    ],
   });
+  assertEquals(draft.lines.map((l) => l.hours), [2.5, 2.5, 2.5]);
+  assertEquals(draft.workHours, 7.5);
+  for (const line of draft.lines) assertEquals(line.amountMinor, 18750);
+  assertEquals(draft.subtotalMinor, 56250);
+  // Restated as the property rather than the arithmetic: whatever the lines say, the total is
+  // their sum, and each line is its own printed hours times the rate.
+  for (const line of draft.lines) {
+    assertEquals(line.amountMinor, Math.round(line.hours! * BASE.rateMinor));
+  }
+  assertEquals(draft.subtotalMinor, draft.lines.reduce((t, l) => t + l.amountMinor, 0));
+});
+
+Deno.test("a tenth of an hour can still be a fraction of a cent", () => {
+  // Freezing the hours does not remove the need to round money: 0.1h at 123.45 is 12.345. Half-up
+  // to the cent, and the result is a whole number of minor units rather than a trailing fraction.
+  const odd = buildDraft({
+    ...BASE,
+    rateMinor: 12345,
+    period: "2026-09",
+    entries: [entry("a", "2026-09-01", 0.1)],
+  });
+  assertEquals(odd.lines.map((l) => l.hours), [0.1]);
   assertEquals(Number.isInteger(odd.subtotalMinor), true);
-  assertEquals(odd.subtotalMinor, 1071); // 10.714... -> 10.71
+  assertEquals(odd.subtotalMinor, 1235); // 12.345 -> 12.35
+});
+
+Deno.test("a minute of work rounds away, and says so by being zero", () => {
+  // 25.6 accepts up to three minutes a line. One minute is 0.0h and bills nothing — which is the
+  // honest outcome and is visible on the invoice as `0.0`, rather than a cent appearing from a
+  // duration too small to print.
+  const draft = buildDraft({
+    ...BASE,
+    period: "2026-09",
+    entries: [entry("a", "2026-09-01", 1 / 60)],
+  });
+  assertEquals(draft.lines.map((l) => l.hours), [0]);
+  assertEquals(draft.subtotalMinor, 0);
 });
 
 Deno.test("11.20 -- at most one issued-or-paid invoice per month", () => {

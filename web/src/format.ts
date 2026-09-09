@@ -6,14 +6,20 @@
  */
 
 import type { DateString } from "@worklog/shared/types";
+import { hoursOf, roundHours } from "@worklog/shared/rounding";
 
-/** `3h 14m`, and `14m` when there are no hours. Never `0h 14m`. */
+/**
+ * `3.2h` (25.6).
+ *
+ * This used to be `3h 14m`, which is a friendlier way to say a duration and the wrong one here.
+ * The invoice bills in tenths of an hour, so `3h 14m` on the history screen and `3.2` on the
+ * document are the same work in two units, and reconciling them is arithmetic somebody has to do
+ * in their head. One unit everywhere, and it is the one that gets paid.
+ *
+ * The live running clock keeps `hh:mm:ss` — see `clock`.
+ */
 export function duration(ms: number): string {
-  const totalMinutes = Math.max(0, Math.round(ms / 60_000));
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m}m`;
+  return `${hoursOf(ms).toFixed(1)}h`;
 }
 
 /** `1:27:16` — for the running session, where the seconds are the point. */
@@ -26,16 +32,20 @@ export function clock(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/** The same, for a figure already in hours. */
 export function hours(value: number): string {
-  return duration(value * 3_600_000);
+  return `${roundHours(value).toFixed(1)}h`;
 }
 
 /** `+4h 0m ahead` / `2h 30m behind`, because a bare signed number is not an answer. */
 export function pace(
   hoursValue: number,
 ): { text: string; tone: "good" | "bad" | "flat" } {
-  const rounded = Math.round(hoursValue * 60) / 60;
-  if (Math.abs(rounded) < 1 / 60) {
+  // Rounded first, and *then* compared against zero: rounding to a tenth after deciding it was
+  // non-zero would let 0.02h through as "0.0h ahead", which is a sentence that says nothing and
+  // looks like a bug. If it rounds away, it is on target.
+  const rounded = roundHours(hoursValue);
+  if (rounded === 0) {
     return { text: "exactly on target", tone: "flat" };
   }
   return rounded > 0

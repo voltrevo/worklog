@@ -14,6 +14,7 @@
 
 import type { DateString, Instant, InvoiceStatus, WorkEntry } from "./types.ts";
 import { monthOf, weeksThenMonday } from "./dates.ts";
+import { hoursOf } from "./rounding.ts";
 
 const MS_PER_HOUR = 3_600_000;
 
@@ -138,7 +139,10 @@ export function buildLines(opts: BuildOptions): InvoiceLine[] {
   const timeLines: InvoiceLine[] = [...byKey.values()]
     .sort((a, b) => (a.date === b.date ? a.tag.localeCompare(b.tag) : a.date < b.date ? -1 : 1))
     .map((row) => {
-      const hours = row.ms / MS_PER_HOUR;
+      // 25.7 — the rounded figure is the official one, and the amount is computed from it rather
+      // than from `row.ms`. Otherwise the column prints `2.5` and the total is struck from
+      // `2.5083…`, and the invoice does not add up to what it shows. Up to three minutes a line.
+      const hours = hoursOf(row.ms);
       return {
         date: row.date,
         description: row.tag,

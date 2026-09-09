@@ -790,7 +790,10 @@ async function main() {
     await until(
       "target on phone",
       mobile.page,
-      async (p) => (await p.getByText("120h 0m").count()) > 0,
+      // The number, not the spelling. This was `getByText("120h 0m")` and 25.6 broke it — a check
+      // that pins today's formatting fails for a reason that has nothing to do with what it is
+      // about, which is that a figure set on one device reached another one.
+      async (p) => (await p.getByText(/\b120(\.0)?h\b/).count()) > 0,
     ),
   );
 
@@ -940,6 +943,22 @@ async function main() {
 }
 
 /**
+ * Hours out of whatever the screen rendered, as a number.
+ *
+ * 25.6 changed every duration from `3h 14m` to `3.2h`, and these two readers went red together —
+ * which is the right failure, but it is worth only having one of them. Both spellings are accepted
+ * because being able to read the old one is what makes this a check on the *value* rather than a
+ * second copy of the formatter: a reader that only understands today's format cannot tell a
+ * changed number from a changed unit.
+ */
+function readHours(text) {
+  const decimal = /(-?\d+(?:\.\d+)?)\s*h(?![a-z0-9])/i.exec(text);
+  const hm = /(-?\d+)h\s*(\d+)m/.exec(text);
+  if (hm) return Number(hm[1]) + Number(hm[2]) / 60;
+  return decimal ? Number(decimal[1]) : undefined;
+}
+
+/**
  * One of the Pacing screen's labelled figures, in hours.
  *
  * Read by its label rather than by position: the cards are a flex row, and a check that says
@@ -949,16 +968,14 @@ async function figure(page, label) {
   const text = await page.locator(".card", { hasText: label }).first()
     .locator(".big").first().textContent().catch(() => null);
   if (!text) return undefined;
-  const m = /(\d+)h\s*(\d+)m/.exec(text);
-  return m ? Number(m[1]) + Number(m[2]) / 60 : undefined;
+  return readHours(text);
 }
 
 /** The month figure on the History screen, in hours, as the browser renders it. */
 async function monthTotal(page) {
   const text = await page.locator(".card .big").first().textContent().catch(() => null);
   if (!text) return undefined;
-  const m = /(\d+)h\s*(\d+)m/.exec(text);
-  return m ? Number(m[1]) + Number(m[2]) / 60 : undefined;
+  return readHours(text);
 }
 
 await main().catch((err) => {

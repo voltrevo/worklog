@@ -9,7 +9,7 @@
 /// <reference lib="dom" />
 
 import { assertEquals } from "jsr:@std/assert@^1";
-import { instantAt, parseNumber, timeValue } from "./format.ts";
+import { clock, duration, instantAt, pace, parseNumber, timeValue } from "./format.ts";
 Deno.test("24.11 -- a wall-clock time on a date becomes an instant on this device's clock", () => {
   const at = instantAt("2026-09-08", "09:30");
   assertEquals(at !== undefined, true);
@@ -54,4 +54,33 @@ Deno.test("parseNumber treats empty as absent rather than zero", () => {
   assertEquals(parseNumber(""), undefined);
   assertEquals(parseNumber("   "), undefined);
   assertEquals(parseNumber("."), undefined);
+});
+
+Deno.test("25.6 -- a duration is hours to one decimal place", () => {
+  assertEquals(duration(0), "0.0h");
+  assertEquals(duration(14 * 60_000), "0.2h");
+  assertEquals(duration(3 * 3_600_000 + 14 * 60_000), "3.2h");
+  assertEquals(duration(40 * 3_600_000), "40.0h");
+  // Half-to-even, same rule as the invoice — the point of 25.6 is that these agree.
+  assertEquals(duration(15 * 60_000), "0.2h");
+  assertEquals(duration(21 * 60_000), "0.4h");
+});
+
+Deno.test("but the running clock still counts seconds", () => {
+  // 25.6 exempts it explicitly. A figure that flicks between 2.5 and 2.6 while you watch is not a
+  // clock, and the seconds are the reason to look at this one at all.
+  assertEquals(clock(87_000), "1:27");
+  assertEquals(clock(3600_000 + 27 * 60_000 + 16_000), "1:27:16");
+});
+
+Deno.test("pace rounds before it decides whether you are on target", () => {
+  // A minute either way is 0.0h, and "0.0h ahead" is a sentence with no content that reads as a
+  // bug. Rounding first is what makes the two agree.
+  assertEquals(pace(1 / 60).text, "exactly on target");
+  assertEquals(pace(-1 / 60).text, "exactly on target");
+  assertEquals(pace(0).tone, "flat");
+  assertEquals(pace(4).text, "4.0h ahead");
+  assertEquals(pace(4).tone, "good");
+  assertEquals(pace(-2.5).text, "2.5h behind");
+  assertEquals(pace(-2.5).tone, "bad");
 });
