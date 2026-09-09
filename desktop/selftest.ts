@@ -318,6 +318,41 @@ try {
       mounted === true,
       String(detail).slice(0, 500),
     );
+
+    /*
+     * Mounting proves the bundle parses and the first render runs. It proves nothing about an API
+     * used only on a code path — and the interesting ones all are.
+     *
+     * `AbortSignal.timeout` is reached when connecting, `:focus-visible` when tabbing,
+     * `overflow-wrap: anywhere` when a long address is shown. Each landed here from a browser
+     * where it obviously works, and this webview is a different engine on whatever version the
+     * distribution shipped. The failure mode is a screen that works until the one moment it does
+     * not, in the one place with no console to look at.
+     *
+     * Named individually, because "something is missing" and "`AbortSignal.timeout` is missing"
+     * want completely different responses.
+     */
+    const capabilities: [string, string][] = [
+      ["AbortSignal.timeout", "typeof AbortSignal?.timeout === 'function'"],
+      ["Array.prototype.at", "typeof [].at === 'function'"],
+      ["structuredClone", "typeof structuredClone === 'function'"],
+      ["crypto.subtle", "typeof crypto?.subtle === 'object'"],
+      ["CSS :focus-visible", "CSS.supports('selector(:focus-visible)')"],
+      ["CSS overflow-wrap: anywhere", "CSS.supports('overflow-wrap', 'anywhere')"],
+      ["CSS color-scheme", "CSS.supports('color-scheme', 'light dark')"],
+      ["CSS minmax in grid", "CSS.supports('grid-template-columns', 'minmax(0, 1fr)')"],
+    ];
+    const absent: string[] = [];
+    for (const [name, expr] of capabilities) {
+      const present = await js(`(() => { try { return ${expr}; } catch { return false; } })()`)
+        .catch(() => false);
+      if (present !== true) absent.push(name);
+    }
+    check(
+      "and this engine has every API the frontend reaches for",
+      absent.length === 0,
+      absent.join(", "),
+    );
   }
 } catch (err) {
   check("the real app could be loaded", false, (err as Error).message);
