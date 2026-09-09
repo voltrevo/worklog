@@ -718,10 +718,21 @@ function InvoiceCard(
           onClick={() =>
             void save("invoice", {
               ...draft,
-              // Only send a payment field that was actually typed; an empty box means "leave it".
-              ...Object.fromEntries(
-                Object.entries(pay).filter(([, v]) => v !== ""),
-              ),
+              /*
+               * The payment block goes as a block, whenever it is editable.
+               *
+               * This sent only the fields that had something typed in them, so an empty box meant
+               * "leave it" — and after "Clear and re-enter" every box is empty on purpose. Clear
+               * five, retype four, save: the fifth silently kept the value that was there before,
+               * and since 24.31 requires it, nothing anywhere said so. The invoice would print a
+               * BSB from a bank the person had left.
+               *
+               * Editable is the right condition, and it is the same one the boxes render from: a
+               * masked group is sent nothing, an unlocked group is sent all of it, and a field
+               * left empty on purpose arrives empty. `missingInvoiceConfig` then names it, which
+               * is a visible "still needs the BSB" instead of a stale one on the document.
+               */
+              ...(paymentHidden ? {} : pay),
               // `paymentDetailsSet` and `addressSet` used to be blanked here by hand, because they
               // are derived flags from the read path and `setConfig` merged whatever it was given.
               // The server drops unknown keys now, which is where that belonged: one place, rather

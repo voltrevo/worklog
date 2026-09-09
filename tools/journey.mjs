@@ -705,6 +705,67 @@ async function main() {
   // which is the correct behaviour reached by a route nobody intended.
   await desktop.page.getByLabel("Postal address").fill("12 Fictional Way, Nowhere NSW 2000");
 
+  /*
+   * A box left empty on purpose, in a group that was unlocked on purpose.
+   *
+   * The card used to send only the payment fields that had something typed in them, because an
+   * untouched box must not blank a stored value. After "Clear and re-enter" every box is empty on
+   * purpose, so clearing five and retyping four kept the fifth — and 24.31 requires it, so the
+   * document would have printed a BSB from a bank the person had left, with nothing anywhere
+   * saying so.
+   */
+  await desktop.page.getByRole("button", { name: /^BSB — stored and hidden/ }).click();
+  await desktop.page.getByRole("button", { name: "Clear and re-enter" }).click();
+  await desktop.page.getByLabel("Payment method", { exact: true }).fill("Bank transfer");
+  await desktop.page.getByLabel("Account name", { exact: true }).fill("Wren & Co");
+  await desktop.page.getByLabel("Account number", { exact: true }).fill("00000000");
+  await desktop.page.getByLabel("Bank", { exact: true }).fill("Bank of Nowhere");
+  // Every one but the BSB, which stays empty.
+  await desktop.page.getByRole("button", { name: "Save invoice details" }).click();
+  await desktop.page.waitForTimeout(700);
+
+  // 24.31 is where an incomplete configuration is named, so that is where the emptied field has
+  // to show up. The card's own notice speaks of "payment details" as a group and would say
+  // nothing here — which is precisely why the old behaviour was invisible.
+  await nav(desktop.page, "Invoices");
+  await desktop.page.getByRole("button", { name: "New invoice" }).click();
+  check(
+    "a payment field cleared on purpose is cleared, and the refusal names it",
+    await until(
+      "bsb missing",
+      desktop.page,
+      async (p) => (await p.getByText(/BSB/).count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+
+  // And put it back. Leaving the screen re-masks the group — the card is remounted and the
+  // clearing was a decision made in this sitting — so it has to be unlocked a second time, which
+  // is itself the behaviour 25.43 asks for.
+  await nav(desktop.page, "Settings");
+  await desktop.page.getByRole("button", { name: /^BSB — stored and hidden/ }).click();
+  await desktop.page.getByRole("button", { name: "Clear and re-enter" }).click();
+  await desktop.page.getByLabel("Payment method", { exact: true }).fill("Bank transfer");
+  await desktop.page.getByLabel("Account name", { exact: true }).fill("Wren & Co");
+  await desktop.page.getByLabel("BSB", { exact: true }).fill("000-000");
+  await desktop.page.getByLabel("Account number", { exact: true }).fill("00000000");
+  await desktop.page.getByLabel("Bank", { exact: true }).fill("Bank of Nowhere");
+  await desktop.page.getByRole("button", { name: "Save invoice details" }).click();
+  await desktop.page.waitForTimeout(700);
+
+  await nav(desktop.page, "Invoices");
+  await desktop.page.getByRole("button", { name: "New invoice" }).click();
+  check(
+    "and typing it back is enough to prepare one again",
+    await until(
+      "bsb back",
+      desktop.page,
+      async (p) => (await p.getByText(/BSB/).count()) === 0,
+    ),
+    await visibleText(desktop.page),
+  );
+  await nav(desktop.page, "Settings");
+
   // 24.31 — an invoice cannot be produced from an incomplete configuration, and the refusal names
   // what is missing rather than rendering a document with holes in it.
   const clientName = desktop.page.getByLabel("Client name");
