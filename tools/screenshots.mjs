@@ -10,7 +10,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
+import { claimAndApprove, DESKTOP, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
 const outDir = join(root, "docs");
 /** Captured for the validation, not for the repository. Gitignored. */
@@ -53,6 +53,21 @@ async function main() {
   // a device list with something in it.
   await capture(desktop.page, "desktop");
   await capture(mobile.page, "mobile");
+
+  /*
+   * 19.17 — and the other half of the CSS.
+   *
+   * The dark palette is a second set of every colour in this app and went unlooked-at for its
+   * whole life, because the harness pins `colorScheme: "light"` so a run does not depend on the
+   * machine's preference. Looking once found `button.link.danger` had no rule at all: four
+   * Delete controls rendering in the same accent blue as the Edit beside them.
+   *
+   * A third device rather than a second theme on an existing one, because `colorScheme` is fixed
+   * when a browser context is made.
+   */
+  const dark = await rig.open("dark", DESKTOP, "Dark Desktop", { colorScheme: "dark" });
+  await approveFrom(desktop.page, dark.page, "Dark Desktop");
+  await capture(dark.page, "dark");
 
   // 23.6 — the phone has been a `write` device up to here, so its tab bar has five tabs and the
   // admin screen has never been photographed on a phone at all. Promote it and look: six tabs is
@@ -116,6 +131,20 @@ async function main() {
     failures === 0 ? "\nall screens captured, no page errors" : `\n${failures} page errors`,
   );
   process.exit(failures === 0 ? 0 : 1);
+}
+
+/** Ask from `page`, approve from `admin`. The dark device needs the same route in as the phone. */
+async function approveFrom(admin, page, name) {
+  await page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
+  await page.getByLabel("Access needed").selectOption("admin");
+  await page.getByRole("button", { name: "Ask for access" }).click();
+  await admin.getByRole("button", { name: "Admin", exact: true }).click();
+  await admin.getByRole("button", { name: "Device access" }).click();
+  await admin.getByRole("row", { name: new RegExp(name) })
+    .getByRole("button", { name: /^Approve as/ }).click();
+  await page.getByRole("button", { name: "Continue" }).waitFor({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 }
 
 async function capture(page, label) {

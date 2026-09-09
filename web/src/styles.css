@@ -423,6 +423,21 @@ button.link {
   padding: 0;
 }
 
+/*
+ * A destructive link is red.
+ *
+ * Four call sites — deleting an entry, a note, an invoice and an invoice line — were already
+ * written as `class="link danger"`, and this rule did not exist, so all four rendered in the same
+ * accent blue as "Edit" and "View on GitHub". The class was carrying an intention nothing acted
+ * on: Delete looked exactly like the navigation beside it.
+ *
+ * Found by looking at the app in dark mode for the first time, where the blue is brighter and the
+ * two sitting side by side as "Edit · Delete" were unmistakably the same colour.
+ */
+button.link.danger {
+  color: var(--bad);
+}
+
 input,
 select,
 textarea {

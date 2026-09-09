@@ -175,13 +175,15 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
    * opened a *third* context to play the admin and hung forever waiting for that one to be
    * approved; the desktop page stays open instead, and does the approving.
    */
-  const open = async (label, viewport, deviceName) => {
+  const open = async (label, viewport, deviceName, opts = {}) => {
     const context = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
       isMobile: viewport.isMobile ?? false,
       hasTouch: viewport.isMobile ?? false,
-      colorScheme: "light",
+      // Pinned so a run does not depend on the machine's preference, and overridable because the
+      // dark palette is half the CSS and went two months without anybody looking at it.
+      colorScheme: opts.colorScheme ?? "light",
       // Fixed, so a run in Sydney and a run in CI see the same clock and the same dates.
       timezoneId: "Australia/Sydney",
       locale: "en-AU",

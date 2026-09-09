@@ -192,7 +192,7 @@ export function EntryEditor(
 
         {shape === "times" && entry && (
           <button
-            className="link"
+            className="link danger"
             type="button"
             style={{ alignSelf: "flex-start" }}
             onClick={() => {

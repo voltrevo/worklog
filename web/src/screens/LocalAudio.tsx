@@ -212,7 +212,7 @@ export function LocalAudioCard() {
                 </span>
               </span>
               <button
-                className="link"
+                className="link danger"
                 type="button"
                 onClick={async () => {
                   await clearLoop();

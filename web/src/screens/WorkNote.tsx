@@ -151,7 +151,7 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
                   style={{ height: 34 }}
                 />
                 <button
-                  className="link"
+                  className="link danger"
                   type="button"
                   onClick={recorder.discard}
                 >
