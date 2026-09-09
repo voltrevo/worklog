@@ -297,7 +297,6 @@ export interface WorkNoteWire {
  */
 export interface PublicInvoiceConfig {
   fromName: string;
-  fromAddress: string;
   fromEmail: string;
   fromAbn: string;
   fromPhone: string;
@@ -312,7 +311,12 @@ export interface PublicInvoiceConfig {
   bonusMinor: number;
   bonusTeamProject: string;
   note: string;
+  /**
+   * 25.42 — whether each hidden group holds anything, which is all a masked field needs to know.
+   * The values stay on the server; see `SENSITIVE_INVOICE_FIELDS`.
+   */
   paymentDetailsSet: boolean;
+  addressSet: boolean;
 }
 
 export interface StoredInvoiceWire {

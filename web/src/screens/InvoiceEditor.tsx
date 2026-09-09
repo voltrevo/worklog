@@ -121,6 +121,24 @@ function fromDraft(d: Draft): { line: InvoiceLine } | { problem: string } {
   };
 }
 
+/**
+ * What a blank override falls through to, said in the box itself.
+ *
+ * The address is not in the public config any more (25.42) — it is stored on the server and never
+ * sent back — so there is genuinely nothing to show. Saying that is better than an empty
+ * placeholder, which would read as "the setting is blank" and invite somebody to fill it in here
+ * when it is already filled in there.
+ */
+function placeholderFor(
+  config: PublicInvoiceConfig | undefined,
+  key: keyof InvoiceConfigOverride,
+): string {
+  if (!config) return "loading…";
+  const value = (config as unknown as Record<string, unknown>)[key];
+  if (typeof value === "string") return value;
+  return "stored, and not shown";
+}
+
 export function InvoiceEditor(
   { invoice, busy, config, onSave, onCancel }: {
     invoice: StoredInvoiceWire;
@@ -347,7 +365,7 @@ export function InvoiceEditor(
                     {OVERRIDE_LABELS[key]}
                     <input
                       value={override[key] ?? ""}
-                      placeholder={config ? String(config[key] ?? "") : "loading…"}
+                      placeholder={placeholderFor(config, key)}
                       onChange={(e) => setOverride({ ...override, [key]: e.target.value })}
                     />
                   </label>

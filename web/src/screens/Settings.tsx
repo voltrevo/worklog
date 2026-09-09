@@ -15,6 +15,7 @@ import { LocalAudioCard } from "./LocalAudio.tsx";
 import { WEEKDAY_NAMES } from "@worklog/shared/schedule";
 import type { DayInterval, PacingConfig, Weekday } from "@worklog/shared/types";
 import type { PublicInvoiceConfig } from "@worklog/shared/protocol";
+import { Dialog } from "./Dialog.tsx";
 
 const REPO = "https://github.com/voltrevo/worklog";
 
@@ -317,7 +318,15 @@ function InvoiceCard(
     result?: { problem?: string };
   },
 ) {
-  const [draft, setDraft] = useState(cfg);
+  /**
+   * 25.42 — the address is not in `cfg` any more, and it is still editable here.
+   *
+   * `undefined` means "whatever is stored, unchanged", and an empty string means "cleared and
+   * being retyped". The save below only sends it when it is a string, so opening this screen and
+   * saving something unrelated cannot blank an address nobody touched.
+   */
+  type Draft = PublicInvoiceConfig & { fromAddress?: string };
+  const [draft, setDraft] = useState<Draft>(cfg);
   const [pay, setPay] = useState({
     payMethod: "",
     payName: "",
@@ -325,14 +334,21 @@ function InvoiceCard(
     payAccountNumber: "",
     payBank: "",
   });
-  const set = <K extends keyof PublicInvoiceConfig>(
-    k: K,
-    v: PublicInvoiceConfig[K],
-  ) => setDraft({ ...draft, [k]: v });
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
 
   // 25.3 — a field holding text that is not a number leaves the last good value in the draft, so
   // without this the Save button would happily write it back and the typo would vanish unnoticed.
   // Named rather than counted, because "one field is wrong" is not enough to go on.
+  /**
+   * 25.43 — which hidden groups have been cleared for re-entry, in this sitting.
+   *
+   * Local, and never sent: clearing here only makes the boxes typeable. Nothing is destroyed on
+   * the server unless something is typed and saved, so unlocking and changing your mind costs
+   * nothing — which is what makes the dialog safe to press.
+   */
+  const [cleared, setCleared] = useState({ payment: false, address: false });
+  const [unlocking, setUnlocking] = useState<"payment" | "address">();
+
   const [unreadable, setUnreadable] = useState<string[]>([]);
   const num = (
     name: string,
@@ -390,11 +406,13 @@ function InvoiceCard(
           set={(v) => set("fromEmail", v)}
           can={canWrite}
         />
-        <Text
+        <Masked
           label="Your address"
-          value={draft.fromAddress}
+          value={draft.fromAddress ?? ""}
           set={(v) => set("fromAddress", v)}
           can={canWrite}
+          hidden={cfg.addressSet && !cleared.address}
+          onUnlock={() => setUnlocking("address")}
         />
         <Text
           label="Client name"
@@ -459,9 +477,8 @@ function InvoiceCard(
       </div>
 
       {/* 8.30, 9.18 -- labelled fields, because the format renders them as labelled rows. */}
-      <h3 style={{ marginTop: 20 }}>
-        Method of payment {cfg.paymentDetailsSet && <span className="pill good">set</span>}
-      </h3>
+      {/* 25.42 — the "set" chip is gone; each field says for itself whether it holds anything. */}
+      <h3 style={{ marginTop: 20 }}>Method of payment</h3>
       <div
         className="grid"
         style={{
@@ -469,41 +486,49 @@ function InvoiceCard(
           marginTop: 8,
         }}
       >
-        <Text
+        <Masked
           label="Payment method"
           value={pay.payMethod}
           set={(v) => setPay({ ...pay, payMethod: v })}
           can={canWrite}
+          hidden={cfg.paymentDetailsSet && !cleared.payment}
+          onUnlock={() => setUnlocking("payment")}
         />
-        <Text
+        <Masked
           label="Account name"
           value={pay.payName}
           set={(v) => setPay({ ...pay, payName: v })}
           can={canWrite}
+          hidden={cfg.paymentDetailsSet && !cleared.payment}
+          onUnlock={() => setUnlocking("payment")}
         />
-        <Text
+        <Masked
           label="BSB"
           value={pay.payBsb}
           set={(v) => setPay({ ...pay, payBsb: v })}
           can={canWrite}
+          hidden={cfg.paymentDetailsSet && !cleared.payment}
+          onUnlock={() => setUnlocking("payment")}
         />
-        <Text
+        <Masked
           label="Account number"
           value={pay.payAccountNumber}
           set={(v) => setPay({ ...pay, payAccountNumber: v })}
           can={canWrite}
+          hidden={cfg.paymentDetailsSet && !cleared.payment}
+          onUnlock={() => setUnlocking("payment")}
         />
-        <Text
+        <Masked
           label="Bank"
           value={pay.payBank}
           set={(v) => setPay({ ...pay, payBank: v })}
           can={canWrite}
+          hidden={cfg.paymentDetailsSet && !cleared.payment}
+          onUnlock={() => setUnlocking("payment")}
         />
       </div>
       <p className="faint" style={{ fontSize: 12 }}>
-        These go on the invoice PDF and nowhere else. The server never sends them back, so these
-        boxes start empty even when details are already set — filling one in replaces it, and
-        leaving them all blank changes nothing.
+        These go on the invoice PDF and nowhere else, and the server never sends them back.
       </p>
 
       {canWrite && (
@@ -521,7 +546,10 @@ function InvoiceCard(
               ...Object.fromEntries(
                 Object.entries(pay).filter(([, v]) => v !== ""),
               ),
-              paymentDetailsSet: undefined,
+              // `paymentDetailsSet` and `addressSet` used to be blanked here by hand, because they
+              // are derived flags from the read path and `setConfig` merged whatever it was given.
+              // The server drops unknown keys now, which is where that belonged: one place, rather
+              // than every caller remembering.
             })}
         >
           Save invoice details
@@ -529,6 +557,24 @@ function InvoiceCard(
       )}
       <SaveResult result={result} />
       <SaveProblem result={result} />
+
+      {/* 25.43 — what a masked field says when it is pressed. */}
+      {unlocking && (
+        <Dialog
+          title={unlocking === "payment" ? "Payment details are stored" : "Your address is stored"}
+          body={unlocking === "payment"
+            ? "They are on the server and used to render the invoice, and they are never sent back to any device — including this one — so there is nothing to show you. Clearing these boxes lets you type new details; nothing changes until you save."
+            : "It is on the server and printed on the invoice, and it is not sent back to any device, so there is nothing to show you. Clearing the box lets you type a new one; nothing changes until you save."}
+          confirmLabel={unlocking === "payment" ? "Clear and re-enter" : "Clear and retype"}
+          busy={false}
+          onConfirm={() => {
+            setCleared({ ...cleared, [unlocking]: true });
+            if (unlocking === "address") set("fromAddress", "");
+            setUnlocking(undefined);
+          }}
+          onCancel={() => setUnlocking(undefined)}
+        />
+      )}
       {unreadable.length > 0 && (
         <div className="notice bad" style={{ marginTop: 8 }}>
           {unreadable.join(" and ")} {unreadable.length > 1 ? "are" : "is"}{" "}
@@ -660,6 +706,56 @@ function Num(
         : unit
         ? <span className="field-note faint">{unit}</span>
         : null}
+    </label>
+  );
+}
+
+/**
+ * 25.42, 25.43 — a value that is stored and hidden.
+ *
+ * The payment block used to be five empty boxes with a small green "set" chip on the heading three
+ * lines away, and a paragraph underneath explaining that the boxes start empty even when the
+ * details exist. Every part of that is a workaround for the field not being able to say anything
+ * about itself: an empty box means "there is nothing here", the chip is somewhere else and covers
+ * five fields at once, and the paragraph is the sentence you write when the interface cannot.
+ *
+ * A mask says it directly. Clicking it explains that the value is stored, cannot be shown, and can
+ * be replaced — and clearing is per *group*, because "retype your bank details because you moved
+ * house" is how a field ends up left wrong.
+ */
+const MASK = "••••••••";
+
+function Masked(
+  { label, value, set, can, hidden, onUnlock }: {
+    label: string;
+    value: string;
+    set: (v: string) => void;
+    can: boolean;
+    /** True while the stored value is still in place and nothing new has been typed. */
+    hidden: boolean;
+    onUnlock: () => void;
+  },
+) {
+  if (!hidden) return <Text label={label} value={value} set={set} can={can} />;
+  return (
+    <label className="field">
+      {label}
+      {
+        /*
+        A button rather than a disabled input with a click handler: a disabled input receives no
+        events at all, so the explanation would be unreachable by exactly the interaction 25.43
+        describes. It is styled as the field it stands in for.
+      */
+      }
+      <button
+        type="button"
+        className="maskfield"
+        disabled={!can}
+        onClick={onUnlock}
+        aria-label={`${label} — stored and hidden`}
+      >
+        {MASK}
+      </button>
     </label>
   );
 }

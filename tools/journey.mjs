@@ -292,6 +292,45 @@ async function main() {
     `${boxBefore?.y} -> ${boxAfter?.y}`,
   );
 
+  // 25.42, 25.43 — a stored-but-hidden value says so in the field, and clearing is per group.
+  const maskedAddress = desktop.page.getByRole("button", {
+    name: /Your address — stored and hidden/,
+  });
+  check("25.42 — the address is a mask, not an empty box", (await maskedAddress.count()) === 1);
+  check(
+    "and the payment block is masked field by field, not by a chip",
+    (await desktop.page.getByRole("button", { name: /^BSB — stored and hidden/ }).count()) === 1 &&
+      (await desktop.page.getByText("set", { exact: true }).count()) === 0,
+  );
+  await maskedAddress.click();
+  check(
+    "25.43 — pressing one explains that the value is stored and not shown",
+    await until(
+      "mask dialog",
+      desktop.page,
+      async (p) => (await p.getByText(/not sent back to any device/).count()) > 0,
+    ),
+  );
+  await desktop.page.getByRole("button", { name: "Clear and retype" }).click();
+  check(
+    "and clearing that group makes it typeable",
+    await until(
+      "address typeable",
+      desktop.page,
+      (p) => p.getByLabel("Your address").isEditable(),
+    ),
+  );
+  check(
+    "25.43 — while leaving the other group alone",
+    (await desktop.page.getByRole("button", { name: /^BSB — stored and hidden/ }).count()) === 1,
+  );
+
+  // Typed back in, because clearing is only half of "clear and retype" — and because a cleared
+  // address *saved* is a cleared address. The first version of this block stopped at the check
+  // above, and everything downstream then failed on an invoice configuration missing its address,
+  // which is the correct behaviour reached by a route nobody intended.
+  await desktop.page.getByLabel("Your address").fill("12 Fictional Way, Nowhere NSW 2000");
+
   // 24.31 — an invoice cannot be produced from an incomplete configuration, and the refusal names
   // what is missing rather than rendering a document with holes in it.
   const clientName = desktop.page.getByLabel("Client name");

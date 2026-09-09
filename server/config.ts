@@ -51,14 +51,33 @@ export interface InvoiceConfig {
   payBank: string;
 }
 
-/** Which fields never travel back to a frontend. Named once, so the read path cannot miss one. */
+/**
+ * Which fields never travel back to a frontend. Named once, so the read path cannot miss one.
+ *
+ * 25.42 adds the postal address. It is not a secret in the sense a BSB is — it is printed on every
+ * invoice — but it is a home address in most cases, and it was being sent to every authorised
+ * device on every settings read for no reason: the only thing the frontend does with it is show it
+ * back. The document is rendered on the server, which is where it is actually needed.
+ */
 export const SENSITIVE_INVOICE_FIELDS = [
   "payMethod",
   "payName",
   "payBsb",
   "payAccountNumber",
   "payBank",
+  "fromAddress",
 ] as const satisfies readonly (keyof InvoiceConfig)[];
+
+/**
+ * 25.43 — the two groups, because clearing one must not clear the other.
+ *
+ * "Retype your bank details because you moved house" is the kind of thing that makes somebody
+ * leave a field wrong rather than fix it.
+ */
+export const HIDDEN_GROUPS = {
+  payment: ["payMethod", "payName", "payBsb", "payAccountNumber", "payBank"],
+  address: ["fromAddress"],
+} as const satisfies Record<string, readonly typeof SENSITIVE_INVOICE_FIELDS[number][]>;
 
 /** 5.7 — how often a work-detail prompt should fire, on average. */
 export interface PromptConfig {
@@ -139,7 +158,24 @@ export function setConfig<K extends keyof Config>(
   value: Partial<Config[K]>,
   now: Instant = Date.now(),
 ): Config[K] {
-  const merged = { ...getConfig(db, key), ...value };
+  /*
+   * Only fields this section actually has.
+   *
+   * The merge used to take whatever it was handed, so a client could write arbitrary keys into the
+   * config row and they would be stored, returned, and merged forever after. Nothing malicious was
+   * needed: the settings screen sends its whole draft back, and that draft contains
+   * `paymentDetailsSet` — a *derived* flag from the read path — which was kept out only by the
+   * frontend remembering to set it to `undefined` before sending. 25.42 added a second such flag,
+   * which is the point at which "remember to exclude it" stopped being a plan.
+   *
+   * `DEFAULTS` is the list of what a section has, and it has to be complete for the section to
+   * work at all, so it cannot silently fall behind the way a second list would.
+   */
+  const known = DEFAULTS[key] as unknown as Record<string, unknown>;
+  const accepted = Object.fromEntries(
+    Object.entries(value).filter(([k]) => k in known),
+  ) as Partial<Config[K]>;
+  const merged = { ...getConfig(db, key), ...accepted };
   db.prepare(
     `INSERT INTO config (key, value_json, updated_at) VALUES (?, ?, ?)
      ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json,
@@ -158,7 +194,7 @@ export function allConfig(db: Db): Config {
 
 export type PublicInvoiceConfig =
   & Omit<InvoiceConfig, typeof SENSITIVE_INVOICE_FIELDS[number]>
-  & { paymentDetailsSet: boolean };
+  & { paymentDetailsSet: boolean; addressSet: boolean };
 
 /**
  * The invoice configuration with the payment block removed (20.1, 20.3, 9.19).
@@ -173,14 +209,20 @@ export type PublicInvoiceConfig =
  */
 export function publicInvoiceConfig(cfg: InvoiceConfig): PublicInvoiceConfig {
   const rest = { ...cfg } as Record<string, unknown>;
-  let anySet = false;
-  for (const field of SENSITIVE_INVOICE_FIELDS) {
-    if (field !== "payMethod" && String(cfg[field] ?? "").length > 0) anySet = true;
-    delete rest[field];
-  }
+  for (const field of SENSITIVE_INVOICE_FIELDS) delete rest[field];
+
+  // 25.42 — one flag per group, which is all a masked field needs to know: whether to show a mask
+  // or an empty box. The values themselves stay here.
+  const set = (fields: readonly (keyof InvoiceConfig)[]) =>
+    fields.some((f) => String(cfg[f] ?? "").trim().length > 0);
+
   return {
     ...(rest as Omit<InvoiceConfig, typeof SENSITIVE_INVOICE_FIELDS[number]>),
-    paymentDetailsSet: anySet,
+    // `payMethod` deliberately excluded: it is "Wire Transfer", not an account number, and a
+    // payment block that reads as configured because somebody typed the *method* is a block that
+    // will print an invoice with no account on it.
+    paymentDetailsSet: set(["payName", "payBsb", "payAccountNumber", "payBank"]),
+    addressSet: set(HIDDEN_GROUPS.address),
   };
 }
 

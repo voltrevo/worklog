@@ -1208,3 +1208,32 @@ button.btn[aria-pressed="true"]:hover:not(:disabled) {
   font-weight: 600;
   color: var(--good);
 }
+
+/*
+ * 25.42 — a field standing in for a value that is stored and cannot be shown.
+ *
+ * A button, not a disabled input: a disabled input receives no events, so the explanation 25.43
+ * asks for would be unreachable by the click that is supposed to produce it. It has to look like
+ * the field it replaces, or the row reads as having a control missing.
+ */
+button.maskfield {
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  font: inherit;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+
+button.maskfield:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+button.maskfield:disabled {
+  cursor: not-allowed;
+}
