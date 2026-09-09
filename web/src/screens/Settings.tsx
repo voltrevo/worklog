@@ -533,7 +533,7 @@ function InvoiceCard(
               <span key={c} className={i >= 3 ? "invsheet-td num" : "invsheet-td"}>{c}</span>
             ))}
           </div>
-          <div className="invsheet-tr bonus body">
+          <div className="invsheet-tr bonus">
             <span className="invsheet-td" data-col={columns[0]}>{derived("the period")}</span>
             <span className="invsheet-td" data-col={columns[1]}>{derived("the bonus line")}</span>
             <span className="invsheet-td" data-col={columns[2]}>
@@ -565,7 +565,7 @@ function InvoiceCard(
               <span key={c} className={i >= 3 ? "invsheet-td num" : "invsheet-td"}>{c}</span>
             ))}
           </div>
-          <div className="invsheet-tr body">
+          <div className="invsheet-tr">
             <span className="invsheet-td" data-col={columns[0]}>{derived("each day worked")}</span>
             <span className="invsheet-td" data-col={columns[1]}>{derived("the billing tag")}</span>
             <span className="invsheet-td" data-col={columns[2]}>
@@ -839,7 +839,7 @@ function PromptCard(
  * what somebody typed is the other half of the same fault.
  */
 function Num(
-  { label, value, set, can, width, unit, aria }: {
+  { label, value, set, can, width, aria }: {
     label: string;
     /** The stored number as text — shown whenever the field is not being edited. */
     value: string;
@@ -847,7 +847,6 @@ function Num(
     set: (n: number | undefined) => void;
     can: boolean;
     width?: number;
-    unit?: string;
     /** As `Text`: the name, when the visible label belongs to a column instead. */
     aria?: string;
   },
@@ -880,11 +879,8 @@ function Num(
           ) setTyped(undefined);
         }}
       />
-      {bad
-        ? <span className="field-note bad">not a number</span>
-        : unit
-        ? <span className="field-note faint">{unit}</span>
-        : null}
+      {/* A `unit` suffix lived here too and no caller ever passed one. */}
+      {bad && <span className="field-note bad">not a number</span>}
     </label>
   );
 }

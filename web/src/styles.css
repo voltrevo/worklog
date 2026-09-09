@@ -1619,10 +1619,6 @@ button.maskfield:disabled {
   font-weight: 700;
 }
 
-.invsheet-tr.body + .invsheet-tr.body {
-  border-top: 1px solid var(--inv-rule);
-}
-
 .invsheet-td.num {
   text-align: right;
 }
