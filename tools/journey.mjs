@@ -598,6 +598,21 @@ async function main() {
   await mobile.page.getByRole("dialog").waitFor({ timeout: 15_000 });
   await mobile.page.getByLabel("How long").fill("2h 30m");
   await mobile.page.getByLabel("Billing tag").fill("Phone entry");
+
+  // 26.26 — and the third panel that holds unsaved work. A half-filled form is somebody's work
+  // too, and Escape used to take it without a word.
+  await mobile.page.keyboard.press("Escape");
+  check(
+    "a half-filled entry asks before throwing it away",
+    await until(
+      "entry discard asked",
+      mobile.page,
+      async (p) => (await p.getByRole("button", { name: "Throw it away" }).count()) > 0,
+    ),
+    await visibleText(mobile.page),
+  );
+  await mobile.page.getByRole("button", { name: "Not now" }).click();
+
   await mobile.page.getByRole("button", { name: "Add", exact: true }).click();
 
   check(

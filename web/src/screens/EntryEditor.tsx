@@ -18,8 +18,9 @@
  * is a deliberate button, because it throws the times away.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Sheet } from "./Sheet.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { useStore } from "../state.tsx";
 import { duration, instantAt, parseDuration, timeValue } from "../format.ts";
 import { today } from "@worklog/shared/dates";
@@ -59,6 +60,22 @@ export function EntryEditor(
   const spanMs = started !== undefined && ended !== undefined && ended > started
     ? ended - started
     : undefined;
+
+  /*
+   * 26.26 — the same question as the note and the invoice editor.
+   *
+   * A date, a tag, times, a duration typed by hand: less to lose than an invoice's lines, and
+   * still somebody's work. A snapshot compared against what the panel opened with, so an untouched
+   * form closes without a word and a half-filled one does not.
+   */
+  const initial = useRef<string>(undefined);
+  const filled = JSON.stringify([date, tag, shape, from, to, text]);
+  initial.current ??= filled;
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const leave = () => {
+    if (filled === initial.current) onClose();
+    else setConfirmDiscard(true);
+  };
 
   const save = async () => {
     const billingTag = tag.trim();
@@ -114,7 +131,7 @@ export function EntryEditor(
   const title = entry ? "Edit this entry" : "Add past time";
 
   return (
-    <Sheet label={title} onDismiss={onClose}>
+    <Sheet label={title} onDismiss={leave}>
       <div className="card stack" style={{ gap: 14 }}>
         <h2 style={{ margin: 0 }}>{title}</h2>
 
@@ -216,6 +233,21 @@ export function EntryEditor(
           <button className="btn" type="button" onClick={onClose}>Cancel</button>
         </div>
       </div>
+
+      {confirmDiscard && (
+        <Dialog
+          title="Throw this away?"
+          body="What you have filled in has not been saved. Closing loses it."
+          confirmLabel="Throw it away"
+          danger
+          busy={false}
+          onConfirm={() => {
+            setConfirmDiscard(false);
+            onClose();
+          }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
     </Sheet>
   );
 }
