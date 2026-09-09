@@ -1514,3 +1514,8 @@ button.maskfield:disabled {
 .breakable {
   overflow-wrap: anywhere;
 }
+
+/* 22.8 — a loss being retried, rather than a loss. */
+.brand .dot.warn {
+  background: var(--warn);
+}

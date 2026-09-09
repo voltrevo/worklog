@@ -206,13 +206,18 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
     });
     // 22.3, 22.4 -- the address is device-local storage, so that is where the harness puts it.
     // There is no URL to put it in, which is the point of 22.4.
-    await page.addInitScript(
-      ([address, name]) => {
-        localStorage.setItem("worklog.serverAddress", address);
-        localStorage.setItem("worklog.deviceName", name);
-      },
-      [server.address, deviceName],
-    );
+    // `opts.noAddress` leaves the device genuinely new, which is the only way to reach the setup
+    // screen and the typing-the-address path — everything else here starts already pointed at a
+    // server, so that path had never been driven.
+    if (!opts.noAddress) {
+      await page.addInitScript(
+        ([address, name]) => {
+          localStorage.setItem("worklog.serverAddress", address);
+          localStorage.setItem("worklog.deviceName", name);
+        },
+        [server.address, deviceName],
+      );
+    }
     await page.goto(`http://127.0.0.1:${httpPort}/`);
     contexts.push(context);
     return { context, page, label };

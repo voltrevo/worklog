@@ -13,7 +13,7 @@
  */
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { StoreProvider, useStore } from "./state.tsx";
+import { type Phase, StoreProvider, useStore } from "./state.tsx";
 import { Connect } from "./screens/Connect.tsx";
 import { Timer } from "./screens/Timer.tsx";
 import { Notes } from "./screens/Notes.tsx";
@@ -99,16 +99,32 @@ function Screen({ id }: { id: ScreenId }) {
   }
 }
 
+/** What the header says about the connection. One ladder, used by the dot and by the words. */
+function connectionLabel(phase: Phase, reconnecting: boolean): string {
+  if (reconnecting) return "Reconnecting…";
+  if (phase.k === "ready") return "Connected";
+  if (phase.k === "connecting") return "Connecting…";
+  if (phase.k === "failed") return "Disconnected";
+  return "Not connected";
+}
+
 function ConnectionDot() {
-  const { phase } = useStore();
-  const tone = phase.k === "ready" ? "on" : phase.k === "failed" ? "bad" : "";
-  const label = phase.k === "ready"
-    ? "Connected"
-    : phase.k === "connecting"
-    ? "Connecting…"
+  const { phase, reconnecting } = useStore();
+  /*
+   * 22.8 — a transient loss keeps the app on screen and says so here.
+   *
+   * The alternative, and what this used to do, is replace everything with a failure screen the
+   * moment a stream ends. On a local network that is almost never a real outage, and throwing the
+   * whole interface away for half a second is a worse answer than an amber dot.
+   */
+  const tone = reconnecting
+    ? "warn"
+    : phase.k === "ready"
+    ? "on"
     : phase.k === "failed"
-    ? "Disconnected"
-    : "Not connected";
+    ? "bad"
+    : "";
+  const label = connectionLabel(phase, reconnecting);
   return (
     <>
       <span className={`dot ${tone}`} aria-hidden="true" />
@@ -120,7 +136,7 @@ function ConnectionDot() {
 function DesktopShell(
   { screen, setScreen }: { screen: ScreenId; setScreen: (s: ScreenId) => void },
 ) {
-  const { phase } = useStore();
+  const { phase, reconnecting } = useStore();
   const isAdmin = phase.k === "ready" && phase.role === "admin";
   return (
     <div className="app desktop">
@@ -129,15 +145,8 @@ function DesktopShell(
           <ConnectionDot />
           Worklog
         </div>
-        <div className="conn muted">
-          {phase.k === "ready"
-            ? "Connected"
-            : phase.k === "connecting"
-            ? "Connecting…"
-            : phase.k === "failed"
-            ? "Disconnected"
-            : "Not connected"}
-        </div>
+        {/* One source for this sentence and the dot's: they were two copies of the same ladder. */}
+        <div className="conn muted">{connectionLabel(phase, reconnecting)}</div>
         <div className="nav">
           {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
             <button

@@ -50,6 +50,17 @@ import {
 } from "./deviceKeys.ts";
 
 /** 22.7 — the four states a person can be in, each with something different to do about it. */
+/** 22.8 — how long to wait before each attempt. Five, over about fifteen seconds. */
+const RECONNECT_DELAYS = [400, 1_000, 2_500, 5_000, 6_000];
+
+/**
+ * How long one dial may take before it is a failure rather than a wait.
+ *
+ * Generous, because a first connection over WebRTC does ICE and DTLS and a slow network is a real
+ * thing. Finite, because the alternative is a screen that says "Connecting…" forever.
+ */
+const CONNECT_TIMEOUT_MS = 12_000;
+
 export type Phase =
   | { k: "no-address" }
   | { k: "connecting"; address: string }
@@ -88,6 +99,8 @@ export interface Store {
   deviceName: string;
   setDeviceName(name: string): void;
   lastError?: string;
+  /** 22.8 — a loss is being retried, so the header can say so instead of the app vanishing. */
+  reconnecting: boolean;
   clearError(): void;
   /** 5.16, 5.17 — set when the server fires a prompt; cleared when it is answered or dismissed. */
   prompt?: { id: string; firedAt: number };
@@ -116,6 +129,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const stopTuneRef = useRef<(() => void) | undefined>(undefined);
 
   const clientRef = useRef<WorklogClient>(null);
+  /** Which transport the `closed` handler is allowed to act on. See `connectTo`. */
+  const transportRef = useRef<Awaited<ReturnType<typeof connect>>>(null);
+  const [reconnecting, setReconnecting] = useState(false);
   const senderRef = useRef<Sender>(null);
   const monthRef = useRef(month);
   monthRef.current = month;
@@ -186,15 +202,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const connectTo = useCallback(async (address: string, name: string) => {
+  const connectTo = useCallback(async (address: string, name: string, retry = 0) => {
     saveAddress(address);
     saveDeviceName(name);
     setNameState(name);
-    setPhase({ k: "connecting", address });
-    setSnapshot(undefined);
+    if (retry === 0) {
+      setPhase({ k: "connecting", address });
+      setSnapshot(undefined);
+    }
+
+    /*
+     * The previous connection goes before a new one is made.
+     *
+     * It used to be left running. Its `closed` promise resolved whenever it eventually died — and
+     * the handler below then declared the *current* connection dropped, because it had no way to
+     * tell which transport it belonged to. Connect to one server, connect to another, and a moment
+     * later the second one reports a failure that happened to the first.
+     */
+    clientRef.current?.close();
+    clientRef.current = null;
 
     try {
-      const transport = await connect(address);
+      /*
+       * A dial that cannot succeed has to stop.
+       *
+       * `dial` waits on ICE and DTLS with no deadline of its own, so an address whose server is
+       * gone — which is what you have after restarting one, since the certhash changes — left the
+       * app on "Connecting…" indefinitely. Nothing was wrong with the page and nothing said so;
+       * the only way out was a Cancel button whose meaning is "forget this server".
+       */
+      const transport = await connect(address, AbortSignal.timeout(CONNECT_TIMEOUT_MS));
+      transportRef.current = transport;
       const client = new WorklogClient({
         transport,
         signer: chooseSigner(),
@@ -234,21 +272,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      /*
+       * 22.8 — a transient loss reconnects itself.
+       *
+       * Two things used to go wrong here at once. This handler fired for *any* transport, current
+       * or not, so a connection replaced seconds earlier could mark a healthy one as dropped. And
+       * `closed` resolves when the *subscription stream* ends, not only when the connection dies —
+       * one stream finishing looked identical to the server going away.
+       *
+       * Both produced the same symptom: connect, work fine, then "The connection to the server
+       * dropped" out of nowhere, and reconnecting fixes it because there is only one transport
+       * again. On a local network, where a real drop is unlikely, that is all it ever was.
+       *
+       * So: only the current transport is listened to, and losing it is treated as transient
+       * first. Five attempts over about fifteen seconds, and only then is it a failure worth a
+       * screen.
+       */
       void transport.closed.then(() => {
-        setPhase((p) =>
-          p.k === "ready"
-            ? {
-              k: "failed",
-              address,
-              message: "The connection to the server dropped.",
-            }
-            : p
+        if (transportRef.current !== transport) return; // a connection we have already replaced
+        if (retry >= RECONNECT_DELAYS.length) {
+          setPhase((p) =>
+            p.k === "ready"
+              ? { k: "failed", address, message: "The connection to the server dropped." }
+              : p
+          );
+          return;
+        }
+        setReconnecting(true);
+        setTimeout(
+          () => void connectToRef.current?.(address, name, retry + 1),
+          RECONNECT_DELAYS[retry],
         );
       });
+      setReconnecting(false);
     } catch (err) {
+      /*
+       * Only a *reconnection* keeps trying.
+       *
+       * `retry === 0` is somebody pressing Connect, or the app booting against a stored address.
+       * If that address is wrong — and after a server restart it is, because the certhash is new
+       * — retrying it five times means half a minute of "Connecting…" before the form comes back,
+       * to reach the same answer. 22.8 is about a transient loss of a connection that worked, not
+       * about an address that never did.
+       */
+      if (retry > 0 && retry < RECONNECT_DELAYS.length) {
+        setReconnecting(true);
+        setTimeout(
+          () => void connectToRef.current?.(address, name, retry + 1),
+          RECONNECT_DELAYS[retry],
+        );
+        return;
+      }
+      setReconnecting(false);
       setPhase({ k: "failed", address, message: describe(err) });
     }
   }, [onEvent, refresh]);
+
+  /*
+   * `connectTo` calls itself on a delay, and a `useCallback` cannot name itself. The ref is
+   * written on every render so a retry always uses the current closure rather than the one that
+   * happened to be live when the connection dropped.
+   */
+  const connectToRef = useRef<typeof connectTo>(null);
+  connectToRef.current = connectTo;
 
   const claimAdmin = useCallback(async () => {
     const client = clientRef.current;
@@ -390,6 +476,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveDeviceName(n);
       setNameState(n);
     },
+    reconnecting,
     ...(lastError ? { lastError } : {}),
     clearError: () => setLastError(undefined),
     ...(prompt ? { prompt } : {}),
@@ -441,6 +528,12 @@ function chooseSigner(): Signer {
 }
 
 function describe(err: unknown): string {
+  // What `AbortSignal.timeout` throws. Its own message is "signal timed out", which says nothing
+  // about what was being attempted or what to do about it.
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return "No answer from that address. Check the server is running and that the address is " +
+      "the one it printed — a server prints a new one each time its data directory is new.";
+  }
   if (err instanceof ServerRefusal) return err.message;
   if (err instanceof Error) return err.message;
   return String(err);
