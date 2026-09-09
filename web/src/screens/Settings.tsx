@@ -44,8 +44,19 @@ export function Settings() {
     void call<ConfigWire>({ t: "config-get" }).then(setCfg);
   }, [call]);
 
-  const [problem, setProblem] = useState<string>();
-  const [saved, setSaved] = useState(false);
+  /**
+   * 25.41 — what happened, and to which card.
+   *
+   * Both used to be booleans rendered at the top of the page, above the `<h1>`. Saving the prompt
+   * interval at the bottom of a long screen therefore confirmed itself somewhere you could not
+   * see, and — worse — inserted a line that pushed every card down by its height, so the button
+   * you had just pressed moved out from under the pointer at the moment it succeeded.
+   *
+   * Kept by section so each card answers for itself, beside its own button, in a slot that is
+   * always there.
+   */
+  type Section = "pacing" | "invoice" | "prompt";
+  const [result, setResult] = useState<{ section: Section; problem?: string }>();
 
   /**
    * 24.42 — a refusal has to be visible.
@@ -58,8 +69,7 @@ export function Settings() {
     section: "pacing" | "invoice" | "prompt",
     value: Record<string, unknown>,
   ) => {
-    setProblem(undefined);
-    setSaved(false);
+    setResult(undefined);
     try {
       await call({
         t: "config-set",
@@ -69,9 +79,9 @@ export function Settings() {
       });
       setCfg(await call<ConfigWire>({ t: "config-get" }));
       await refresh();
-      setSaved(true);
+      setResult({ section });
     } catch (err) {
-      setProblem((err as Error).message);
+      setResult({ section, problem: (err as Error).message });
     }
   };
 
@@ -79,13 +89,26 @@ export function Settings() {
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      {problem && <div className="notice bad">{problem}</div>}
-      {saved && !problem && <div className="notice good">Saved.</div>}
       <h1>Settings</h1>
 
-      <ScheduleCard cfg={cfg.pacing} canWrite={canWrite} save={save} />
-      <InvoiceCard cfg={cfg.invoice} canWrite={canWrite} save={save} />
-      <PromptCard cfg={cfg.prompt} canWrite={canWrite} save={save} />
+      <ScheduleCard
+        cfg={cfg.pacing}
+        canWrite={canWrite}
+        save={save}
+        result={result?.section === "pacing" ? result : undefined}
+      />
+      <InvoiceCard
+        cfg={cfg.invoice}
+        canWrite={canWrite}
+        save={save}
+        result={result?.section === "invoice" ? result : undefined}
+      />
+      <PromptCard
+        cfg={cfg.prompt}
+        canWrite={canWrite}
+        save={save}
+        result={result?.section === "prompt" ? result : undefined}
+      />
       {
         /* Section 14 — device-local, so it is not behind `canWrite`: a read-only device still gets
           to decide what its own speakers do. */
@@ -124,11 +147,39 @@ export function Settings() {
   );
 }
 
+/**
+ * 25.41 — "Saved", where you pressed Save, without moving anything.
+ *
+ * The slot is always in the layout and only its contents change, which is the whole requirement:
+ * a message that appears *between* the button and the pointer is a message that arrives by moving
+ * the thing you were about to press again. `aria-live` so it is announced rather than only seen.
+ *
+ * A failure is a longer sentence and gets the line below, where the only thing it can push is the
+ * bottom of the card.
+ */
+function SaveResult({ result }: { result?: { problem?: string } }) {
+  return (
+    <span
+      className="saveresult"
+      aria-live="polite"
+      style={{ visibility: result && !result.problem ? "visible" : "hidden" }}
+    >
+      Saved
+    </span>
+  );
+}
+
+function SaveProblem({ result }: { result?: { problem?: string } }) {
+  if (!result?.problem) return null;
+  return <div className="notice bad" style={{ marginTop: 10 }}>{result.problem}</div>;
+}
+
 function ScheduleCard(
-  { cfg, canWrite, save }: {
+  { cfg, canWrite, save, result }: {
     cfg: PacingConfig;
     canWrite: boolean;
     save: (s: "pacing", v: Record<string, unknown>) => Promise<void>;
+    result?: { problem?: string };
   },
 ) {
   const [schedule, setSchedule] = useState(cfg.schedule);
@@ -246,7 +297,9 @@ function ScheduleCard(
             Save
           </button>
         )}
+        <SaveResult result={result} />
       </div>
+      <SaveProblem result={result} />
       <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
         The region is an ISO code like{" "}
         <span className="mono">AU-NSW</span>. Public holidays for it come from an updatable source,
@@ -257,10 +310,11 @@ function ScheduleCard(
 }
 
 function InvoiceCard(
-  { cfg, canWrite, save }: {
+  { cfg, canWrite, save, result }: {
     cfg: PublicInvoiceConfig;
     canWrite: boolean;
     save: (s: "invoice", v: Record<string, unknown>) => Promise<void>;
+    result?: { problem?: string };
   },
 ) {
   const [draft, setDraft] = useState(cfg);
@@ -473,6 +527,8 @@ function InvoiceCard(
           Save invoice details
         </button>
       )}
+      <SaveResult result={result} />
+      <SaveProblem result={result} />
       {unreadable.length > 0 && (
         <div className="notice bad" style={{ marginTop: 8 }}>
           {unreadable.join(" and ")} {unreadable.length > 1 ? "are" : "is"}{" "}
@@ -484,10 +540,11 @@ function InvoiceCard(
 }
 
 function PromptCard(
-  { cfg, canWrite, save }: {
+  { cfg, canWrite, save, result }: {
     cfg: { meanIntervalMs: number; enabled: boolean };
     canWrite: boolean;
     save: (s: "prompt", v: Record<string, unknown>) => Promise<void>;
+    result?: { problem?: string };
   },
 ) {
   const stored = Math.round(cfg.meanIntervalMs / 60_000);
@@ -533,7 +590,9 @@ function PromptCard(
             Save
           </button>
         )}
+        <SaveResult result={result} />
       </div>
+      <SaveProblem result={result} />
     </div>
   );
 }

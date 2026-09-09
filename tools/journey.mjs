@@ -271,8 +271,26 @@ async function main() {
     ),
   );
   await region.fill(goodRegion);
-  await desktop.page.getByRole("button", { name: "Save", exact: true }).first().click();
-  await desktop.page.waitForTimeout(600);
+
+  // 25.41 — the confirmation is inline and nothing moves. The "Saved." notice used to go in at the
+  // top of the page, above the `<h1>`, so a successful save pushed every card down by a line — the
+  // button you had just pressed moved out from under the pointer at the moment it worked, and on
+  // the cards further down the confirmation appeared somewhere off screen.
+  const saveButton = desktop.page.getByRole("button", { name: "Save", exact: true }).first();
+  const boxBefore = await saveButton.boundingBox();
+  await saveButton.click();
+  const confirmed = await until(
+    "save confirmed",
+    desktop.page,
+    async (p) => (await p.locator(".saveresult:visible").count()) > 0,
+  );
+  check("25.41 — a save says so", confirmed);
+  const boxAfter = await saveButton.boundingBox();
+  check(
+    "and it does not move the button that produced it",
+    boxBefore !== null && boxAfter !== null && Math.abs(boxAfter.y - boxBefore.y) < 1,
+    `${boxBefore?.y} -> ${boxAfter?.y}`,
+  );
 
   // 24.31 — an invoice cannot be produced from an incomplete configuration, and the refusal names
   // what is missing rather than rendering a document with holes in it.

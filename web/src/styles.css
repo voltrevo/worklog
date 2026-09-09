@@ -1194,3 +1194,17 @@ button.btn[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--accent-wash);
   filter: brightness(0.97);
 }
+
+/*
+ * 25.41 — the inline save confirmation.
+ *
+ * The slot is in the layout whether or not there is anything in it, so the confirmation cannot
+ * arrive by shifting the button that produced it.
+ */
+.saveresult {
+  display: inline-block;
+  min-width: 3.5rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--good);
+}

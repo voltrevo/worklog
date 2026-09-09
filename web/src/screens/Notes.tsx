@@ -9,7 +9,7 @@
  * A note is not billable time (5.1) and nothing here touches an entry or a total.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../state.tsx";
 import { WorkNote } from "./WorkNote.tsx";
 import type { WorkNoteWire as NoteWire } from "@worklog/shared/protocol";
@@ -82,9 +82,22 @@ function NoteRow(
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string>();
 
-  /** 5.28 — the recording is fetched only when somebody asks to hear it. */
+  /**
+   * 5.28, 25.37 — fetched when somebody asks to hear it, and then it plays.
+   *
+   * Pressing Play used to *replace* the button with an `<audio controls>` that had to be pressed
+   * again. Two presses to hear one thing, the second one landing where the first had been, and
+   * nothing in between saying anything was happening — on a note of any size the button simply
+   * looked broken until the player appeared.
+   *
+   * One control now: it says it is loading while it is, and starts the moment it can. The native
+   * player stays afterwards, because scrubbing back through a voice note is worth having and is
+   * not worth reimplementing.
+   */
+  const audioRef = useRef<HTMLAudioElement>(null);
   const play = async () => {
     setBusy(true);
+    setProblem(undefined);
     try {
       const { audioBase64 } = await call<{ audioBase64: string }>({
         t: "note-audio",
@@ -92,10 +105,28 @@ function NoteRow(
       });
       const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
       setUrl(URL.createObjectURL(new Blob([bytes], { type: note.audioType ?? "audio/webm" })));
+      setShouldPlay(true);
+    } catch (err) {
+      // A fetch that fails silently leaves a button that looks like it did nothing.
+      setProblem((err as Error).message);
     } finally {
       setBusy(false);
     }
   };
+
+  /*
+   * Started from an effect rather than straight after `setUrl`, because at that point the
+   * `<audio>` has no `src` yet — React has not re-rendered. Calling `play()` on it there is a
+   * no-op with no error, which is the quietest possible way for this to not work.
+   */
+  const [shouldPlay, setShouldPlay] = useState(false);
+  useEffect(() => {
+    if (!shouldPlay || !url) return;
+    setShouldPlay(false);
+    // Rejection is not fatal: the player is on screen and can be pressed. Reported so that a
+    // decode failure does not read as a control that ignores you.
+    audioRef.current?.play().catch((err: Error) => setProblem(err.message));
+  }, [shouldPlay, url]);
 
   const remove = async () => {
     setBusy(true);
@@ -137,10 +168,10 @@ function NoteRow(
       <div className="acts wrap">
         {spoken &&
           (url
-            ? <audio controls src={url} style={{ height: 32 }} />
+            ? <audio ref={audioRef} controls src={url} style={{ height: 32 }} />
             : (
               <button className="btn" type="button" disabled={busy} onClick={() => void play()}>
-                ▶ Play {Math.round((note.audioMs ?? 0) / 1000)}s
+                {busy ? "Loading…" : `▶ Play ${Math.round((note.audioMs ?? 0) / 1000)}s`}
               </button>
             ))}
         {/* 24.6, 24.3 — deletable, and confirmed, because the recording is the only copy. */}

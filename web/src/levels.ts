@@ -74,7 +74,32 @@ export function meterStream(
   const analyser = context.createAnalyser();
   // Small enough to respond within a frame, large enough that the RMS is not noise.
   analyser.fftSize = 1024;
-  context.createMediaStreamSource(stream).connect(analyser);
+
+  /*
+   * 25.36 — the analyser has to reach the destination, even though nobody is meant to hear it.
+   *
+   * This was `createMediaStreamSource(stream).connect(analyser)` and nothing else, which looks
+   * complete and is not: Web Audio renders the part of the graph that reaches the output, and an
+   * analyser hanging off the end reaches nothing. So it was pulled only when the graph happened to
+   * be running for some other reason, and `getByteTimeDomainData` filled the buffer with 128s the
+   * rest of the time — a trace that is flat with occasional bursts, which is exactly what was
+   * reported and exactly what an unplugged microphone would also look like.
+   *
+   * The route to the destination goes through a gain of zero, because the alternative is the
+   * microphone coming out of the speakers a few milliseconds later, into the microphone.
+   */
+  const source = context.createMediaStreamSource(stream);
+  const silence = context.createGain();
+  silence.gain.value = 0;
+  source.connect(analyser);
+  analyser.connect(silence);
+  silence.connect(context.destination);
+
+  // An AudioContext created without a gesture starts suspended, and a suspended context renders
+  // nothing at all — the same symptom again, from the other direction. Recording begins from a
+  // click, so this normally resolves at once; when it does not, there is nothing useful to say
+  // and the trace simply stays flat, which is the honest outcome.
+  if (context.state === "suspended") void context.resume().catch(() => {});
 
   const samples = new Uint8Array(analyser.fftSize);
   const trace: number[] = [];
@@ -92,6 +117,11 @@ export function meterStream(
 
   return () => {
     running = false;
+    // Disconnected before closing: `close()` alone leaves the stream's source node attached to a
+    // context that is going away, and the browser keeps the microphone's "in use" indicator lit.
+    source.disconnect();
+    analyser.disconnect();
+    silence.disconnect();
     void context.close().catch(() => {});
   };
 }
