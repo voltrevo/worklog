@@ -19,6 +19,7 @@ import {
   encodeEvent,
   encodeJson,
   type Event,
+  MAX_REQUEST_BYTES,
   type Request,
   type Response,
 } from "@worklog/shared/protocol";
@@ -58,10 +59,10 @@ function parseArgs(argv: string[]): Args {
 /**
  * Read a whole stream. One request per stream, so EOF is the delimiter (see `protocol.ts`).
  *
- * Bounded, because a stream is an unauthenticated peer's chance to make this process allocate. A
- * megabyte is far more than any request needs and far less than anything worth worrying about.
+ * The bound is `MAX_REQUEST_BYTES` in `shared/protocol.ts`, where the recorder can also read it —
+ * a voice note is the one request that can approach a megabyte, and finding the limit by being
+ * refused after five minutes of talking is not finding it in time.
  */
-const MAX_REQUEST_BYTES = 1_048_576;
 
 async function readAll(readable: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];

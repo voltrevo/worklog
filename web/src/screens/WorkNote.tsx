@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { MAX_NOTE_AUDIO_BYTES } from "@worklog/shared/protocol";
 import { meterStream, TRACE_LENGTH } from "../levels.ts";
 import { useStore } from "../state.tsx";
 import { Dialog } from "./Dialog.tsx";
@@ -318,8 +319,32 @@ function useRecorder() {
         audioBitsPerSecond: BITS_PER_SECOND,
         ...(mimeType ? { mimeType } : {}),
       });
+      /*
+       * 5.24 — chunk by chunk, so the size is known while it is still being made.
+       *
+       * `start()` with no timeslice hands over one blob at the end, which is the last possible
+       * moment to discover that it will not fit. The server reads at most `MAX_REQUEST_BYTES` and
+       * a note travels as base64 inside the JSON, so speech at this bitrate reaches the limit in
+       * about five minutes — and the way that presented was five minutes of talking followed by
+       * "request too large", with nothing to do about it but record it again shorter.
+       *
+       * A chunk a second is enough to stop on time, and the recording that has already been made
+       * is kept: it stops, it says why, and everything up to that point is still there to save.
+       */
       const chunks: Blob[] = [];
-      media.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
+      let bytes = 0;
+      media.ondataavailable = (e) => {
+        if (e.data.size === 0) return;
+        chunks.push(e.data);
+        bytes += e.data.size;
+        if (bytes >= MAX_NOTE_AUDIO_BYTES && media.state === "recording") {
+          setProblem(
+            "That is as long a recording as the server will accept, so it stopped there. What " +
+              "you have is ready to save.",
+          );
+          media.stop();
+        }
+      };
       media.onstop = async () => {
         const blob = new Blob(chunks, { type: media.mimeType || "audio/webm" });
         release();
@@ -333,7 +358,8 @@ function useRecorder() {
       };
       startedRef.current = Date.now();
       setElapsed(0);
-      media.start();
+      // A chunk a second; see `ondataavailable`.
+      media.start(1_000);
       mediaRef.current = media;
       setState("recording");
     } catch (err) {

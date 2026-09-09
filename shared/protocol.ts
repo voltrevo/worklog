@@ -420,6 +420,26 @@ export function splitLines(buffer: string): { lines: string[]; rest: string } {
   return { lines: parts.filter((l) => l.length > 0), rest };
 }
 
+/**
+ * The largest request the server will read, enforced in `server/main.ts`.
+ *
+ * A stream is an unauthenticated peer's chance to make the process allocate, so it is bounded. The
+ * comment on it used to say a megabyte is "far more than any request needs", and that was true of
+ * every request but one: a voice note travels as base64 inside the JSON, and speech at 5.25's
+ * bitrate reaches this in about five minutes. The recorder is told the number rather than left to
+ * discover it by being refused after the fact.
+ */
+export const MAX_REQUEST_BYTES = 1_048_576;
+
+/**
+ * How many bytes of recorded audio fit in one of those.
+ *
+ * Base64 costs a third on top, and the JSON around it — a body, a tag, a timestamp — is small but
+ * not nothing, so a few kilobytes are left for it. Being a little conservative here costs a few
+ * seconds of recording; being a little generous costs the whole recording.
+ */
+export const MAX_NOTE_AUDIO_BYTES = Math.floor((MAX_REQUEST_BYTES - 8_192) * 3 / 4);
+
 /** Which role a request needs. Anything absent here needs none (13.32–13.34). */
 export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "ping": "read",
