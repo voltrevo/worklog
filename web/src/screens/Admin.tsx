@@ -421,6 +421,9 @@ function fingerprintOf(base64: string): string {
 
 const LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
 
+/** How many lines a fetch asks for, and the number the footer admits to when it gets that many. */
+const LOG_LIMIT = 300;
+
 function Logs() {
   const { call } = useStore();
   const [entries, setEntries] = useState<LogEntry[]>();
@@ -439,7 +442,7 @@ function Logs() {
           t: "logs",
           minLevel: level,
           from: Date.now() - since * 3_600_000,
-          limit: 300,
+          limit: LOG_LIMIT,
         }),
       );
       setLoadedAt(Date.now());
@@ -505,6 +508,13 @@ function Logs() {
       {loadedAt !== undefined && (
         <p className="faint" style={{ fontSize: 12, marginTop: -4 }}>
           As at {dateTime(loadedAt)}. This view does not follow along by itself.
+          {
+            /* A cap said out loud: a page holding exactly the limit looks like a page holding
+              everything, and here it means the oldest of the window is missing rather than the
+              newest — which is the half somebody chasing a fault has scrolled down to find. */
+          }
+          {entries?.length === LOG_LIMIT &&
+            ` The newest ${LOG_LIMIT} of those; narrow the level or the window to see further back.`}
         </p>
       )}
       <div className="scroll-x">

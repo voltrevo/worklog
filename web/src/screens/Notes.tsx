@@ -16,6 +16,9 @@ import type { WorkNoteWire as NoteWire } from "@worklog/shared/protocol";
 import { Listing } from "./Listing.tsx";
 import { Dialog } from "./Dialog.tsx";
 
+/** How many the list asks for, and the number it admits to when it has that many. */
+const NOTE_LIMIT = 200;
+
 export function Notes() {
   const { call, snapshot, phase, refresh } = useStore();
   // 25.1 — `undefined` until the first answer. `[]` would say "no notes" before asking.
@@ -24,7 +27,7 @@ export function Notes() {
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   const load = () =>
-    void call<NoteWire[]>({ t: "notes", limit: 200 }).then(setNotes).catch(() => {});
+    void call<NoteWire[]>({ t: "notes", limit: NOTE_LIMIT }).then(setNotes).catch(() => {});
   useEffect(load, [call, snapshot]);
 
   return (
@@ -53,6 +56,20 @@ export function Notes() {
             </div>
           )}
         </Listing>
+        {notes?.length === NOTE_LIMIT && (
+          /*
+           * A cap said out loud.
+           *
+           * The list asks for the most recent two hundred and rendered them with nothing to say
+           * that there were more, so a screen holding exactly the limit looks like a screen
+           * holding everything — and somebody who has kept notes for a year would conclude the
+           * older ones had been thrown away. They have not: 5.24 keeps them, and there is nothing
+           * in this version that browses further back.
+           */
+          <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
+            The most recent {NOTE_LIMIT}. Older notes are kept and this version does not show them.
+          </p>
+        )}
       </div>
 
       {open && <WorkNote onClose={() => setOpen(false)} />}
