@@ -261,6 +261,28 @@ async function main() {
   });
   const { desktop, mobile } = await claimAndApprove(rig);
 
+  /*
+   * Connecting to a fresh server is quiet.
+   *
+   * The report was "when I connect to a fresh server, it errors after a moment, then I connect
+   * again and it's fine" — over a local network, so almost certainly not a real disconnection. The
+   * cause was a replaced transport marking the live one failed, and that is fixed; nothing was
+   * watching for the symptom, though, and the symptom is what a person sees.
+   *
+   * A few seconds of watching rather than one look, because the whole complaint was that it
+   * appears *after a moment*. `lastError` renders as a strip that stays until it is dismissed, so
+   * anything that arrives inside the window is still on screen at the end of it.
+   */
+  await desktop.page.waitForTimeout(6_000);
+  for (const [label, page] of [["desktop", desktop.page], ["phone", mobile.page]]) {
+    const strip = await page.locator(".notice.bad").allInnerTexts();
+    check(
+      `connecting the ${label} to a fresh server raises nothing`,
+      strip.length === 0,
+      strip.join(" / "),
+    );
+  }
+
   // ---------------------------------------------------------------- a timer, and a second device
   console.log("\ntimer:");
 
