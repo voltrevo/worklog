@@ -134,8 +134,27 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
   }
 
   console.log("starting the server…");
-  const server = await startServer(dataDir, port);
+  let server = await startServer(dataDir, port);
   console.log(`  ${server.address}`);
+
+  /**
+   * Stop the server and start it again on the same port and the same data.
+   *
+   * The address survives, and that is a property worth leaning on rather than assuming: the KPS
+   * certificate lives at `kps-cert.pem` inside the data directory, so the certhash a device stored
+   * is still the certhash of the server that comes back. If it were regenerated, every restart
+   * would silently invalidate every device's saved address.
+   */
+  const stopServer = async () => {
+    const gone = new Promise((r) => server.process.once("exit", r));
+    server.process.kill("SIGTERM");
+    await gone;
+  };
+
+  const startServerAgain = async () => {
+    server = await startServer(dataDir, port);
+    return server.address;
+  };
 
   const http = createServer(async (req, res) => {
     const path = req.url === "/" ? "/index.html" : (req.url ?? "/").split("?")[0];
@@ -270,7 +289,7 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
     await rm(dataDir, { recursive: true, force: true });
   };
 
-  return { server, open, close, errors, dataDir };
+  return { server, stopServer, startServerAgain, open, close, errors, dataDir };
 }
 
 /**

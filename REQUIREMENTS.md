@@ -500,6 +500,8 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 22.7. MUST show connection state, distinguishing at least “no address configured”, “connecting”, “connected”, and “failed”.
 22.8. SHOULD reconnect automatically after a transient loss.
 22.9. MUST treat a malformed address as a configuration error shown in the UI rather than as a connection failure.
+22.10. MUST find out that a connection has been lost rather than waiting to be told. A transport whose peer has stopped reports nothing, so the app must ask on an interval and treat silence as a loss; saying "Connected" about a server that has stopped is worse than saying nothing.
+22.11. MUST keep a server's address stable across a restart, so that a restart does not silently invalidate every device's stored address.
 
 ## 23. Mobile presentation
 

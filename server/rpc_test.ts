@@ -441,6 +441,7 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "claim-admin",
     "request-access",
     "authenticate",
+    "ping",
     "snapshot",
     "timer-start",
     "timer-stop",

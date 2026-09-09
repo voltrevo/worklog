@@ -215,7 +215,17 @@ export type Request =
   | { t: "access-revoke"; publicKey: string }
   | { t: "access-set-role"; publicKey: string; role: AccessRole }
   /** Opens the event stream. The response is followed by newline-delimited `Event`s. */
-  | { t: "subscribe" };
+  | { t: "subscribe" }
+  /**
+   * 22.10 — is anybody there.
+   *
+   * The client waits on the transport's own `closed` promise to learn that a connection has gone,
+   * and a server that is killed never sends anything for that promise to resolve on: the browser
+   * sits on a peer connection whose other end has stopped existing and reports nothing for well
+   * over a minute. Meanwhile the header says "Connected" and the dot is green, which is a claim
+   * the app cannot support. Asking is the only way to know.
+   */
+  | { t: "ping" };
 
 // ------------------------------------------------------------------ responses
 
@@ -412,6 +422,7 @@ export function splitLines(buffer: string): { lines: string[]; rest: string } {
 
 /** Which role a request needs. Anything absent here needs none (13.32–13.34). */
 export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
+  "ping": "read",
   "snapshot": "read",
   "entries": "read",
   "notes": "read",

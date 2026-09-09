@@ -61,6 +61,23 @@ const RECONNECT_DELAYS = [400, 1_000, 2_500, 5_000, 6_000];
  */
 const CONNECT_TIMEOUT_MS = 12_000;
 
+/**
+ * 22.10 — how often the app asks whether the server is still there.
+ *
+ * Short enough that "Connected" is not a stale claim for long, long enough that it is nothing on a
+ * local network: one request every eight seconds, answered with a timestamp.
+ */
+const HEARTBEAT_MS = 8_000;
+
+/**
+ * How long a ping may take before the connection counts as gone.
+ *
+ * Generous for a local network, where a round trip is a millisecond, and short enough that the
+ * header stops lying inside a quarter of a minute. Being wrong here reconnects a working
+ * connection, which costs a second and is invisible; being too patient is the bug this fixes.
+ */
+const HEARTBEAT_TIMEOUT_MS = 6_000;
+
 export type Phase =
   | { k: "no-address" }
   | { k: "connecting"; address: string }
@@ -236,9 +253,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * A dial that cannot succeed has to stop.
        *
        * `dial` waits on ICE and DTLS with no deadline of its own, so an address whose server is
-       * gone — which is what you have after restarting one, since the certhash changes — left the
-       * app on "Connecting…" indefinitely. Nothing was wrong with the page and nothing said so;
-       * the only way out was a Cancel button whose meaning is "forget this server".
+       * gone left the app on "Connecting…" indefinitely. Nothing was wrong with the page and
+       * nothing said so; the only way out was a Cancel button whose meaning is "forget this
+       * server".
+       *
+       * This used to say that a restarted server is such an address, "since the certhash
+       * changes". It does not: the KPS certificate is written to `kps-cert.pem` inside the data
+       * directory, so the same server on the same data comes back at the same address. There is a
+       * check for that now, because it is the difference between a restart being invisible and
+       * every device having to be re-pointed by hand.
        */
       const transport = await connect(address, AbortSignal.timeout(CONNECT_TIMEOUT_MS));
       transportRef.current = transport;
@@ -297,7 +320,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * first. Five attempts over about fifteen seconds, and only then is it a failure worth a
        * screen.
        */
-      void transport.closed.then(() => {
+      const lost = () => {
         if (transportRef.current !== transport) return; // a connection we have already replaced
         if (retry >= RECONNECT_DELAYS.length) {
           setPhase((p) =>
@@ -312,7 +335,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           () => void connectToRef.current?.(address, name, retry + 1),
           RECONNECT_DELAYS[retry],
         );
-      });
+      };
+      void transport.closed.then(lost);
+
+      /*
+       * 22.10 — and asking, because waiting is not enough.
+       *
+       * `transport.closed` is the only thing that used to report a lost connection, and a server
+       * that is *killed* never resolves it: the browser holds a peer connection whose other end
+       * has stopped existing and says nothing about it for well over a minute — seventy seconds
+       * measured, still green, still "Connected". The reconnect ladder below it is fine; nothing
+       * was ever telling it to run.
+       *
+       * A ping is the cheapest question there is, and a failed one means the same thing as a
+       * closed transport, so it goes down the same path. The interval is cleared when this
+       * transport stops being the current one, which is what `lost` already knows how to check.
+       */
+      const beat = setInterval(() => {
+        if (transportRef.current !== transport) {
+          clearInterval(beat);
+          return;
+        }
+        /*
+         * With a deadline, because the failure being looked for does not produce an error.
+         *
+         * A request sent over a peer connection whose other end has stopped existing does not
+         * reject — it waits, and so did the first version of this heartbeat: seventy seconds after
+         * the server was killed the app was still green, now with a queue of pings behind it.
+         * Nothing answers, so nothing is what has to be detected.
+         */
+        void Promise.race([
+          client.call({ t: "ping" }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("no answer")), HEARTBEAT_TIMEOUT_MS)
+          ),
+        ]).catch(() => {
+          clearInterval(beat);
+          lost();
+        });
+      }, HEARTBEAT_MS);
+      void transport.closed.then(() => clearInterval(beat));
+
       setReconnecting(false);
     } catch (err) {
       /*
@@ -512,6 +575,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     requestAccess,
     forget,
     deviceName,
+    /*
+     * `reconnecting` was missing from this list.
+     *
+     * It is in the object above, so the type checker was satisfied and the flag was set exactly
+     * when it should have been — and the memo never recomputed, so the context value stayed
+     * identical and no consumer re-rendered. 22.8's amber dot has never once appeared: the app
+     * said "Connected" from the moment a connection dropped until something else happened to
+     * change `phase`, which on a server that has simply stopped is never.
+     *
+     * A dependency list is a claim about which values the object depends on, and nothing in the
+     * language checks it. This one is now covered by a check that kills the server and looks.
+     */
+    reconnecting,
     lastError,
     prompt,
   ]);

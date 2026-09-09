@@ -329,6 +329,11 @@ export async function handle(
       return outcome;
     }
 
+    // 22.10 — the cheapest possible answer, so a client can find out whether anyone is still
+    // there without asking for a snapshot to do it.
+    case "ping":
+      return { at: nowOf(ctx) };
+
     // ---------------------------------------------------------------- reading
     case "snapshot": {
       const pacingConfig = getConfig(db, "pacing");

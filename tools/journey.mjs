@@ -2033,6 +2033,68 @@ async function main() {
     (await spare.page.getByRole("button", { name: "Admin", exact: true }).count()) === 0,
   );
 
+  /*
+   * 22.8 — the server goes away and comes back, and the app is still there.
+   *
+   * The reconnect ladder in `state.tsx` — five delays, a twelve-second connect timeout, a
+   * `reconnecting` flag that keeps the interface on screen behind an amber dot — has never been
+   * driven by anything. It exists because the alternative, which is what the app used to do, is to
+   * replace every screen with a failure page the moment a stream ends; on a local network that is
+   * almost never a real outage.
+   *
+   * Last, because it stops and starts the one server every other check is talking to.
+   */
+  console.log("\nlosing the server:");
+  // Foregrounded first: Chromium throttles timers in a hidden page to about one a minute, and by
+  // this point in the run the last page opened is somebody else. The heartbeat below is a timer.
+  await desktop.page.bringToFront();
+  await nav(desktop.page, "Timer");
+  await clearSheets(desktop.page);
+  const addressBefore = rig.server.address;
+  await rig.stopServer();
+
+  // While it is down. The claim is not that a loss is invisible — it is that the interface is
+  // still there and says what is happening, rather than being replaced by a failure page.
+  check(
+    "the app stays on screen while the connection is gone",
+    await until(
+      "noticed",
+      desktop.page,
+      async (p) =>
+        (await p.getByRole("button", { name: "Timer", exact: true }).count()) > 0 &&
+        (await p.getByText(/Reconnecting|Disconnected/).count()) > 0,
+      // A beat every eight seconds and six for the answer that never comes; twice that is slack.
+      30_000,
+    ),
+    await visibleText(desktop.page),
+  );
+
+  const addressAfter = await rig.startServerAgain();
+  check(
+    "the server's address survives a restart",
+    addressAfter === addressBefore,
+    `${addressBefore} -> ${addressAfter}`,
+  );
+  check(
+    "and it comes back on its own, without a reload",
+    await until(
+      "reconnected",
+      desktop.page,
+      async (p) => (await p.getByText("Connected", { exact: true }).count()) > 0,
+      40_000,
+    ),
+    await visibleText(desktop.page),
+  );
+  check(
+    "and it can be used again once it is back",
+    await until(
+      "usable",
+      desktop.page,
+      async (p) => await p.getByRole("button", { name: /Start|Stop/ }).isEnabled(),
+      20_000,
+    ),
+  );
+
   await rig.close();
 
   const pageErrors = rig.errors.length;
