@@ -277,22 +277,28 @@ export async function claimAndApprove(
   await desktop.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 
   const mobile = await rig.open("mobile", MOBILE, "Pixel Phone");
-  const ask = mobile.page.getByRole("button", { name: "Ask for write access" });
+  // 25.31 — one dropdown and one button, rather than a button per role.
+  const ask = mobile.page.getByRole("button", { name: "Ask for access" });
   await ask.waitFor({ timeout: 30_000 });
   await onRequestScreen?.(mobile.page);
+  await mobile.page.getByLabel("Access needed").selectOption("write");
   await ask.click();
   await mobile.page.getByText("Waiting for approval").waitFor({ timeout: 15_000 });
 
   console.log("  approving the phone from the desktop…");
   await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
+  // 25.32 — approve grants the role that was asked for; there is no button per role any more.
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
-    .getByRole("button", { name: "write", exact: true })
+    .getByRole("button", { name: /^Approve as/ })
     .click();
   await desktop.page.waitForTimeout(600);
   await onAccessScreen?.(desktop.page);
 
-  await mobile.page.reload();
+  // 25.33 — no reload. The waiting page notices and offers a way in, which is what it had been
+  // promising all along while quietly requiring an F5 that nothing mentioned.
+  await mobile.page.getByRole("button", { name: "Continue" }).waitFor({ timeout: 30_000 });
+  await mobile.page.getByRole("button", { name: "Continue" }).click();
   await mobile.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 
   return { desktop, mobile };

@@ -1176,3 +1176,21 @@ textarea:disabled {
     grid-column: 2 / -1;
   }
 }
+
+/*
+ * 25.34 — which tab you are on.
+ *
+ * The admin screen set `aria-pressed` and styled nothing, so a screen reader knew and nobody
+ * looking at it did. The same treatment as the active item in the sidebar, so "you are here"
+ * looks the same wherever it is said.
+ */
+button.btn[aria-pressed="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button.btn[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--accent-wash);
+  filter: brightness(0.97);
+}

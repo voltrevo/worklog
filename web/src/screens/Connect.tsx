@@ -8,8 +8,11 @@
 import { useState } from "react";
 import { useStore } from "../state.tsx";
 import { addressProblem } from "../deviceKeys.ts";
+import type { AccessRole } from "@worklog/shared/auth";
 
 export function Connect() {
+  // 25.31. Write by default: it is what almost every device asking is for.
+  const [wanted, setWanted] = useState<AccessRole>("write");
   const {
     phase,
     connectTo,
@@ -85,6 +88,39 @@ export function Connect() {
 
   if (phase.k === "ready") return null; // App renders a shell in this case; here for narrowing.
 
+  /**
+   * 25.33 — approved, and told so.
+   *
+   * The waiting page promised "this page will carry on once they do" and then did not: the device
+   * only found out by being reloaded, which nothing on screen suggested. It knows now, and says
+   * so, and going in is a deliberate press rather than the app appearing under whoever happened
+   * to be reading the previous sentence.
+   */
+  if (phase.k === "approved") {
+    return (
+      <div className="centered">
+        <div className="card stack">
+          <h1>Approved</h1>
+          <p className="muted">
+            <strong>{deviceName}</strong> has been given access to this server.
+          </p>
+          <div className="row">
+            <button
+              className="btn primary big"
+              type="button"
+              onClick={() => void connectTo(phase.address, deviceName)}
+            >
+              Continue
+            </button>
+            <button className="btn" type="button" onClick={forget}>
+              Use a different server
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (phase.k === "connecting") {
     return (
       <div className="centered">
@@ -152,27 +188,32 @@ export function Connect() {
                 This server already has an administrator. Ask them to approve{" "}
                 <strong>{deviceName}</strong>.
               </p>
-              <div className="row wrap">
+              {
+                /*
+                25.31 — one dropdown and one button. Three buttons read as three different acts
+                and put the least common one, admin, the same distance away as the one almost
+                everybody wants; and "Ask for write access" beside a plain "Admin" gave no clue
+                that they were alternatives rather than a request and a claim.
+              */
+              }
+              <div className="row wrap" style={{ alignItems: "flex-end" }}>
+                <label className="field">
+                  Access needed
+                  <select
+                    value={wanted}
+                    onChange={(e) => setWanted(e.target.value as AccessRole)}
+                  >
+                    <option value="read">read — see everything, change nothing</option>
+                    <option value="write">write — record and edit work</option>
+                    <option value="admin">admin — also approve other devices</option>
+                  </select>
+                </label>
                 <button
                   className="btn primary"
                   type="button"
-                  onClick={() => void requestAccess("write")}
+                  onClick={() => void requestAccess(wanted)}
                 >
-                  Ask for write access
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => void requestAccess("read")}
-                >
-                  Read only
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => void requestAccess("admin")}
-                >
-                  Admin
+                  Ask for access
                 </button>
               </div>
             </>

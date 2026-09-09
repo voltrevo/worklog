@@ -28,6 +28,7 @@ import type {
 } from "@worklog/shared/protocol";
 import type { InvoiceWarning } from "@worklog/shared/invoice";
 import { InvoiceEditor } from "./InvoiceEditor.tsx";
+import { Dialog } from "./Dialog.tsx";
 
 /**
  * The months on offer: the last two years, newest first.
@@ -353,46 +354,6 @@ function InvoiceRow(
           onCancel={() => setConfirm(undefined)}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * 24.29 — a modal, used by both confirmations.
- *
- * The same `.sheet` as the work-note panel, so this app has one thing that means "answer before
- * carrying on" rather than two that look slightly different.
- */
-function Dialog(
-  { title, body, confirmLabel, danger, busy, onConfirm, onCancel }: {
-    title: string;
-    body: string;
-    confirmLabel: string;
-    danger?: boolean;
-    busy: boolean;
-    onConfirm: () => void | Promise<void>;
-    onCancel: () => void;
-  },
-) {
-  return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="card stack" style={{ gap: 14, maxWidth: 520 }}>
-        <h2 style={{ margin: 0 }}>{title}</h2>
-        <p className="muted" style={{ margin: 0 }}>{body}</p>
-        <div className="row">
-          <button
-            className={`btn ${danger ? "danger" : "primary"}`}
-            type="button"
-            disabled={busy}
-            onClick={() => void onConfirm()}
-          >
-            {confirmLabel}
-          </button>
-          <button className="btn" type="button" onClick={onCancel}>
-            Not now
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

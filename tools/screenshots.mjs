@@ -67,8 +67,12 @@ async function main() {
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("combobox")
     .selectOption("admin");
+  // 25.35 — choosing a role now asks first, so the `<select>` snaps back to the old value until
+  // this is pressed. That reversion is correct and it is also exactly what "the promotion did not
+  // take" looked like when this script was still clicking nothing.
+  await desktop.page.getByRole("button", { name: "Make it admin" }).click();
   // Confirm on the side that made the change before blaming the side that should see it.
-  await desktop.page.waitForTimeout(600);
+  await desktop.page.waitForTimeout(800);
   const nowRole = await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("combobox").inputValue();
   if (nowRole !== "admin") {
@@ -97,7 +101,7 @@ async function main() {
   // An earlier attempt at a third context hung forever because it was made the *admin* and nobody
   // could approve it. This one stays pending on purpose, which is the whole point of it.
   const spare = await rig.open("spare", MOBILE, "Spare Tablet");
-  const askSpare = spare.page.getByRole("button", { name: "Ask for write access" });
+  const askSpare = spare.page.getByRole("button", { name: "Ask for access" });
   await askSpare.waitFor({ timeout: 30_000 });
   await askSpare.click();
   await spare.page.getByText("Waiting for approval").waitFor({ timeout: 15_000 });

@@ -12,6 +12,7 @@ import { usePresentation } from "../App.tsx";
 import { dateTime } from "../format.ts";
 import type { AccessRole } from "@worklog/shared/auth";
 import type { LogEntry, LogLevel } from "@worklog/shared/protocol";
+import { Dialog } from "./Dialog.tsx";
 
 interface PendingWire {
   publicKey: string;
@@ -27,6 +28,131 @@ interface DeviceWire {
   role: AccessRole;
   authorizedAt: number;
   lastSeenAt?: number;
+}
+
+/**
+ * 25.32 — approve or deny, and approving grants what was asked for.
+ *
+ * There used to be three buttons — read, write, admin — and a Deny, on the reasoning that the
+ * requested role is a string an unauthorized device chose and so must not be honoured with one
+ * tap. That reasoning survives: the role is still granted only by an admin pressing a button
+ * (13.28). What did not survive is the shape. Four controls on every row makes the common case —
+ * "yes, that one" — indistinguishable from the rare one, and puts *admin* one mis-aimed tap from
+ * a stranger's request. A wrong request is denied, and asked again.
+ *
+ * One component, used by the stacked layout and the table both. They each had their own copy of
+ * this and each would have had to be changed.
+ */
+function PendingActions(
+  { pending, busy, act }: {
+    pending: PendingWire;
+    busy: boolean;
+    act: (body: () => Promise<unknown>) => Promise<void>;
+  },
+) {
+  const { call } = useStore();
+  return (
+    <>
+      <button
+        className="btn primary"
+        type="button"
+        disabled={busy}
+        onClick={() =>
+          void act(() =>
+            call({
+              t: "access-approve",
+              publicKey: pending.publicKey,
+              role: pending.requestedRole,
+            })
+          )}
+      >
+        Approve as {pending.requestedRole}
+      </button>{" "}
+      <button
+        className="btn danger"
+        type="button"
+        disabled={busy}
+        onClick={() => void act(() => call({ t: "access-deny", publicKey: pending.publicKey }))}
+      >
+        Deny
+      </button>
+    </>
+  );
+}
+
+/**
+ * 25.35 — revoking, and changing a role, ask first.
+ *
+ * Both were immediate. Revoking cuts a device off mid-session and cannot be undone by clicking
+ * again — the device has to ask and be approved from scratch. And the role control was a bare
+ * `<select>`, so a mis-scroll on a trackpad silently promoted a phone to admin with no moment at
+ * which anything said so.
+ */
+function DeviceActions(
+  { device, busy, act }: {
+    device: DeviceWire;
+    busy: boolean;
+    act: (body: () => Promise<unknown>) => Promise<void>;
+  },
+) {
+  const { call } = useStore();
+  const [confirm, setConfirm] = useState<{ kind: "revoke" } | { kind: "role"; to: AccessRole }>();
+  return (
+    <>
+      <select
+        value={device.role}
+        disabled={busy}
+        aria-label={`Role for ${device.name}`}
+        onChange={(e) => setConfirm({ kind: "role", to: e.target.value as AccessRole })}
+      >
+        <option value="read">read</option>
+        <option value="write">write</option>
+        <option value="admin">admin</option>
+      </select>{" "}
+      <button
+        className="btn danger"
+        type="button"
+        disabled={busy}
+        onClick={() => setConfirm({ kind: "revoke" })}
+      >
+        Revoke
+      </button>
+
+      {confirm?.kind === "revoke" && (
+        <Dialog
+          title={`Revoke ${device.name}?`}
+          body={`That device loses access immediately, including any session it has open now. It can ask again, and would have to be approved again.`}
+          confirmLabel="Revoke it"
+          danger
+          busy={busy}
+          onConfirm={async () => {
+            setConfirm(undefined);
+            await act(() => call({ t: "access-revoke", publicKey: device.publicKey }));
+          }}
+          onCancel={() => setConfirm(undefined)}
+        />
+      )}
+      {confirm?.kind === "role" && (
+        <Dialog
+          title={`Make ${device.name} ${confirm.to}?`}
+          body={confirm.to === "admin"
+            ? "An admin can approve other devices, change roles, and revoke this one. It is the role that can hand out its own role."
+            : `That device can ${
+              confirm.to === "read" ? "read everything and change nothing" : "record and edit work"
+            } from now on.`}
+          confirmLabel={`Make it ${confirm.to}`}
+          danger={confirm.to === "admin"}
+          busy={busy}
+          onConfirm={async () => {
+            const role = confirm.to;
+            setConfirm(undefined);
+            await act(() => call({ t: "access-set-role", publicKey: device.publicKey, role }));
+          }}
+          onCancel={() => setConfirm(undefined)}
+        />
+      )}
+    </>
+  );
 }
 
 export function Admin() {
@@ -123,31 +249,8 @@ function Access() {
                       asked for {p.requestedRole} · {dateTime(p.requestedAt)}
                     </span>
                   </div>
-                  {/* 13.28 — still a role to choose, never a one-tap Approve. */}
                   <div className="acts wrap">
-                    {(["read", "write", "admin"] as AccessRole[]).map((role) => (
-                      <button
-                        key={role}
-                        className="btn"
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void act(() =>
-                            call({ t: "access-approve", publicKey: p.publicKey, role })
-                          )}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                    <button
-                      className="btn danger"
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(() => call({ t: "access-deny", publicKey: p.publicKey }))}
-                    >
-                      Deny
-                    </button>
+                    <PendingActions pending={p} busy={busy} act={act} />
                   </div>
                 </div>
               ))}
@@ -176,36 +279,7 @@ function Access() {
                       <td className="mono">{p.fingerprint}</td>
                       <td className="muted">{dateTime(p.requestedAt)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
-                        {(["read", "write", "admin"] as AccessRole[]).map((
-                          role,
-                        ) => (
-                          <button
-                            key={role}
-                            className="btn"
-                            type="button"
-                            disabled={busy}
-                            style={{ marginRight: 4 }}
-                            onClick={() =>
-                              void act(() =>
-                                call({
-                                  t: "access-approve",
-                                  publicKey: p.publicKey,
-                                  role,
-                                })
-                              )}
-                          >
-                            {role}
-                          </button>
-                        ))}
-                        <button
-                          className="btn danger"
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            void act(() => call({ t: "access-deny", publicKey: p.publicKey }))}
-                        >
-                          Deny
-                        </button>
+                        <PendingActions pending={p} busy={busy} act={act} />
                       </td>
                     </tr>
                   ))}
@@ -229,31 +303,7 @@ function Access() {
                   </span>
                 </div>
                 <div className="acts wrap">
-                  <select
-                    value={d.role}
-                    disabled={busy}
-                    onChange={(e) =>
-                      void act(() =>
-                        call({
-                          t: "access-set-role",
-                          publicKey: d.publicKey,
-                          role: e.target.value as AccessRole,
-                        })
-                      )}
-                  >
-                    <option value="read">read</option>
-                    <option value="write">write</option>
-                    <option value="admin">admin</option>
-                  </select>
-                  <button
-                    className="btn danger"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(() => call({ t: "access-revoke", publicKey: d.publicKey }))}
-                  >
-                    Revoke
-                  </button>
+                  <DeviceActions device={d} busy={busy} act={act} />
                 </div>
               </div>
             ))}
@@ -265,7 +315,6 @@ function Access() {
               <thead>
                 <tr>
                   <th>Device name</th>
-                  <th>Role</th>
                   <th>Key fingerprint</th>
                   <th>Last seen</th>
                   <th />
@@ -275,38 +324,12 @@ function Access() {
                 {(devices ?? []).map((d) => (
                   <tr key={d.publicKey}>
                     <td>{d.name}</td>
-                    <td>
-                      <select
-                        value={d.role}
-                        disabled={busy}
-                        onChange={(e) =>
-                          void act(() =>
-                            call({
-                              t: "access-set-role",
-                              publicKey: d.publicKey,
-                              role: e.target.value as AccessRole,
-                            })
-                          )}
-                      >
-                        <option value="read">read</option>
-                        <option value="write">write</option>
-                        <option value="admin">admin</option>
-                      </select>
-                    </td>
                     <td className="mono">{fingerprintOf(d.publicKey)}</td>
                     <td className="muted">
                       {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn danger"
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void act(() => call({ t: "access-revoke", publicKey: d.publicKey }))}
-                      >
-                        Revoke
-                      </button>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <DeviceActions device={d} busy={busy} act={act} />
                     </td>
                   </tr>
                 ))}

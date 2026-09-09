@@ -59,6 +59,16 @@ export type Phase =
     offer: Exclude<AuthPurpose, "auth">;
     asked: boolean;
   }
+  /**
+   * 25.33 — asked, and answered yes.
+   *
+   * Its own phase rather than going straight to `ready`, because the answer arrives while nobody
+   * is looking at the screen. Dropping somebody into the app the instant an admin approves them —
+   * possibly mid-sentence on the waiting page — is a change of context they did not ask for and
+   * cannot tell apart from a bug. The waiting page said "this page will carry on once they do",
+   * and until now it did not: it needed a reload, which nothing said.
+   */
+  | { k: "approved"; address: string }
   | { k: "ready"; address: string; role: AccessRole; version: string };
 
 export interface Store {
@@ -274,6 +284,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setLastError(describe(err));
     }
+  }, [phase]);
+
+  /**
+   * While waiting, ask the server every few seconds whether the answer has arrived (25.33).
+   *
+   * `hello` is the cheapest thing the protocol has and needs no authorisation, which is what makes
+   * it usable from a device that has none. Polling rather than a subscription because an
+   * unauthorised device may not subscribe — the event that would carry this news is exactly the
+   * kind of thing it is not allowed to hear.
+   *
+   * Three seconds. An admin approving a device is watching one screen while somebody watches the
+   * other, so the wait is measured in how long it takes to say "done".
+   */
+  useEffect(() => {
+    if (phase.k !== "unauthorized" || !phase.asked) return;
+    const address = phase.address;
+    let stopped = false;
+    const id = setInterval(() => {
+      const client = clientRef.current;
+      if (!client) return;
+      void client.hello()
+        .then((hello) => {
+          if (!stopped && hello.offer === "auth") setPhase({ k: "approved", address });
+        })
+        // A failed poll is not news. The server may be restarting, and saying so on a page whose
+        // whole content is "wait" would be noise about the wrong thing.
+        .catch(() => {});
+    }, 3_000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
   }, [phase]);
 
   const forget = useCallback(() => {

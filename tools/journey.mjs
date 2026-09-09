@@ -1012,8 +1012,11 @@ async function main() {
   // after navigating away and back. Note the ordering -- the desktop is put on this screen *before*
   // the spare asks, because arriving-while-watching is the whole claim.
   const spare = await rig.open("spare", MOBILE, "Spare Tablet");
-  const askSpare = spare.page.getByRole("button", { name: "Ask for write access" });
+  const askSpare = spare.page.getByRole("button", { name: "Ask for access" });
   await askSpare.waitFor({ timeout: 30_000 });
+  // 25.32 — approving grants what was asked for, so a device that should end up read-only asks
+  // for read. The admin's choice is whether, not which; a wrong request is denied and asked again.
+  await spare.page.getByLabel("Access needed").selectOption("read");
   await askSpare.click();
   check(
     "a request arrives on an admin screen nobody navigated",
@@ -1042,6 +1045,18 @@ async function main() {
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("button", { name: "Revoke" }).click();
 
+  // 25.35 — revoking asks first. It cuts a device off mid-session and cannot be undone by
+  // clicking again: the device has to ask and be approved from scratch.
+  check(
+    "25.35 — revoking asks before it revokes",
+    await until(
+      "revoke dialog",
+      desktop.page,
+      async (p) => (await p.getByRole("button", { name: "Revoke it" }).count()) > 0,
+    ),
+  );
+  await desktop.page.getByRole("button", { name: "Revoke it" }).click();
+
   check(
     "a revoked device finds out while it is still connected",
     await until(
@@ -1062,8 +1077,10 @@ async function main() {
   // The spare tablet is still pending from the check above, so it is the device to approve.
   console.log("\nread-only:");
   await desktop.page.getByRole("row", { name: /Spare Tablet/ })
-    .getByRole("button", { name: "read", exact: true }).click();
-  await spare.page.reload();
+    .getByRole("button", { name: /^Approve as/ }).click();
+  // 25.33 again, on a second device: it is told, and goes in on a press rather than a reload.
+  await spare.page.getByRole("button", { name: "Continue" }).waitFor({ timeout: 30_000 });
+  await spare.page.getByRole("button", { name: "Continue" }).click();
   await spare.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 
   check(
