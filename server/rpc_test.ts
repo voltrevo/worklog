@@ -496,3 +496,38 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "a request exists that this list does not name, or names twice",
   );
 });
+
+Deno.test("25.24 -- today's scheduled hours do not depend on which month is being viewed", async () => {
+  // The month is one shared value in the store, set by the arrows on History and Pacing. Looking
+  // at another month used to make the timer screen's lookup miss and fall through `?? 0`, so a
+  // Wednesday read "not a scheduled workday" with the progress bar empty.
+  const ctx = context();
+  const s = session(ctx, "a");
+  await signedCall(ctx, s, await device(), "claim");
+
+  const wednesday = "2026-09-09";
+  const forMonth = async (month: string) =>
+    (await call(ctx, s, {
+      t: "snapshot",
+      month,
+      clock: { today: wednesday, nowMinutes: 10 * 60 },
+    }) as SnapshotResult).todayScheduledHours;
+
+  assertEquals(await forMonth("2026-09"), 8, "a nine-to-five Wednesday is eight hours");
+  assertEquals(await forMonth("2026-08"), 8, "and still eight while looking at August");
+  assertEquals(await forMonth("2026-12"), 8, "and while looking at December");
+  ctx.db.close();
+});
+
+Deno.test("a weekend is nought hours, so the figure is not merely always eight", async () => {
+  const ctx = context();
+  const s = session(ctx, "a");
+  await signedCall(ctx, s, await device(), "claim");
+  const sunday = await call(ctx, s, {
+    t: "snapshot",
+    month: "2026-09",
+    clock: { today: "2026-09-06", nowMinutes: 10 * 60 },
+  }) as SnapshotResult;
+  assertEquals(sunday.todayScheduledHours, 0);
+  ctx.db.close();
+});

@@ -172,8 +172,8 @@ function ScheduleCard(
         {([1, 2, 3, 4, 5, 6, 7] as Weekday[]).map((day) => {
           const interval = schedule[day];
           return (
-            <div className="row" key={day}>
-              <label className="row" style={{ width: 130, gap: 8 }}>
+            <div className="dayrow" key={day}>
+              <label className="row dayname">
                 <input
                   type="checkbox"
                   checked={interval !== null}
@@ -188,7 +188,11 @@ function ScheduleCard(
               </label>
               {interval
                 ? (
-                  <>
+                  // One element holding the pair, rather than three loose grid children. Leaving
+                  // them loose meant their placement depended on the parent's column count, which
+                  // differs between the two presentations — and on a phone the second input landed
+                  // on a row of its own.
+                  <div className="daytimes">
                     <input
                       type="time"
                       value={interval.start}
@@ -202,7 +206,7 @@ function ScheduleCard(
                       disabled={!canWrite}
                       onChange={(e) => setDay(day, { ...interval, end: e.target.value })}
                     />
-                  </>
+                  </div>
                 )
                 : <span className="faint">not a workday</span>}
             </div>

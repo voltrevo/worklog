@@ -86,6 +86,7 @@ export class LoopPlayer {
   #context?: AudioContext;
   #gain?: GainNode;
   #url?: string;
+  #blocked = false;
   #position = 0;
 
   /** Swap in a file, or `undefined` to unload. Stops anything playing. */
@@ -108,6 +109,8 @@ export class LoopPlayer {
 
   setVolume(position: number): void {
     this.#position = position;
+    // 25.21 — applied to whatever is playing now, not only at the next start. The ramp is what
+    // makes a change mid-playback a fade rather than a click.
     if (this.#gain && this.#context) {
       // Ramped rather than stepped, because a jump in gain is an audible click.
       this.#gain.gain.setTargetAtTime(
@@ -143,7 +146,35 @@ export class LoopPlayer {
     // A context created before a user gesture starts suspended; this is a no-op once running.
     await this.#context.resume().catch(() => {});
     audio.currentTime = 0;
-    await audio.play().catch(() => {});
+
+    /*
+     * 25.19 — a blocked start is reported, not discarded.
+     *
+     * This was `await audio.play().catch(() => {})`. Browsers reject `play()` when nothing the
+     * user did caused it, and the timer starting on *another device* is the clearest possible
+     * case of that. So the loop silently never played: no error, no element to click, nothing to
+     * find. It began working the moment a click happened to unlock the context, and stopped again
+     * on the next reload, which is exactly what an autoplay policy looks like from the outside.
+     *
+     * `blocked` is what the UI reads to offer a start control.
+     */
+    try {
+      await audio.play();
+      this.#blocked = false;
+    } catch (err) {
+      this.#blocked = (err as Error)?.name === "NotAllowedError";
+      if (!this.#blocked) throw err;
+    }
+  }
+
+  /**
+   * True when the last start was refused by the autoplay policy (25.19).
+   *
+   * Distinct from "not playing": nothing is playing when no timer is running either, and those two
+   * want opposite things on screen.
+   */
+  get blocked(): boolean {
+    return this.#blocked;
   }
 
   /** 14.13 */
@@ -164,4 +195,32 @@ export class LoopPlayer {
     this.#audio = undefined;
     this.#url = undefined;
   }
+}
+
+/**
+ * The one player, shared by the component that follows the timer and the settings card.
+ *
+ * They were separate instances, which is why the volume slider only took effect at the next start
+ * (25.21), why removing the file left the old one playing (25.22), and why previewing the loop was
+ * impossible without starting a timer (25.23). There is one pair of speakers; there should be one
+ * player.
+ *
+ * `subscribe` exists because the player's state — playing, blocked — changes for reasons no React
+ * tree caused: a timer starting on another device, an autoplay refusal. A component that only
+ * re-rendered on its own events would show the wrong thing.
+ */
+let shared: LoopPlayer | undefined;
+const listeners = new Set<() => void>();
+
+export function player(): LoopPlayer {
+  return (shared ??= new LoopPlayer());
+}
+
+export function notifyAudioChanged(): void {
+  for (const l of listeners) l();
+}
+
+export function subscribeAudio(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }

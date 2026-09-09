@@ -25,6 +25,7 @@ import {
 } from "@worklog/shared/protocol";
 import type { AccessRole } from "@worklog/shared/auth";
 import { project } from "@worklog/shared/pacing";
+import { shapeOf } from "@worklog/shared/schedule";
 import { invoiceWarnings } from "@worklog/shared/invoice";
 import type { DayInterval, Holiday, PacingOverride } from "@worklog/shared/types";
 import { type Db, transact } from "./db.ts";
@@ -331,6 +332,11 @@ export async function handle(
           nowMinutes: req.clock.nowMinutes,
         }),
         ...(holidays.warning ? { holidayWarning: holidays.warning } : {}),
+        todayScheduledHours: shapeOf(req.clock.today, {
+          schedule: pacingConfig.schedule,
+          holidays: new Map(holidays.holidays.map((h: Holiday) => [h.date, h])),
+          overrides,
+        }).hours,
         recentTags: recentBillingTags(db),
         invoiceWarnings: invoiceWarnings(allEntries(db), invoices),
         pacingConfig,

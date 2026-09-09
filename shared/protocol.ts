@@ -213,6 +213,16 @@ export interface SnapshotResult {
    * source of truth, and the first test to read it believed September had eleven of them.
    */
   holidayWarning?: string;
+  /**
+   * 25.24 — today's scheduled hours, independent of the month being viewed.
+   *
+   * The timer screen used to read this out of `pacing.days`, which only covers the *selected*
+   * month — and the month is one shared value, set by the arrows on History and Pacing. So looking
+   * at August and returning to the timer made `find` miss, `?? 0` took over, and a Wednesday
+   * rendered as "not a scheduled workday" with the progress bar at zero. The answer does not
+   * depend on which month you are looking at, so it should not be looked up in one.
+   */
+  todayScheduledHours: number;
   recentTags: string[];
   invoiceWarnings: InvoiceWarning[];
   pacingConfig: PacingConfig;

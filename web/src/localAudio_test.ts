@@ -51,7 +51,7 @@ function stubBrowser(): { calls: Calls; restore: () => void } {
    * failed in the suite, which is the signature of exactly this mistake and cost the same
    * afternoon twice.
    */
-  const NAMES = ["Audio", "AudioContext", "URL", "Blob"] as const;
+  const NAMES = ["Audio", "AudioContext", "Blob"] as const;
   const saved = new Map(
     NAMES.map((n) => [n, Object.getOwnPropertyDescriptor(globalThis, n)] as const),
   );
@@ -110,11 +110,17 @@ function stubBrowser(): { calls: Calls; restore: () => void } {
 
   g.Audio = FakeAudio;
   g.AudioContext = FakeContext;
-  g.URL = {
-    ...(g.URL as object),
-    createObjectURL: () => "blob:stub",
-    revokeObjectURL: () => {},
-  };
+  /*
+   * Statics attached to the real `URL`, not a replacement object.
+   *
+   * `{ ...URL, createObjectURL }` spreads a class into a plain object, so `new URL(...)` stops
+   * working — and the first thing to need it was `@std/assert`'s failure *formatter*, which turned
+   * a legible assertion into "URL is not a constructor" from inside the test runner.
+   */
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = () => "blob:stub";
+  URL.revokeObjectURL = () => {};
   g.Blob = class {
     constructor(public parts: unknown[], public opts: unknown) {}
   };
@@ -127,6 +133,8 @@ function stubBrowser(): { calls: Calls; restore: () => void } {
         if (descriptor) Object.defineProperty(globalThis, name, descriptor);
         else delete g[name]; // It was not there before; leaving a stub behind is its own leak.
       }
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
     },
   };
 }
@@ -152,12 +160,25 @@ Deno.test("14.12 -- the file loops, and there is nothing to press", async () => 
     assertEquals(calls.created[0]!.loop, true, "14.12 needs the element to loop");
     assertEquals(calls.created[0]!.preload, "auto");
 
-    // 14.10, 14.11 — the surface is start, stop and volume. No seek, no scrub, no pause-and-resume
-    // that could leave a position behind. This is the whole public API.
+    // 14.10, 14.11 — the *controls* are start, stop and volume. No seek, no scrub, no
+    // pause-and-resume that could leave a position behind.
+    //
+    // `playing` and `blocked` are on this list and are not controls; they are what the settings
+    // card reads to decide between "■ Stop preview" and an explanation that the browser refused
+    // (25.19). The guard is against a seek appearing, so it lists everything and is updated
+    // deliberately — it caught `blocked` the moment it was added, which is the point.
     const surface = Object.getOwnPropertyNames(LoopPlayer.prototype).filter((n) =>
       n !== "constructor"
     );
-    assertEquals(surface.sort(), ["dispose", "load", "playing", "setVolume", "start", "stop"]);
+    assertEquals(surface.sort(), [
+      "blocked",
+      "dispose",
+      "load",
+      "playing",
+      "setVolume",
+      "start",
+      "stop",
+    ]);
     player.dispose();
   } finally {
     restore();
@@ -229,6 +250,54 @@ Deno.test("a player with no file loaded does nothing rather than throwing", asyn
     player.stop();
     assertEquals(player.playing, false);
     assertEquals(calls.play, 0);
+    player.dispose();
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("25.19 -- a refused start is reported rather than swallowed", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+
+    // What an autoplay policy actually does: reject with NotAllowedError. This used to be
+    // `.catch(() => {})`, so the loop silently never played — no error, no element, nothing to
+    // find. The settings card reads `blocked` to offer a button, because a click is the gesture
+    // the policy is waiting for.
+    const audio = calls.created[0]! as unknown as { play: () => Promise<void> };
+    audio.play = () =>
+      Promise.reject(Object.assign(new Error("blocked"), { name: "NotAllowedError" }));
+
+    await player.start();
+    assertEquals(player.blocked, true, "a refusal must be visible");
+    assertEquals(player.playing, false);
+
+    // And once it is allowed, the flag clears.
+    audio.play = () => Promise.resolve();
+    await player.start();
+    assertEquals(player.blocked, false);
+    player.dispose();
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("any other playback failure is thrown, not mistaken for an autoplay block", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    const audio = calls.created[0]! as unknown as { play: () => Promise<void> };
+    audio.play = () => Promise.reject(new Error("the file is not audio"));
+
+    let threw = "";
+    await player.start().catch((e) => {
+      threw = (e as Error).message;
+    });
+    assertEquals(threw, "the file is not audio");
+    assertEquals(player.blocked, false, "a decode failure is not something a button fixes");
     player.dispose();
   } finally {
     restore();

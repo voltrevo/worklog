@@ -863,3 +863,52 @@ input[type="range"] {
     display: none;
   }
 }
+
+/*
+ * The weekday rows on the settings screen.
+ *
+ * Two children: the day's name, and the pair of times. The label used to be a 130px inline width —
+ * wider than "Monday", narrower than "Wednesday" once a checkbox sits beside it — so every row's
+ * inputs began at a different x, and on a phone the longer names squeezed "09:00 AM" down to
+ * "09:0". Same fault as the month arrow moving under the pointer (25.46): a variable-width label
+ * deciding where its neighbours sit.
+ */
+.dayrow {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+}
+
+.dayrow .dayname {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.daytimes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/*
+ * `flex: 1 1 0` with `min-width: 0`. A `type="time"` input's default field width is near 290px, and
+ * without an explicit floor of zero a flex item will not shrink below its content — so the pair
+ * could not share a line and the second wrapped.
+ */
+.daytimes input[type="time"] {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Capped, so a wide card does not stretch a five-character time across half the screen. */
+  max-width: 11rem;
+}
+
+@media (max-width: 900px) {
+  /* The name gets its own line; the two times share the one beneath. */
+  .dayrow {
+    grid-template-columns: 1fr;
+  }
+}

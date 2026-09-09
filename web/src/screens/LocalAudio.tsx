@@ -7,23 +7,30 @@
  *
  * **The playing is driven by the authoritative timer** (14.12–14.14, 16.6), not by a local switch.
  * The switch says *whether*; the server says *when*.
+ *
+ * **Present on a phone too** (25.20). It used to return `null` there, on the reasoning that a
+ * backgrounded mobile tab is suspended and autoplay needs a gesture, so 14.12 could not be
+ * honoured. That reasoning was about the *feature*, and what it produced was a settings screen
+ * with a section silently missing — which tells the reader nothing at all. The autoplay problem
+ * turned out to be real on the desktop too, and the answer to it is a button, not an absence.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "../state.tsx";
-import { usePresentation } from "../App.tsx";
 import {
   clearLoop,
   labelFor,
   loadEnabled,
   loadLoop,
   loadVolume,
-  LoopPlayer,
+  notifyAudioChanged,
+  player,
   RANGE_DB,
   saveEnabled,
   saveLoop,
   saveVolume,
   type StoredLoop,
+  subscribeAudio,
 } from "../localAudio.ts";
 
 /**
@@ -34,53 +41,60 @@ import {
  */
 export function LoopPlayback() {
   const { snapshot } = useStore();
-  const playerRef = useRef<LoopPlayer>(null);
   const active = snapshot?.timer.active !== undefined;
   const startedAt = snapshot?.timer.active?.startedAt;
 
   useEffect(() => {
-    const player = new LoopPlayer();
-    playerRef.current = player;
-    void loadLoop().then((loop) => player.load(loop)).catch(() => {});
-    return () => {
-      player.dispose();
-      playerRef.current = null;
-    };
+    void loadLoop().then((loop) => player().load(loop)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    player.setVolume(loadVolume());
+    const p = player();
+    p.setVolume(loadVolume());
     // 14.15 — keyed on `startedAt`, so a *new* session restarts the loop rather than letting it
     // run on from wherever the last one left it.
-    if (active && loadEnabled()) void player.start();
-    else player.stop();
+    if (active && loadEnabled()) {
+      void p.start().finally(notifyAudioChanged);
+    } else {
+      p.stop();
+      notifyAudioChanged();
+    }
   }, [active, startedAt]);
 
   return null;
 }
 
 export function LocalAudioCard() {
-  const presentation = usePresentation();
   const [loop, setLoop] = useState<StoredLoop>();
   const [enabled, setEnabled] = useState(() => loadEnabled());
   const [volume, setVolume] = useState(() => loadVolume());
   const [dragging, setDragging] = useState(false);
 
-  useEffect(() => {
-    void loadLoop().then(setLoop).catch(() => {});
-  }, []);
+  /**
+   * The player's own state, which changes for reasons this tree did not cause: a timer starting on
+   * another device, or the browser refusing to autoplay.
+   */
+  const audio = useSyncExternalStore(
+    subscribeAudio,
+    () => `${player().playing}:${player().blocked}`,
+    () => "false:false",
+  );
+  const [playing, blocked] = audio.split(":").map((v) => v === "true");
 
-  // 14.25, 23.6 — hidden on a phone rather than offered and broken. A backgrounded mobile tab is
-  // suspended and autoplay needs a gesture, so 14.12's "continuously while the timer is active"
-  // is not something a phone browser can honour, and a switch that silently stops working is
-  // worse than no switch.
-  if (presentation === "mobile") return null;
+  useEffect(() => {
+    void loadLoop().then((l) => {
+      setLoop(l);
+      void player().load(l);
+    }).catch(() => {});
+  }, []);
 
   const take = async (file: File | undefined) => {
     if (!file) return;
-    setLoop(await saveLoop(file));
+    const stored = await saveLoop(file);
+    setLoop(stored);
+    // 25.22 — the player is holding the old file; hand it the new one.
+    await player().load(stored);
+    notifyAudioChanged();
   };
 
   return (
@@ -102,6 +116,9 @@ export function LocalAudioCard() {
             onChange={(e) => {
               setEnabled(e.target.checked);
               saveEnabled(e.target.checked);
+              // 25.22 — takes effect on what is playing, not at the next timer.
+              if (!e.target.checked) player().stop();
+              notifyAudioChanged();
             }}
           />
           Enabled
@@ -121,6 +138,8 @@ export function LocalAudioCard() {
               const next = Number(e.target.value);
               setVolume(next);
               saveVolume(next);
+              // 25.21 — the gain node is ramped now, not at the next start.
+              player().setVolume(next);
             }}
           />
           <span
@@ -136,6 +155,38 @@ export function LocalAudioCard() {
         dB of travel, so quiet settings are as controllable as loud ones, and all the way down is
         silence rather than nearly silence.
       </p>
+
+      {
+        /*
+        25.23 — hear it without starting a timer, and 25.19 — start it by hand when the browser
+        refused to. They are the same button: a click is a user gesture, which is exactly what an
+        autoplay policy is waiting for.
+      */
+      }
+      {loop && (
+        <div className="row wrap" style={{ gap: 12, alignItems: "center", marginBottom: 12 }}>
+          <button
+            className={`btn ${blocked ? "primary" : ""}`}
+            type="button"
+            onClick={() => {
+              if (playing) {
+                player().stop();
+                notifyAudioChanged();
+              } else {
+                void player().start().finally(notifyAudioChanged);
+              }
+            }}
+          >
+            {playing ? "■ Stop preview" : "▶ Preview"}
+          </button>
+          {blocked && (
+            <span className="faint">
+              This browser blocked the loop from starting on its own. Press Preview once and it will
+              play when the timer runs.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 14.6 — one file, dropped or chosen. */}
       <div
@@ -166,6 +217,10 @@ export function LocalAudioCard() {
                 onClick={async () => {
                   await clearLoop();
                   setLoop(undefined);
+                  // 25.22 — and stop the copy the player is holding.
+                  player().stop();
+                  await player().load(undefined);
+                  notifyAudioChanged();
                   setEnabled(false);
                   saveEnabled(false);
                 }}
