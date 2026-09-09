@@ -707,8 +707,8 @@ read together.
 
 ### Invoices
 
-26.10. MUST NOT offer a download control on the invoice list; see 26.11.
-26.11. MUST label the control "View" and open the document in a large dialog, in an iframe over the blob URL. The browser's own controls are how it is saved; the app does not need to offer that.
+26.10. ~~MUST NOT offer a download control on the invoice list; see 26.11.~~ (superseded: 27.15)
+26.11. MUST label the control "View" and open the document in a large dialog, in an iframe over the blob URL. ~~The browser's own controls are how it is saved; the app does not need to offer that.~~ (superseded: 27.15)
 26.12. MUST set an invoice's state from a dropdown rather than from a button per transition.
 26.13. MUST NOT warn that issuing freezes the PDF. That is the sensible behaviour and needs no warning; the reverse would.
 26.14. MUST NOT describe the per-invoice overrides as what the invoice "says differently": it is not different until it has been made so, which is usually never, and the phrasing is slack. Say what the control is.
@@ -742,3 +742,58 @@ read together.
 26.27. MUST say when a list is showing only part of what there is. A screen holding exactly its limit looks like a screen holding everything, so the notes list and the log viewer each say which part they are showing rather than letting a reader conclude the rest is gone.
 26.28. MUST refuse to proceed when the frontend and the server disagree about the protocol version, saying which of the two is behind. `hello` has carried the number since there was a protocol and nothing read it; the frontend is a static site, so a browser holding yesterday's build against a server updated this morning is the ordinary case.
 26.29. MAY deliver a voice note whole rather than streaming it, declining 25.38. 26.25 bounds a note at what one request carries — about five minutes of speech, some 750 kB — and the server is on the same network as the device asking, so the wait streaming would remove is a fraction of a second. The cost is a second delivery path for audio, with its own ordering and failure cases, for a gain nobody can perceive. If 26.25's bound is ever lifted this should be reconsidered with it.
+
+## 27. Fourth review
+
+From a session driving the built app. Several items are two ends of one fault; they name each other.
+
+### Connection
+
+27.1. MUST discard a previous server's failures once a different address has been entered. Reported as flakiness at startup: the app connects to the address it was given and then reports a disconnection belonging to the server it was pointed at before.
+
+### Audio
+
+27.2. MUST start the loop again when the setting is re-enabled after being turned off, and after a reload in that state. Stopping and starting the timer recovers it, so nothing is broken but the path back.
+27.3. MUST show the control for unblocking playback whenever the app believes the loop should be playing and it is not, rather than leaving that state silent. Refines 26.2.
+27.4. MUST NOT reach a state where Preview is offered *because* nothing is playing while the timer is running — pressing it starts the loop and then disables itself, which is the app repairing a state it should never have been in. The availability of Preview is evidence the app already knows; 27.3 is what it should do with that.
+27.5. MUST name the microphone a recording will use, when that is known, and offer a control — a cog, no words — to inspect it and choose another. Device-local like everything else in section 16.
+
+### Work notes
+
+27.6. MUST let Save stop a running recording and keep it, rather than refusing with "there is nothing here". An explicit Stop stays.
+27.7. MUST allow another take after one is finished; "Record again" is offered and there is no way to record another.
+27.8. MUST draw the waveform's bars at a uniform width. They vary by a pixel in places, which reads as a fault in the drawing rather than in the sound.
+27.9. MUST stop the prompt tune on any interaction with the prompt, not only on the parts of it that happen to take focus. Refines 26.7.
+27.10. MUST leave the work-note field empty rather than showing an example of what somebody might write.
+
+### Invoices
+
+27.11. MUST direct somebody to the settings that are missing when the invoices screen cannot produce anything without them.
+27.12. MUST keep the line breaks somebody typed into the sender's address, as the client's address already does. The lines are re-wrapped at a different place instead.
+27.13. MUST print the note under the totals exactly as it was entered, without adding brackets around it, and MUST NOT describe brackets in the settings copy beside it.
+27.14. MUST name a downloaded invoice for the invoice. A blob URL downloads as a uuid.
+27.15. MUST offer a Download control in every presentation, named per 27.14 — the browser's own viewer is not available everywhere, and on a phone it does not work at all. Supersedes 26.10 and the second half of 26.11; View stays wherever the engine renders a PDF.
+
+### Pacing and history
+
+27.16. MUST include the running timer in the pacing figures, not only completed entries.
+27.17. MUST show a holiday distinctly among the days of the month, and MUST list that month's holidays below them.
+27.18. MUST use two spacings on the history screen and mean something by them: the smaller within a group, the larger between. The month's totals and "Add past time" are one group; each run of consecutive days with work is a group.
+
+### Editing an entry
+
+27.19. MUST lay out a timed entry's start and end on one line, and MUST use one component for adding and for editing, since the two disagree today.
+27.20. MUST switch between a timed entry and a duration-only one with the same control that chooses the shape when adding, rather than a separate button, and MUST remember the times while the other shape is showing so that switching back restores them. No warning is needed for a change nothing has saved.
+
+### Everywhere
+
+27.21. MUST format a date as `08 Sep 2026` — two-digit day, three-letter month, four-digit year — in the app and in the invoice alike, rather than as `08/09/2026` and rather than through the viewing device's locale.
+
+### Users
+
+27.22. MUST rename the administration screen to "Users" and show it to every role, stating what a device may not see rather than omitting it silently.
+27.23. MUST offer an invite from that screen: a dialog explaining what it is, and a QR code carrying this app's own address with the server's KPS address in the URL hash, so that somebody scanning it needs nothing else. The app MUST consume that hash and remove it from the URL once the device is in. This is the one place URL state is wanted; it does not reopen 21.19.
+
+### Installing
+
+27.24. MUST carry the metadata a phone needs to install the frontend as an app.
