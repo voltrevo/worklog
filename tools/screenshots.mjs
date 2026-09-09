@@ -187,11 +187,50 @@ function navLabel(screen) {
   return screen.charAt(0).toUpperCase() + screen.slice(1);
 }
 
+/**
+ * A picture of the whole screen, which `fullPage: true` does not take here.
+ *
+ * `fullPage` grows the shot to the *document's* scroll height, and this document never scrolls:
+ * the app is a fixed-height grid and `.main` is the element with `overflow: auto`. So every
+ * screenshot ever taken by this tool — including the four in `docs/` that the README embeds — was
+ * the first 1000px of its screen and nothing below. Settings is about four times that, and the
+ * invoice details this was written to inspect start below the fold.
+ *
+ * The viewport is grown to fit the content instead, and put back afterwards. Width is untouched,
+ * so the shell does not switch layouts underneath the picture.
+ */
+const MAX_SHOT_HEIGHT = 6_000;
+
 async function shot(page, name) {
   const dir = COMMITTED.has(name) ? outDir : scratchDir;
   await mkdir(dir, { recursive: true });
+
+  const viewport = page.viewportSize();
+  const needed = await page.evaluate(() => {
+    const main = document.querySelector(".main");
+    if (!main) return 0;
+    // The chrome above and beside `.main` stays put; only the scrolling part has to grow.
+    return Math.ceil(main.scrollHeight - main.clientHeight);
+  }).catch(() => 0);
+
+  const grown = viewport && needed > 0;
+  if (grown) {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: Math.min(viewport.height + needed, MAX_SHOT_HEIGHT),
+    });
+    // A reflow, and any lazy measurement that keys off the resize.
+    await page.waitForTimeout(250);
+  }
+
   await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
-  console.log(`  ${name}.png${COMMITTED.has(name) ? "" : "  (scratch)"}`);
+  if (grown) {
+    await page.setViewportSize(viewport);
+    await page.waitForTimeout(150);
+  }
+  console.log(
+    `  ${name}.png${COMMITTED.has(name) ? "" : "  (scratch)"}${grown ? `  +${needed}px` : ""}`,
+  );
 }
 
 await main().catch((err) => {

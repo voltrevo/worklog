@@ -11,6 +11,7 @@
     "./protocol": "./protocol.ts",
     "./client": "./client.ts",
     "./reports": "./reports.ts",
-    "./rounding": "./rounding.ts"
+    "./rounding": "./rounding.ts",
+    "./invoiceLook": "./invoiceLook.ts"
   }
 }

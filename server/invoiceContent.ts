@@ -14,6 +14,7 @@
 import { appliedOverride, type InvoiceDraft } from "@worklog/shared/invoice";
 import type { DateString } from "@worklog/shared/types";
 import type { InvoiceConfig } from "./config.ts";
+import { INVOICE_LABELS as L } from "@worklog/shared/invoiceLook";
 
 export interface Pair {
   label: string;
@@ -21,6 +22,15 @@ export interface Pair {
 }
 
 export interface InvoiceContent {
+  /**
+   * 8.23 — the two headings the renderer used to hold as string literals of its own.
+   *
+   * `heading` and `paymentHeading` were already carried here, so these two were the only words on
+   * the page that no test could see and that `shared/invoiceLook.ts` therefore could not keep in
+   * step with the settings screen. 26.16 is precisely about those two agreeing.
+   */
+  title: string;
+  billToHeading: string;
   /** 8.23 — the sender. Only fields that are set; an empty one is absent, not blank (9.4, 20.9). */
   from: Pair[];
   /** 8.24 */
@@ -129,30 +139,25 @@ export function invoiceContent(
   const config: InvoiceConfig = { ...globalConfig, ...appliedOverride(draft.config) };
 
   const content: InvoiceContent = {
+    title: L.title,
+    billToHeading: L.billTo,
     from: set([
-      ["Name (or name of company):", config.fromName],
-      ["Postal address:", config.fromAddress],
-      ["Telephone No.:", config.fromPhone],
-      ["E-mail address:", config.fromEmail],
-      ["ABN:", config.fromAbn],
+      [L.from.fromName, config.fromName],
+      [L.from.fromAddress, config.fromAddress],
+      [L.from.fromPhone, config.fromPhone],
+      [L.from.fromEmail, config.fromEmail],
+      [L.from.fromAbn, config.fromAbn],
     ]),
     identity: [
-      { label: "Inv. number", value: draft.number },
-      { label: "Date", value: formatDate(draft.invoiceDate) },
+      { label: L.identity.number, value: draft.number },
+      { label: L.identity.date, value: formatDate(draft.invoiceDate) },
     ],
     billTo: [config.clientName, ...config.clientAddress.split("\n")]
       .map((l) => l.trim())
       .filter(Boolean),
-    period: { label: "Time period:", value: periodRange(draft.period) },
-    heading: "DESCRIPTION OF WORK PERFORMED",
-    columns: [
-      "Date",
-      "Description of work / expense",
-      "Team/Project",
-      "Hours",
-      "Rate",
-      "Amount",
-    ],
+    period: { label: L.period, value: periodRange(draft.period) },
+    heading: L.workHeading,
+    columns: [...L.columns],
     rows: draft.lines.map((l) => [
       l.date ? formatDate(l.date) : "",
       l.description,
@@ -164,40 +169,38 @@ export function invoiceContent(
     totalRow: [
       "",
       "",
-      "Total",
+      L.rowTotal,
       draft.workHours.toFixed(1),
       "",
       money(draft.workSubtotalMinor, cur),
     ],
     aside: set([
-      ["Hourly rate in:", cur],
-      ["Work Approver:", config.approver],
+      [L.aside.currency, cur],
+      [L.aside.approver, config.approver],
     ]),
     totals: [
-      { label: "Sub-total", value: money(draft.subtotalMinor, cur) },
+      { label: L.subtotal, value: money(draft.subtotalMinor, cur) },
       {
-        label: draft.taxRate > 0
-          ? `${config.taxLabel} (${pct(draft.taxRate)})`
-          : "VAT (if applicable)",
+        label: draft.taxRate > 0 ? `${config.taxLabel} (${pct(draft.taxRate)})` : L.noTax,
         value: money(draft.taxMinor, cur),
       },
-      { label: "TOTAL", value: money(draft.totalMinor, cur) },
+      { label: L.grandTotal, value: money(draft.totalMinor, cur) },
     ],
-    paymentHeading: "METHOD OF PAYMENT",
+    paymentHeading: L.paymentHeading,
     paymentMethod: {
-      label: "Payment request in:",
+      label: L.paymentMethod,
       // 25.18 — verbatim. It used to print `AUD (Bank transfer)`, which reads as the currency with
       // the method as a parenthetical afterthought; the currency is already stated two lines up on
       // "Hourly rate in", and what the client needs here is how to pay.
       value: config.payMethod,
     },
     account: set([
-      ["Name", config.payName],
-      ["BSB", config.payBsb],
-      ["Account Number", config.payAccountNumber],
-      ["Bank", config.payBank],
+      [L.account.payName, config.payName],
+      [L.account.payBsb, config.payBsb],
+      [L.account.payAccountNumber, config.payAccountNumber],
+      [L.account.payBank, config.payBank],
     ]),
-    due: { label: "Payment due by", value: formatDate(draft.dueDate) },
+    due: { label: L.due, value: formatDate(draft.dueDate) },
   };
 
   if (draft.bonusLine) {
@@ -220,6 +223,8 @@ export function invoiceContent(
 /** Every string that will be drawn, for a test that wants to know what is on the page. */
 export function allText(content: InvoiceContent): string[] {
   return [
+    content.title,
+    content.billToHeading,
     ...content.from.flatMap((p) => [p.label, p.value]),
     ...content.identity.flatMap((p) => [p.label, p.value]),
     ...content.billTo,

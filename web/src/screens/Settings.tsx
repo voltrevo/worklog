@@ -6,8 +6,9 @@
  * is not a display choice — the value is not in the response.
  */
 
-import { useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { today } from "@worklog/shared/dates";
+import { INVOICE_LABELS, invoiceCssVars } from "@worklog/shared/invoiceLook";
 import { useStore } from "../state.tsx";
 import { hours, parseNumber } from "../format.ts";
 import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
@@ -357,9 +358,6 @@ function InvoiceCard(
   });
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
 
-  // 25.3 — a field holding text that is not a number leaves the last good value in the draft, so
-  // without this the Save button would happily write it back and the typo would vanish unnoticed.
-  // Named rather than counted, because "one field is wrong" is not enough to go on.
   /**
    * 25.43 — which hidden groups have been cleared for re-entry, in this sitting.
    *
@@ -370,6 +368,9 @@ function InvoiceCard(
   const [cleared, setCleared] = useState({ payment: false, address: false });
   const [unlocking, setUnlocking] = useState<"payment" | "address">();
 
+  // 25.3 — a field holding text that is not a number leaves the last good value in the draft, so
+  // without this the Save button would happily write it back and the typo would vanish unnoticed.
+  // Named rather than counted, because "one field is wrong" is not enough to go on.
   const [unreadable, setUnreadable] = useState<string[]>([]);
   const num = (
     name: string,
@@ -392,6 +393,32 @@ function InvoiceCard(
     !cfg.paymentDetailsSet && !pay.payAccountNumber && "payment details",
   ].filter(Boolean) as string[];
 
+  const paymentHidden = cfg.paymentDetailsSet && !cleared.payment;
+  const secret = (k: keyof typeof pay) => ({
+    value: pay[k],
+    set: (v: string) => setPay({ ...pay, [k]: v }),
+    can: canWrite,
+    hidden: paymentHidden,
+    onUnlock: () => setUnlocking("payment"),
+  });
+
+  /** A caption and the thing it captions, as a pair of cells in one of the sheet's grids. */
+  const pair = (label: string, control: ReactNode) => (
+    <>
+      <span className="invsheet-label">{label}</span>
+      {control}
+    </>
+  );
+
+  /** A value the document works out for itself, highlighted where the document highlights it. */
+  const derived = (what: string, highlighted?: boolean) => (
+    <span className={highlighted ? "invsheet-derived invsheet-hi" : "invsheet-derived"}>
+      {what}
+    </span>
+  );
+
+  const columns = INVOICE_LABELS.columns;
+
   return (
     <div className="card">
       <h3>Invoice details</h3>
@@ -402,249 +429,288 @@ function InvoiceCard(
         </div>
       )}
 
-      {
-        /*
-        25.15 — laid out as the document it configures.
+      <div className="invsheet" style={invoiceCssVars() as CSSProperties}>
+        <div className="invsheet-title">{INVOICE_LABELS.title}</div>
 
-        This was one `auto-fit` grid of sixteen boxes in declaration order: "Your ABN" beside "Your
-        email" beside "Your address", then the client, then the currency next to the rate, and the
-        tax label wherever it landed. Every one of them is a value that appears in a specific place
-        on a page somebody is going to look at, and none of that was recoverable from the form —
-        checking a printed invoice against these settings meant reading both and matching by name.
-
-        Now each field is roughly where its value comes out. Not to scale and not pretty: the
-        per-invoice content is abbreviated to a label, because a settings screen cannot show you
-        August's line items and pretending otherwise would be worse than the grid was.
-      */
-      }
-      <div className="invform" style={{ marginTop: 14 }}>
-        <div className="invform-head">
-          <div className="stack" style={{ gap: 8 }}>
-            <Text
-              label="Name (or name of company)"
-              value={draft.fromName}
-              set={(v) => set("fromName", v)}
-              can={canWrite}
-            />
-            <Masked
-              label="Postal address"
-              value={draft.fromAddress ?? ""}
-              set={(v) => set("fromAddress", v)}
-              can={canWrite}
-              hidden={cfg.addressSet && !cleared.address}
-              onUnlock={() => setUnlocking("address")}
-            />
-            <Text
-              label="Telephone No."
-              value={draft.fromPhone}
-              set={(v) => set("fromPhone", v)}
-              can={canWrite}
-            />
-            <Text
-              label="E-mail address"
-              value={draft.fromEmail}
-              set={(v) => set("fromEmail", v)}
-              can={canWrite}
-            />
-            <Text
-              label="ABN"
-              value={draft.fromAbn}
-              set={(v) => set("fromAbn", v)}
-              can={canWrite}
-            />
+        <div className="invsheet-head">
+          <div className="invsheet-pairs">
+            {pair(
+              INVOICE_LABELS.from.fromName,
+              <Bare
+                aria={INVOICE_LABELS.from.fromName}
+                value={draft.fromName}
+                set={(v) => set("fromName", v)}
+                can={canWrite}
+              />,
+            )}
+            {pair(
+              INVOICE_LABELS.from.fromAddress,
+              <BareMasked
+                aria={INVOICE_LABELS.from.fromAddress}
+                value={draft.fromAddress ?? ""}
+                set={(v) => set("fromAddress", v)}
+                can={canWrite}
+                hidden={cfg.addressSet && !cleared.address}
+                onUnlock={() => setUnlocking("address")}
+                // 26.16 — an address prints on several lines and used to be typed into one box,
+                // which turned every stored newline into nothing the moment anything was saved.
+                lines={3}
+              />,
+            )}
+            {pair(
+              INVOICE_LABELS.from.fromPhone,
+              <Bare
+                aria={INVOICE_LABELS.from.fromPhone}
+                value={draft.fromPhone}
+                set={(v) => set("fromPhone", v)}
+                can={canWrite}
+              />,
+            )}
+            {pair(
+              INVOICE_LABELS.from.fromEmail,
+              <Bare
+                aria={INVOICE_LABELS.from.fromEmail}
+                value={draft.fromEmail}
+                set={(v) => set("fromEmail", v)}
+                can={canWrite}
+              />,
+            )}
+            {pair(
+              INVOICE_LABELS.from.fromAbn,
+              <Bare
+                aria={INVOICE_LABELS.from.fromAbn}
+                value={draft.fromAbn}
+                set={(v) => set("fromAbn", v)}
+                can={canWrite}
+              />,
+            )}
           </div>
+
           {/* Top right on the document, and derived rather than configured. */}
-          <div className="invform-identity">
-            <span className="invform-slot">Inv. number</span>
-            <span className="faint">from the period — INV-2026-08</span>
-            <span className="invform-slot">Date</span>
-            <span className="faint">the day it is issued</span>
+          <div className="invsheet-pairs invsheet-identity">
+            {pair(INVOICE_LABELS.identity.number, derived("from the period", true))}
+            {pair(INVOICE_LABELS.identity.date, derived("the day it is issued", true))}
           </div>
         </div>
 
-        <h4 className="invform-rule">BILL TO</h4>
-        <div className="invform-billto">
-          <Text
-            label="Client name"
-            value={draft.clientName}
-            set={(v) => set("clientName", v)}
-            can={canWrite}
-          />
-          <Text
-            label="Client address"
+        <h4 className="invsheet-heading">{INVOICE_LABELS.billTo}</h4>
+        <div className="invsheet-billto">
+          <div className="invsheet-name">
+            <Bare
+              aria="Client name"
+              value={draft.clientName}
+              set={(v) => set("clientName", v)}
+              can={canWrite}
+            />
+          </div>
+          <BareArea
+            aria="Client address"
             value={draft.clientAddress}
             set={(v) => set("clientAddress", v)}
             can={canWrite}
+            lines={3}
           />
         </div>
 
-        <div className="invform-period faint">Time period — the month being invoiced</div>
+        <div className="invsheet-period">
+          <span className="invsheet-label">{INVOICE_LABELS.period}</span>
+          {derived("the month being invoiced", true)}
+        </div>
 
-        <h4 className="invform-rule">DESCRIPTION OF WORK PERFORMED</h4>
+        <h4 className="invsheet-heading">{INVOICE_LABELS.workHeading}</h4>
+
         {
           /*
-          The table's five columns, with a field under the two that are configured and a note under
-          the three that come from the work. Positioned rather than described, which is the point:
-          "Default Team / Project" means nothing until you see it sitting under Team/Project.
+          8.19 — the bonus is its own little table above the work, with its own subtotal, and the
+          only thing set here is which Team/Project it is filed under. That was a field captioned
+          "Team / Project for the bonus row" sitting on its own below the table, which is the
+          sentence you write when the layout cannot say it.
         */
         }
-        {
-          /*
-          Each column is one element holding its heading and its cell.
-          Five spans then five cells, laid out by a five-column grid, is the same picture on a wide
-          screen and falls apart on a narrow one: the grid collapses to one column and you get all
-          five headings in a row followed by all five values, which is not a table and not a form.
-        */
-        }
-        <div className="invform-table">
-          <div className="invform-cell">
-            <span className="invform-col">Date</span>
-            <span className="faint">each day</span>
+        <div className="invsheet-table">
+          <div className="invsheet-tr head">
+            {columns.map((c, i) => (
+              <span key={c} className={i >= 3 ? "invsheet-td num" : "invsheet-td"}>{c}</span>
+            ))}
           </div>
-          <div className="invform-cell">
-            <span className="invform-col">Description of work</span>
-            <span className="faint">the billing tag</span>
+          <div className="invsheet-tr bonus body">
+            <span className="invsheet-td" data-col={columns[0]}>{derived("the period")}</span>
+            <span className="invsheet-td" data-col={columns[1]}>{derived("the bonus line")}</span>
+            <span className="invsheet-td" data-col={columns[2]}>
+              <Bare
+                aria="Team / Project for the bonus row"
+                value={draft.bonusTeamProject}
+                set={(v) => set("bonusTeamProject", v)}
+                can={canWrite}
+              />
+            </span>
+            <span className="invsheet-td num blank" data-col={columns[3]}>—</span>
+            <span className="invsheet-td num blank" data-col={columns[4]}>—</span>
+            <span className="invsheet-td num" data-col={columns[5]}>{derived("the bonus")}</span>
           </div>
-          <div className="invform-cell">
-            <span className="invform-col">Team/Project</span>
-            <Text
-              label=""
-              aria="Default Team / Project"
-              value={draft.teamProject}
-              set={(v) => set("teamProject", v)}
-              can={canWrite}
-            />
-          </div>
-          <div className="invform-cell num">
-            <span className="invform-col">Hours</span>
-            <span className="faint">from the entries</span>
-          </div>
-          <div className="invform-cell num">
-            <span className="invform-col">Rate</span>
-            <Num
-              label=""
-              aria="Hourly rate"
-              value={(draft.rateMinor / 100).toFixed(2)}
-              set={(n) => num("the hourly rate", n, (v) => set("rateMinor", Math.round(v * 100)))}
-              can={canWrite}
-            />
+          <div className="invsheet-tr sum">
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td blank" />
+            {/* Captioned for the phone, where the row above it is no longer overhead. */}
+            <span className="invsheet-td num" data-col={columns[5]}>{derived("the bonus")}</span>
           </div>
         </div>
 
-        <div className="invform-bonus">
-          <Text
-            label="Team / Project for the bonus row"
-            value={draft.bonusTeamProject}
-            set={(v) => set("bonusTeamProject", v)}
-            can={canWrite}
-          />
+        <div className="invsheet-table" style={{ marginTop: 18 }}>
+          <div className="invsheet-tr head">
+            {columns.map((c, i) => (
+              <span key={c} className={i >= 3 ? "invsheet-td num" : "invsheet-td"}>{c}</span>
+            ))}
+          </div>
+          <div className="invsheet-tr body">
+            <span className="invsheet-td" data-col={columns[0]}>{derived("each day worked")}</span>
+            <span className="invsheet-td" data-col={columns[1]}>{derived("the billing tag")}</span>
+            <span className="invsheet-td" data-col={columns[2]}>
+              <Bare
+                aria="Default Team / Project"
+                value={draft.teamProject}
+                set={(v) => set("teamProject", v)}
+                can={canWrite}
+              />
+            </span>
+            <span className="invsheet-td num" data-col={columns[3]}>
+              {derived("from the entries")}
+            </span>
+            <span className="invsheet-td num" data-col={columns[4]}>
+              <BareNum
+                aria="Hourly rate"
+                value={(draft.rateMinor / 100).toFixed(2)}
+                set={(n) => num("the hourly rate", n, (v) => set("rateMinor", Math.round(v * 100)))}
+                can={canWrite}
+              />
+            </span>
+            <span className="invsheet-td num" data-col={columns[5]}>
+              {derived("hours × rate")}
+            </span>
+          </div>
+          <div className="invsheet-tr sum">
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td">{INVOICE_LABELS.rowTotal}</span>
+            <span className="invsheet-td num" data-col={columns[3]}>{derived("total hours")}</span>
+            <span className="invsheet-td blank" />
+            <span className="invsheet-td num" data-col={columns[5]}>{derived("the work")}</span>
+          </div>
         </div>
 
-        <div className="invform-foot">
-          {/* Bottom left on the document. */}
-          <div className="stack" style={{ gap: 8 }}>
-            <Text
-              label="Hourly rate in"
-              value={draft.currency}
-              set={(v) => set("currency", v)}
-              can={canWrite}
-            />
-            <Text
-              label="Work Approver"
-              value={draft.approver}
-              set={(v) => set("approver", v)}
-              can={canWrite}
-            />
+        <div className="invsheet-foot">
+          {/* 8.28 — bottom left on the page. */}
+          <div className="invsheet-pairs">
+            {pair(
+              INVOICE_LABELS.aside.currency,
+              <Bare
+                aria="Hourly rate in"
+                value={draft.currency}
+                set={(v) => set("currency", v)}
+                can={canWrite}
+              />,
+            )}
+            {pair(
+              INVOICE_LABELS.aside.approver,
+              <Bare
+                aria="Work Approver"
+                value={draft.approver}
+                set={(v) => set("approver", v)}
+                can={canWrite}
+              />,
+            )}
           </div>
-          {/* Bottom right: the totals stack, of which only the tax row is configurable. */}
-          <div className="stack" style={{ gap: 8 }}>
-            <div className="invform-total faint">Sub-total — from the lines</div>
-            <div className="row wrap" style={{ gap: 8, alignItems: "flex-end" }}>
-              <Text
-                label="Tax label"
-                value={draft.taxLabel}
-                set={(v) => set("taxLabel", v)}
-                can={canWrite}
-              />
-              <Num
-                label="Rate (%)"
-                value={String(Math.round(draft.taxRate * 1000) / 10)}
-                set={(n) => num("the tax rate", n, (v) => set("taxRate", v / 100))}
-                can={canWrite}
-                width={90}
-              />
+
+          {/* 8.29 — and the stack on the right, of which only the tax row is configurable. */}
+          <div className="invsheet-totals">
+            <div className="invsheet-total hi">
+              <span>{INVOICE_LABELS.subtotal}</span>
+              {derived("from the lines")}
             </div>
-            <div className="invform-total faint">TOTAL — sub-total plus tax</div>
+            <div className="invsheet-total">
+              <div className="invsheet-tax">
+                <Bare
+                  aria="Tax label"
+                  value={draft.taxLabel}
+                  set={(v) => set("taxLabel", v)}
+                  can={canWrite}
+                />
+                <BareNum
+                  aria="Tax rate, per cent"
+                  value={String(Math.round(draft.taxRate * 1000) / 10)}
+                  set={(n) => num("the tax rate", n, (v) => set("taxRate", v / 100))}
+                  can={canWrite}
+                />
+              </div>
+              {derived("of the sub-total")}
+            </div>
+            <div className="invsheet-total hi grand">
+              <span>{INVOICE_LABELS.grandTotal}</span>
+              {derived("sub-total plus tax")}
+            </div>
           </div>
         </div>
 
-        <Text
-          label="Note under the totals"
-          value={draft.note}
-          set={(v) => set("note", v)}
-          can={canWrite}
-        />
-      </div>
+        <h4 className="invsheet-heading">{INVOICE_LABELS.paymentHeading}</h4>
+        {/* 8.30, 9.18 — labelled rows, because the format renders them as labelled rows. */}
+        <div className="invsheet-pay">
+          <div className="invsheet-pairs">
+            {pair(
+              INVOICE_LABELS.paymentMethod,
+              <BareMasked aria="Payment method" {...secret("payMethod")} />,
+            )}
+            {pair(
+              INVOICE_LABELS.account.payName,
+              <BareMasked aria="Account name" {...secret("payName")} />,
+            )}
+            {pair(INVOICE_LABELS.account.payBsb, <BareMasked aria="BSB" {...secret("payBsb")} />)}
+            {pair(
+              INVOICE_LABELS.account.payAccountNumber,
+              <BareMasked aria="Account number" {...secret("payAccountNumber")} />,
+            )}
+            {pair(
+              INVOICE_LABELS.account.payBank,
+              <BareMasked aria="Bank" {...secret("payBank")} />,
+            )}
+          </div>
+          {
+            /*
+            8.32 — the note, which prints here in italics and has no caption on the document.
+            It has none here either, for the same reason; an empty box beside the bank details
+            with nothing to say for itself is what a placeholder is for.
+          */
+          }
+          <div className="invsheet-note">
+            <BareArea
+              aria="Note under the totals"
+              placeholder="an optional note, printed here in italics"
+              value={draft.note}
+              set={(v) => set("note", v)}
+              can={canWrite}
+              lines={2}
+            />
+          </div>
+        </div>
 
-      {/* 8.30, 9.18 -- labelled fields, because the format renders them as labelled rows. */}
-      {/* 25.42 — the "set" chip is gone; each field says for itself whether it holds anything. */}
-      <h3 style={{ marginTop: 20 }}>Method of payment</h3>
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          marginTop: 8,
-        }}
-      >
-        <Masked
-          label="Payment method"
-          value={pay.payMethod}
-          set={(v) => setPay({ ...pay, payMethod: v })}
-          can={canWrite}
-          hidden={cfg.paymentDetailsSet && !cleared.payment}
-          onUnlock={() => setUnlocking("payment")}
-        />
-        <Masked
-          label="Account name"
-          value={pay.payName}
-          set={(v) => setPay({ ...pay, payName: v })}
-          can={canWrite}
-          hidden={cfg.paymentDetailsSet && !cleared.payment}
-          onUnlock={() => setUnlocking("payment")}
-        />
-        <Masked
-          label="BSB"
-          value={pay.payBsb}
-          set={(v) => setPay({ ...pay, payBsb: v })}
-          can={canWrite}
-          hidden={cfg.paymentDetailsSet && !cleared.payment}
-          onUnlock={() => setUnlocking("payment")}
-        />
-        <Masked
-          label="Account number"
-          value={pay.payAccountNumber}
-          set={(v) => setPay({ ...pay, payAccountNumber: v })}
-          can={canWrite}
-          hidden={cfg.paymentDetailsSet && !cleared.payment}
-          onUnlock={() => setUnlocking("payment")}
-        />
-        <Masked
-          label="Bank"
-          value={pay.payBank}
-          set={(v) => setPay({ ...pay, payBank: v })}
-          can={canWrite}
-          hidden={cfg.paymentDetailsSet && !cleared.payment}
-          onUnlock={() => setUnlocking("payment")}
-        />
+        <div className="invsheet-due">
+          <span className="invsheet-label">{INVOICE_LABELS.due}</span>
+          {derived("four weeks after it is issued, then forward to a Monday", true)}
+        </div>
+
+        <p className="invsheet-secret">
+          The payment details go on the invoice PDF and nowhere else, and the server never sends
+          them back.
+        </p>
       </div>
-      <p className="faint" style={{ fontSize: 12 }}>
-        These go on the invoice PDF and nowhere else, and the server never sends them back.
-      </p>
 
       {canWrite && (
         <button
           className="btn primary"
           type="button"
+          style={{ marginTop: 14 }}
           // 25.2 -- the button stays, and says why it will not go. Removing it would leave the
           // screen looking read-only for what is really one mistyped character.
           disabled={unreadable.length > 0}
@@ -714,7 +780,7 @@ function PromptCard(
         owed to you when the timer stops.
       </p>
       <div className="row wrap" style={{ alignItems: "flex-end" }}>
-        <label className="row" style={{ gap: 8 }}>
+        <label className="checkfield">
           <input
             type="checkbox"
             checked={cfg.enabled}
@@ -838,66 +904,116 @@ function Num(
  */
 const MASK = "••••••••";
 
-function Masked(
-  { label, value, set, can, hidden, onUnlock }: {
-    label: string;
+/**
+ * The document's caption as a control's name.
+ *
+ * `Postal address:` is what the page prints, colon and all, and the caption beside the field says
+ * exactly that — but a name is not typography. Left in, a screen reader says "Postal address colon
+ * edit text", and the mask button ends up called "Postal address: — stored and hidden".
+ */
+function named(caption: string): string {
+  return caption.replace(/:$/, "");
+}
+
+function Bare(
+  { aria, value, set, can }: {
+    aria: string;
+    value: string;
+    set: (v: string) => void;
+    can: boolean;
+  },
+) {
+  return (
+    <input
+      value={value}
+      disabled={!can}
+      aria-label={named(aria)}
+      onChange={(e) => set(e.target.value)}
+    />
+  );
+}
+
+/** For a value that prints on more than one line, which is every address on the document. */
+function BareArea(
+  { aria, value, set, can, lines, placeholder }: {
+    aria: string;
+    value: string;
+    set: (v: string) => void;
+    can: boolean;
+    lines: number;
+    placeholder?: string;
+  },
+) {
+  return (
+    <textarea
+      value={value}
+      rows={lines}
+      disabled={!can}
+      aria-label={named(aria)}
+      placeholder={placeholder}
+      onChange={(e) => set(e.target.value)}
+    />
+  );
+}
+
+function BareNum(
+  { aria, value, set, can }: {
+    aria: string;
+    /** The stored number as text — shown whenever the field is not being edited. */
+    value: string;
+    /** The parsed number, or `undefined` when the field does not hold one. */
+    set: (n: number | undefined) => void;
+    can: boolean;
+  },
+) {
+  const [typed, setTyped] = useState<string | undefined>(undefined);
+  const shown = typed ?? value;
+  const bad = typed !== undefined && typed.trim() !== "" && parseNumber(typed) === undefined;
+  return (
+    <input
+      value={shown}
+      disabled={!can}
+      inputMode="decimal"
+      aria-label={named(aria)}
+      aria-invalid={bad || undefined}
+      className={bad ? "invalid" : undefined}
+      onChange={(e) => {
+        setTyped(e.target.value);
+        set(parseNumber(e.target.value));
+      }}
+      onBlur={() => {
+        if (typed !== undefined && parseNumber(typed) !== undefined) setTyped(undefined);
+      }}
+    />
+  );
+}
+
+function BareMasked(
+  { aria, value, set, can, hidden, onUnlock, lines }: {
+    aria: string;
     value: string;
     set: (v: string) => void;
     can: boolean;
     /** True while the stored value is still in place and nothing new has been typed. */
     hidden: boolean;
     onUnlock: () => void;
+    lines?: number;
   },
 ) {
-  if (!hidden) return <Text label={label} value={value} set={set} can={can} />;
+  if (!hidden) {
+    return lines
+      ? <BareArea aria={aria} value={value} set={set} can={can} lines={lines} />
+      : <Bare aria={aria} value={value} set={set} can={can} />;
+  }
   return (
-    <label className="field">
-      {label}
-      {
-        /*
-        A button rather than a disabled input with a click handler: a disabled input receives no
-        events at all, so the explanation would be unreachable by exactly the interaction 25.43
-        describes. It is styled as the field it stands in for.
-      */
-      }
-      <button
-        type="button"
-        className="maskfield"
-        disabled={!can}
-        onClick={onUnlock}
-        aria-label={`${label} — stored and hidden`}
-      >
-        {MASK}
-      </button>
-    </label>
-  );
-}
-
-function Text(
-  { label, value, set, can, aria }: {
-    label: string;
-    value: string;
-    set: (v: string) => void;
-    can: boolean;
-    /**
-     * The accessible name, when the visible one is somewhere else.
-     *
-     * 25.15 puts two of these under a column heading rather than beside their own label, and an
-     * input whose `<label>` is empty has no name at all — invisible to a screen reader and to
-     * anything that finds a control by what it is called.
-     */
-    aria?: string;
-  },
-) {
-  return (
-    <label className="field">
-      {label}
-      <input
-        value={value}
-        disabled={!can}
-        aria-label={aria}
-        onChange={(e) => set(e.target.value)}
-      />
-    </label>
+    <button
+      type="button"
+      className="maskfield"
+      disabled={!can}
+      onClick={onUnlock}
+      aria-label={`${named(aria)} — stored and hidden`}
+    >
+      {MASK}
+    </button>
   );
 }

@@ -18,6 +18,7 @@
  */
 
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf-lib";
+import { INVOICE_PALETTE } from "@worklog/shared/invoiceLook";
 import type { InvoiceDraft } from "@worklog/shared/invoice";
 import type { InvoiceConfig } from "./config.ts";
 import { type InvoiceContent, invoiceContent } from "./invoiceContent.ts";
@@ -27,15 +28,20 @@ const PAGE = { w: 595.28, h: 841.89 };
 const M = 42;
 const CONTENT = PAGE.w - M * 2;
 
-const INK = rgb(0.13, 0.15, 0.18);
-const NAVY = rgb(0.11, 0.22, 0.44);
-const DIM = rgb(0.36, 0.40, 0.46);
-const RULE = rgb(0.85, 0.87, 0.90);
-const AMBER = rgb(0.996, 0.941, 0.816);
-const BLUE_WASH = rgb(0.867, 0.918, 0.976);
-const HEAD_WASH = rgb(0.804, 0.871, 0.957);
-const BONUS_WASH = rgb(0.996, 0.973, 0.925);
-const SUM_WASH = rgb(0.937, 0.957, 0.984);
+/*
+ * 26.16 — the palette lives in `shared/invoiceTheme.ts`, because the settings screen has to look
+ * like this page and a colour written out twice is a colour that agrees for one commit.
+ */
+const P = INVOICE_PALETTE;
+const INK = rgb(...P.ink);
+const NAVY = rgb(...P.navy);
+const DIM = rgb(...P.dim);
+const RULE = rgb(...P.rule);
+const AMBER = rgb(...P.amber);
+const BLUE_WASH = rgb(...P.blueWash);
+const HEAD_WASH = rgb(...P.headWash);
+const BONUS_WASH = rgb(...P.bonusWash);
+const SUM_WASH = rgb(...P.sumWash);
 
 /**
  * The six columns of 8.10, laid out right-to-left from the content box.
@@ -247,7 +253,7 @@ function valueColumn(ctx: Ctx, labels: readonly string[]): number {
 
 function header(ctx: Ctx, c: InvoiceContent): void {
   ctx.y -= 14;
-  text(ctx, "INVOICE", M, ctx.y, { size: 21, font: ctx.bold, color: NAVY, spacing: 4 });
+  text(ctx, c.title, M, ctx.y, { size: 21, font: ctx.bold, color: NAVY, spacing: 4 });
   ctx.y -= 26;
 
   // 8.24 — the invoice's own identity, top right, highlighted.
@@ -288,7 +294,7 @@ function header(ctx: Ctx, c: InvoiceContent): void {
 
 function billTo(ctx: Ctx, c: InvoiceContent): void {
   // 8.7, 8.25 — set apart, as the format does.
-  text(ctx, "BILL TO:", M, ctx.y, { font: ctx.bold, size: 10, color: NAVY, spacing: 1 });
+  text(ctx, c.billToHeading, M, ctx.y, { font: ctx.bold, size: 10, color: NAVY, spacing: 1 });
   // 25.16 — 14pt put the heading's descenders almost on the box below it, so the two read as one
   // run-on block rather than a label and the thing it labels.
   ctx.y -= 22;

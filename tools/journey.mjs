@@ -18,6 +18,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
@@ -171,6 +172,72 @@ async function sourceOnScreen(page, where) {
       .map((t) => t.trim().slice(0, 60))
   );
   return found.map((t) => `${where}: ${t}`);
+}
+
+/**
+ * 26.17 — a checkbox on a line with fields, sitting at a different height from them.
+ *
+ * A row that bottom-aligns a one-line checkbox against a caption-plus-control field puts the two
+ * sets of words half a control apart. Written as a sweep rather than a check on the one row that
+ * was reported, because the row that was reported is not interesting — the arrangement is, and it
+ * is available to every screen.
+ */
+async function checkboxAlignment(page, where) {
+  const off = await page.evaluate(() =>
+    [...document.querySelectorAll(".row")].flatMap((row) => {
+      const box = [...row.children].find((c) => c.querySelector?.('input[type="checkbox"]'));
+      const field = [...row.querySelectorAll("input:not([type=checkbox]), select")]
+        .find((i) => !box?.contains(i));
+      if (!box || !field) return [];
+      const a = box.getBoundingClientRect(), b = field.getBoundingClientRect();
+      // Only things actually side by side. A `wrap` row on a narrow phone is two lines, and two
+      // things on different lines are not misaligned with each other — they do not overlap at all,
+      // which is a sounder test than any distance between their tops.
+      if (!a.height || !b.height || a.bottom <= b.top || b.bottom <= a.top) return [];
+      const dy = Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
+      return dy > 4
+        ? [`${(box.textContent ?? "").trim().slice(0, 28)} is ${dy.toFixed(1)}px off`]
+        : [];
+    })
+  );
+  return off.map((t) => `${where}: ${t}`);
+}
+
+/**
+ * 26.16 — the captions the invoice settings uses are the document's own.
+ *
+ * The point of `shared/invoiceLook.ts` is that the form and the renderer caption the same value
+ * with the same words, so that checking a printed invoice against these settings is a matter of
+ * finding the same phrase in both. A caption written by hand into the form defeats that while
+ * looking completely fine on screen — which is how "Your ABN" sat over the field that prints under
+ * "ABN:" for as long as it did.
+ *
+ * The allowed set is read out of the module rather than copied here, because a third copy of these
+ * strings is the same bug in a different file.
+ */
+const documentCaptions = () => {
+  const src = readFileSync(join(root, "shared/invoiceLook.ts"), "utf8");
+  const from = src.indexOf("export const INVOICE_LABELS");
+  const to = src.indexOf("} as const;", from);
+  if (from < 0 || to < 0) throw new Error("INVOICE_LABELS is not where this expected it");
+  return new Set([...src.slice(from, to).matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+};
+
+async function invented(page) {
+  const allowed = documentCaptions();
+  // The card is rendered from the config, which arrives over the wire — so this has to wait for
+  // it. Read the instant the screen was navigated to, the query returned nothing and the check
+  // was a comparison against an empty list, which is a check that answers "fine" to anything.
+  await page.locator(".invsheet-title").waitFor({ timeout: 20_000 });
+  const shown = await page.evaluate(() =>
+    [...document.querySelectorAll(".invsheet-label, .invsheet-heading, .invsheet-title")]
+      .map((el) => (el.textContent ?? "").trim())
+      .filter(Boolean)
+  );
+  // A floor, for the same reason: the document has this many captions, and finding fewer means
+  // the query stopped matching rather than the form being clean.
+  if (shown.length < 15) throw new Error(`only ${shown.length} captions on the invoice form`);
+  return shown.filter((c) => !allowed.has(c));
 }
 
 async function clearSheets(page) {
@@ -439,6 +506,14 @@ async function main() {
   // difference between a rule and a silently-swallowed promise rejection.
   console.log("\nrefusals:");
   await nav(desktop.page, "Settings");
+
+  // 26.16 — before anything is typed: the form is captioned in the document's words.
+  const madeUp = await invented(desktop.page);
+  check(
+    "26.16 — the invoice form uses the document's own captions",
+    madeUp.length === 0,
+    madeUp.join("; "),
+  );
 
   // 24.42 — a region that no holiday in the country names. It used to save happily and then drop
   // every state holiday from the pacing arithmetic with nothing on screen to say why.
@@ -1415,11 +1490,13 @@ async function main() {
   const dim = [];
 
   const leaks = [];
+  const offLine = [];
   for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(300);
     dim.push(...await lowContrast(desktop.page, screen));
     leaks.push(...await sourceOnScreen(desktop.page, screen));
+    offLine.push(...await checkboxAlignment(desktop.page, screen));
     // The phone renders the same palette in a different shell, and the dark device is a third set
     // of colours entirely — the theme nobody looked at for two months.
     if (await mobile.page.getByRole("button", { name: screen, exact: true }).count()) {
@@ -1427,6 +1504,7 @@ async function main() {
       await mobile.page.waitForTimeout(250);
       dim.push(...await lowContrast(mobile.page, `${screen} (phone)`));
       leaks.push(...await sourceOnScreen(mobile.page, `${screen} (phone)`));
+      offLine.push(...await checkboxAlignment(mobile.page, `${screen} (phone)`));
     }
   }
   check(
@@ -1438,6 +1516,11 @@ async function main() {
     "no source text is rendered as content",
     leaks.length === 0,
     [...new Set(leaks)].join("; "),
+  );
+  check(
+    "26.17 — a checkbox sits on the same line as the fields beside it",
+    offLine.length === 0,
+    [...new Set(offLine)].join("; "),
   );
 
   // ------------------------------------------------------------ a modal that behaves like one
