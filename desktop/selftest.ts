@@ -129,6 +129,45 @@ globalThis.__run = async () => {
   await b.call("settingsSet", [JSON.stringify({ "worklog.added": "yes" })]);
   out.settingsAfter = await b.call("settingsGet");
   out.savedTo = await b.call("saveFile", ["../../escape me.pdf", globalThis.__fileB64]);
+  // 26.11 put the invoice in an iframe over a blob URL, which is the browser's own PDF viewer —
+  // and this is not that browser. Ask before assuming.
+  out.pdfViewer = String(navigator.pdfViewerEnabled);
+  out.pdfMime = String(Boolean(navigator.mimeTypes && navigator.mimeTypes["application/pdf"]));
+  // And a real one, in a real iframe: the flag above is a claim, and 26.11's viewer is the only
+  // way this build shows an invoice. No backticks in here -- this whole script is a template
+  // literal on the Deno side, and one backtick ends it.
+  const bin = atob(globalThis.__pdfB64);
+  const pdfBytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) pdfBytes[i] = bin.charCodeAt(i);
+  // Three questions, because one answer cannot tell them apart: does an iframe over a blob work at
+  // all, does it work for a PDF, and does a data: URL do any better. The app can be built on
+  // whichever of them this engine will actually draw.
+  const frameLoads = (url) =>
+    new Promise((res) => {
+      const f = document.createElement("iframe");
+      f.width = "300"; f.height = "200";
+      let settled = false;
+      const done = (why) => { if (!settled) { settled = true; f.remove(); res(why); } };
+      f.onload = () => setTimeout(() => {
+        try {
+          const d = f.contentDocument;
+          done(d ? "document:" + (d.body ? d.body.childElementCount : "no body") : "loaded");
+        } catch (e) { done("blocked:" + e.name); }
+      }, 600);
+      f.onerror = () => done("error event");
+      setTimeout(() => done("no load event"), 5000);
+      f.src = url;
+      document.body.appendChild(f);
+    });
+  out.htmlBlobFrame = await frameLoads(
+    URL.createObjectURL(new Blob(["<p>hello</p>"], { type: "text/html" })),
+  );
+  out.pdfFrame = await frameLoads(
+    URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" })),
+  );
+  out.pdfDataFrame = await frameLoads(
+    "data:application/pdf;base64," + globalThis.__pdfB64,
+  );
   try { await b.call("boom"); out.boom = "did not reject"; }
   catch (e) { out.boom = "rejected: " + e.message; }
   try { await b.call("noSuchCall"); out.unknown = "did not reject"; }
@@ -191,6 +230,34 @@ async function findApp(): Promise<Uint8Array | undefined> {
   return undefined;
 }
 
+/**
+ * A genuine one-page PDF, written out here rather than rendered.
+ *
+ * A viewer will refuse a file that merely starts with `%PDF-`, so `FILE` above will not do — and
+ * `pdf-lib` is not resolvable from inside the packaged desktop build, which is where this runs.
+ * Four objects and a correct cross-reference table is not much to write, and the offsets have to
+ * be counted rather than guessed: a viewer that rebuilds a broken xref would make a wrong answer
+ * here look like a right one.
+ */
+function onePagePdf(): Uint8Array {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (const [i, body] of objects.entries()) {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  }
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const at of offsets) pdf += `${String(at).padStart(10, "0")} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(pdf);
+}
+
 const MESSAGE = new TextEncoder().encode("worklog selftest message");
 const FILE = new TextEncoder().encode("%PDF-1.7 selftest\n");
 
@@ -203,6 +270,7 @@ try {
 
   await js(`globalThis.__message = ${JSON.stringify(toBase64(MESSAGE))};`);
   await js(`globalThis.__fileB64 = ${JSON.stringify(toBase64(FILE))};`);
+  await js(`globalThis.__pdfB64 = ${JSON.stringify(toBase64(onePagePdf()))};`);
   await js("globalThis.__run(); 'started'");
 
   const raw = await waitFor(
@@ -219,6 +287,11 @@ try {
     settingsBefore: parsed.settingsBefore ?? "{}",
     settingsAfter: parsed.settingsAfter ?? "{}",
     savedTo: parsed.savedTo ?? "",
+    pdfViewer: parsed.pdfViewer ?? "",
+    pdfFrame: parsed.pdfFrame ?? "",
+    htmlBlobFrame: parsed.htmlBlobFrame ?? "",
+    pdfDataFrame: parsed.pdfDataFrame ?? "",
+    pdfMime: parsed.pdfMime ?? "",
     boom: parsed.boom ?? "",
     unknown: parsed.unknown ?? "",
   };
@@ -279,6 +352,34 @@ try {
     setAlwaysOnTop?: (on: boolean) => void;
     isAlwaysOnTop?: () => boolean;
   };
+  console.log(
+    `  · navigator.pdfViewerEnabled = ${out.pdfViewer}, application/pdf = ${out.pdfMime}, ` +
+      `html blob = ${out.htmlBlobFrame}, pdf blob = ${out.pdfFrame}, ` +
+      `pdf data URL = ${out.pdfDataFrame}`,
+  );
+
+  /*
+   * 26.11 — an iframe is how the app shows an invoice, and this engine will not draw one.
+   *
+   * Not from a blob URL and not from a data URL, while reporting `navigator.pdfViewerEnabled` as
+   * `true` — so the standard capability flag cannot be asked. An HTML blob in the same iframe
+   * loads, which is what makes it the format rather than the frame.
+   *
+   * So the desktop build saves the file instead, and this asserts the reason for that branch
+   * rather than leaving it as a thing somebody once observed. If WebKitGTK grows a PDF viewer this
+   * goes red, and the right response is to delete the branch in `Invoices.tsx`.
+   */
+  check(
+    "an iframe still cannot show a PDF here, which is why the desktop saves instead",
+    out.pdfFrame === "no load event" && out.pdfDataFrame === "no load event",
+    `blob: ${out.pdfFrame}, data: ${out.pdfDataFrame}`,
+  );
+  check(
+    "and it is the format, not the frame — an HTML blob loads in the same iframe",
+    out.htmlBlobFrame.startsWith("document:"),
+    out.htmlBlobFrame,
+  );
+
   // `main.ts` declares both on a hand-written `BrowserWindowLike` and casts to it, so the type
   // checker has never confirmed either exists. If they do not, the toggle throws.
   const exposed = typeof win.setAlwaysOnTop === "function" &&

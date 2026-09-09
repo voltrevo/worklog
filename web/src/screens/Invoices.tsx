@@ -20,7 +20,8 @@ import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
-import { bytesFromBase64 } from "../download.ts";
+import { bytesFromBase64, saveFile } from "../download.ts";
+import { isDesktop } from "../desktop.ts";
 import type {
   InvoicePdfResult,
   PublicInvoiceConfig,
@@ -190,22 +191,39 @@ function InvoiceRow(
   const { call } = useStore();
   const [viewing, setViewing] = useState<{ url: string; name: string }>();
   const [confirm, setConfirm] = useState<"delete">();
+  /** Where the desktop shell put it, when there was nowhere to show it. */
+  const [saved, setSaved] = useState<string>();
   const [editing, setEditing] = useState(false);
   const shown = invoice.snapshot ?? invoice.draft;
 
   /**
-   * 26.11, 8.33 — fetch it and show it.
+   * 26.11, 8.33 — fetch it and show it, where showing it is a thing this engine can do.
    *
    * It used to download. Reading the thing is the common case by a wide margin, and every browser
    * already has a save button on its own PDF viewer, so the app offering one was a second way to
    * do something the first way did better. The blob URL is revoked when the dialog closes.
+   *
+   * **The desktop window is not every browser.** WebKitGTK renders nothing for a PDF in an iframe
+   * — not from a blob URL and not from a data URL — while reporting `navigator.pdfViewerEnabled`
+   * as `true`, so the flag cannot be asked either. An HTML blob in the same iframe loads fine, so
+   * it is the format and not the frame. `desktop/selftest.ts` measures all three in the real
+   * engine and fails if that ever changes, which is when this branch should go.
+   *
+   * There, the shell writes the file and says where it went — which is what this button did
+   * before 26.11 and the only thing that works in that window.
    */
   const view = async () => {
     const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
+    const bytes = bytesFromBase64(res.pdfBase64);
+    if (isDesktop()) {
+      const { path } = await saveFile(res.fileName, bytes, "application/pdf");
+      setSaved(path ?? res.fileName);
+      return;
+    }
     const url = URL.createObjectURL(
       // `.slice()` gives a plain `ArrayBuffer`; a `Uint8Array` over a shared buffer is not a
       // `BlobPart` as far as the DOM types are concerned.
-      new Blob([bytesFromBase64(res.pdfBase64).slice().buffer], { type: "application/pdf" }),
+      new Blob([bytes.slice().buffer], { type: "application/pdf" }),
     );
     setViewing({ url, name: res.fileName });
   };
@@ -270,14 +288,17 @@ function InvoiceRow(
           )
           : <StatusPill status={invoice.status} />}
 
-        {/* 26.11 — reading it is the common case; saving it is the browser's job. */}
+        {
+          /* 26.11 — reading it is the common case; saving it is the browser's job, except in the
+             window that has no reader, where saving it is the whole of what can be offered. */
+        }
         <button
           className="btn"
           type="button"
           disabled={busy}
           onClick={() => void act(view)}
         >
-          View
+          {isDesktop() ? "Save PDF" : "View"}
         </button>
 
         {canWrite && invoice.status === "draft" && (
@@ -360,6 +381,17 @@ function InvoiceRow(
         worse. The URL is revoked on close, because a blob URL outlives the element that used it.
       */
       }
+      {saved && (
+        <Dialog
+          title="Saved"
+          body={`${shown.number} was written to ${saved}. This window cannot display a PDF, so there is nothing to show here — open it from there.`}
+          confirmLabel="Right"
+          busy={false}
+          onConfirm={() => setSaved(undefined)}
+          onCancel={() => setSaved(undefined)}
+        />
+      )}
+
       {viewing && (
         <Sheet
           label={viewing.name}

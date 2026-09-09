@@ -730,3 +730,7 @@ read together.
 
 26.19. MUST size each segment of today's progress bar exactly, with no per-segment minimum. A minimum overall width for the whole bar is acceptable; a minimum per segment is not, because it makes the total wrong. Refines 25.26.
 26.20. MUST use the whole screen on the timer page.
+
+### Fourth pass — found while checking the third
+
+26.21. MUST save the invoice PDF and say where it went, in a presentation whose engine cannot display one inline. 26.11's iframe is blank in the desktop window: WebKitGTK draws nothing for a PDF from a blob URL or a data URL while reporting `navigator.pdfViewerEnabled` as true, and an HTML blob in the same iframe loads. Refines 26.11.
