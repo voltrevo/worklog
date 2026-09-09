@@ -1079,7 +1079,9 @@ async function main() {
     ),
     `${shown} -> ${target}: ${await desktop.page.locator(".card.session").innerText()}`,
   );
-  // A future start is refused rather than making every figure below it negative.
+  // A future start is refused rather than making every figure below it negative. 23:59 is in the
+  // future at every moment of the day except the last minute of it, which is the narrowest this
+  // gets without inventing a clock — see the relative target above for why that matters.
   await startLink.click();
   await desktop.page.getByLabel("Started at").fill("23:59");
   await desktop.page.getByRole("button", { name: "Move the start" }).click();
