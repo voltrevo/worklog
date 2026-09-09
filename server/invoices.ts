@@ -260,6 +260,10 @@ export function updateDraft(
     }
 
     const number = edit.number?.trim() || current.draft.number;
+    // A document reference, not a paragraph. It also becomes the name of a downloaded file.
+    if (number.length > 80) {
+      throw new Refused("number-too-long", "an invoice number is at most 80 characters");
+    }
     if (edit.taxRate !== undefined && !(edit.taxRate >= 0 && edit.taxRate < 1)) {
       // A rate outside this is a percentage somebody typed into a fraction field, and silently
       // billing 250% tax is 25.3 at its most expensive.

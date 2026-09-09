@@ -119,8 +119,35 @@ export interface ServerContext {
 }
 
 /** 17.11 — one place decides what an invoice's file is called, since two paths now write it. */
+/**
+ * What the download is called. Derived from the invoice number, which is the point of it.
+ *
+ * Sanitised because it becomes a filename on somebody's machine, and truncated because an
+ * invoice number is a short string in every sane case and a filename has a length limit in every
+ * case at all.
+ */
 function fileNameFor(number: string): string {
-  return `${number.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+  const safe = number.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+  return `${safe || "invoice"}.pdf`;
+}
+
+/**
+ * Where the frozen PDF is *kept*. Keyed by id, and deliberately not by the number.
+ *
+ * The storage path used to be `invoices/${fileNameFor(number)}`, so two different numbers that
+ * sanitise the same — "###" and "***" both become "___" — shared one file. 9.16 stops two issued
+ * invoices having the same *number*; it says nothing about two numbers colliding after every
+ * character that is not alphanumeric has been replaced. The second issuance would have
+ * overwritten the first invoice's frozen document, which is 24.30 defeated by a filename.
+ *
+ * A long number was the other half: past the OS limit, `writeFile` fails and issuing fails with
+ * it. An id is 36 characters, always.
+ *
+ * Existing rows keep whatever path they were stored with — `pdf_path` is per row — so nothing has
+ * to be moved.
+ */
+function pdfPathFor(id: string): string {
+  return `invoices/${id}.pdf`;
 }
 
 /**
@@ -574,7 +601,7 @@ export async function handle(
             outside: rendered.outside.slice(0, 5),
           });
         }
-        const relative = `invoices/${fileNameFor(issued.number)}`;
+        const relative = pdfPathFor(issued.id);
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, issued.id, relative, now);
       }
@@ -635,7 +662,7 @@ export async function handle(
         : undefined;
 
       const name = fileNameFor(invoice.number);
-      const relative = `invoices/${name}`;
+      const relative = invoice.pdfPath ?? pdfPathFor(invoice.id);
       let bytes: Uint8Array;
       if (frozen) {
         bytes = frozen;

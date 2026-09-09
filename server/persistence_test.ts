@@ -445,8 +445,10 @@ Deno.test({
      * The claim is exactly this equality anyway — the document that was sent is the one the
      * frozen settings produce. Before the fix it was the one the *global* settings produce.
      */
-    const stored = await Deno.readFile(`${dir}/invoices/INV-2026-09.pdf`);
+    // The path the row records, not a name guessed from the number — the stored file is keyed by
+    // id now, because two numbers that sanitise the same used to share one file.
     const record = getInvoice(ctx.db, draft.id)!;
+    const stored = await Deno.readFile(`${dir}/${record.pdfPath}`);
     const fromFrozen = await renderInvoicePdf(
       record.snapshot ?? record.draft,
       frozenConfigFor(ctx.db, draft.id)!,
@@ -466,6 +468,60 @@ Deno.test({
       false,
       "the override changed nothing, so this test proves nothing",
     );
+
+    ctx.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "two invoice numbers that sanitise the same do not share one frozen PDF",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * The stored path used to be `invoices/${number.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`, so
+     * "###" and "***" both became `___.pdf`. 9.16 stops two *issued* invoices having the same
+     * number; it says nothing about two numbers colliding after every character that is not
+     * alphanumeric has been replaced. Issuing the second would have overwritten the first
+     * invoice's frozen document — 24.30 defeated by a filename.
+     *
+     * Reverting one period so both can be issued, since 11.19 is about the month, not the name.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "collide-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+
+    const ctx = context(dir);
+    setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(ctx, "s1");
+    await claimAdmin(ctx, admin);
+    for (const date of [TODAY, "2026-08-03"]) {
+      await call(ctx, admin, {
+        t: "entry-add",
+        date,
+        durationMs: 3_600_000,
+        billingTag: "Product Development",
+      });
+    }
+
+    const issued: string[] = [];
+    for (const [period, number] of [["2026-09", "###"], ["2026-08", "***"]] as const) {
+      const draft = await call(ctx, admin, {
+        t: "invoice-create",
+        period,
+        clock: { today: TODAY, nowMinutes: 0 },
+      }) as StoredInvoiceWire;
+      await call(ctx, admin, { t: "invoice-update", id: draft.id, number });
+      await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+      await call(ctx, admin, { t: "invoice-pdf", id: draft.id });
+      issued.push(getInvoice(ctx.db, draft.id)!.pdfPath!);
+    }
+
+    assertEquals(issued[0] !== issued[1], true, `both stored at ${issued[0]}`);
+    // And both files are actually there, which is what "did not overwrite" means.
+    for (const path of issued) {
+      assertEquals((await Deno.stat(`${dir}/${path}`)).isFile, true, path);
+    }
 
     ctx.db.close();
     await Deno.remove(dir, { recursive: true });
