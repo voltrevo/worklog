@@ -13,6 +13,7 @@
 import type { Instant, InvoiceStatus } from "@worklog/shared/types";
 import {
   appliedOverride,
+  appliedPaymentOverride,
   buildDraft,
   canIssue,
   defaultInvoiceNumber,
@@ -22,6 +23,7 @@ import {
   type InvoiceLine,
   type InvoiceRecord,
   type InvoiceSnapshot,
+  type PaymentOverride,
   previousInvoice,
   recomputeDraft,
 } from "@worklog/shared/invoice";
@@ -40,9 +42,16 @@ interface Row {
   pdf_path: string | null;
   issued_at: number | null;
   paid_at: number | null;
+  /**
+   * Read only to answer "is there one" — `toRecord` turns it into a boolean and never lets the
+   * string past. The values have their own reader, which nothing serialises.
+   */
+  override_secrets_json: string | null;
 }
 
-function toRecord(row: Row): InvoiceRecord & { draft: InvoiceDraft; pdfPath?: string } {
+function toRecord(
+  row: Row,
+): InvoiceRecord & { draft: InvoiceDraft; pdfPath?: string; paymentOverridden: boolean } {
   return {
     id: row.id,
     period: row.period,
@@ -53,6 +62,13 @@ function toRecord(row: Row): InvoiceRecord & { draft: InvoiceDraft; pdfPath?: st
     ...(row.pdf_path ? { pdfPath: row.pdf_path } : {}),
     ...(row.issued_at === null ? {} : { issuedAt: Number(row.issued_at) }),
     ...(row.paid_at === null ? {} : { paidAt: Number(row.paid_at) }),
+    /*
+     * 25.12, 25.42 — whether, never what.
+     *
+     * A boolean is safe on the wire and the values are not, so the conversion happens at the one
+     * point that reads this column into something a handler returns.
+     */
+    paymentOverridden: row.override_secrets_json !== null,
   };
 }
 
@@ -69,6 +85,15 @@ export type StoredInvoice = ReturnType<typeof toRecord>;
  * `undefined` for a draft, and for anything issued before this column existed — the caller falls
  * back to the current settings, which is what it did for everything before.
  */
+export function paymentOverrideFor(db: Db, id: string): PaymentOverride | undefined {
+  const row = db.prepare("SELECT override_secrets_json FROM invoice WHERE id = ?").get(id) as
+    | { override_secrets_json: string | null }
+    | undefined;
+  return row?.override_secrets_json
+    ? JSON.parse(row.override_secrets_json) as PaymentOverride
+    : undefined;
+}
+
 export function frozenConfigFor(db: Db, id: string): InvoiceConfig | undefined {
   const row = db.prepare("SELECT config_json FROM invoice WHERE id = ?").get(id) as
     | { config_json: string | null }
@@ -77,7 +102,8 @@ export function frozenConfigFor(db: Db, id: string): InvoiceConfig | undefined {
 }
 
 const SELECT =
-  `SELECT id, period, number, status, draft_json, snapshot_json, pdf_path, issued_at, paid_at
+  `SELECT id, period, number, status, draft_json, snapshot_json, pdf_path, issued_at, paid_at,
+          override_secrets_json
    FROM invoice`;
 
 export function listInvoices(db: Db): StoredInvoice[] {
@@ -200,6 +226,13 @@ export function updateDraft(
     number?: string;
     /** 25.12. Replaces the draft's override wholesale; `{}` clears it. */
     config?: InvoiceConfigOverride;
+    /**
+     * 25.12's other half, kept out of `draft_json` because that goes on the wire.
+     *
+     * Merged rather than replaced, and blanks ignored: the client cannot see what is stored, so
+     * it cannot send it back unchanged, and every save would otherwise wipe what it did not fill.
+     */
+    paymentOverride?: PaymentOverride;
     currency?: string;
     taxRate?: number;
   },
@@ -224,6 +257,15 @@ export function updateDraft(
     // Recomputed *after* the tax rate is applied, not before: the tax line is derived from it, so
     // storing the new rate beside the old tax figure would leave the document disagreeing with
     // itself until the next unrelated edit.
+    if (edit.paymentOverride) {
+      const merged = {
+        ...paymentOverrideFor(db, id),
+        ...appliedPaymentOverride(edit.paymentOverride),
+      };
+      db.prepare("UPDATE invoice SET override_secrets_json = ? WHERE id = ?")
+        .run(Object.keys(merged).length ? JSON.stringify(merged) : null, id);
+    }
+
     const draft = recomputeDraft({
       ...current.draft,
       number,
@@ -281,6 +323,7 @@ export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvo
     const frozenConfig: InvoiceConfig = {
       ...getConfig(db, "invoice"),
       ...appliedOverride(refreshed.config),
+      ...appliedPaymentOverride(paymentOverrideFor(db, id)),
     };
     db.prepare(
       `UPDATE invoice SET status = 'issued', number = ?, draft_json = ?, snapshot_json = ?,

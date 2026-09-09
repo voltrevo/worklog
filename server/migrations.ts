@@ -175,4 +175,15 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE invoice ADD COLUMN config_json TEXT;
     `,
   },
+  {
+    id: 3,
+    name: "per-draft-payment-override",
+    sql: `
+      -- 25.12, completed. A draft's other exceptions live in \`draft_json\`, which is sent to every
+      -- authorised device; the payment block cannot, so it does not. Same reasoning and same shape
+      -- as \`config_json\`: its own column, named explicitly by nothing that builds a wire object,
+      -- with one reader.
+      ALTER TABLE invoice ADD COLUMN override_secrets_json TEXT;
+    `,
+  },
 ];

@@ -28,6 +28,7 @@ import type {
   InvoiceLine,
   InvoiceSnapshot,
   InvoiceWarning,
+  PaymentOverride,
 } from "./invoice.ts";
 
 export const PROTOCOL_VERSION = 1;
@@ -174,6 +175,11 @@ export type Request =
     number?: string;
     /** 25.12 — this draft's exceptions to the settings. Sent whole; `{}` clears them. */
     config?: InvoiceConfigOverride;
+    /**
+     * 25.12's payment half. Write-only, like the settings screen's: the server never sends these
+     * back, so a blank means "leave what is stored" rather than "clear it".
+     */
+    paymentOverride?: PaymentOverride;
     currency?: string;
     taxRate?: number;
   }
@@ -329,6 +335,11 @@ export interface StoredInvoiceWire {
   pdfPath?: string;
   issuedAt?: Instant;
   paidAt?: Instant;
+  /**
+   * 25.12, 25.42 — *whether* this draft overrides the payment block, never what it says. The
+   * values live in a column no wire object names; this is the flag a masked field needs.
+   */
+  paymentOverridden?: boolean;
 }
 
 /**

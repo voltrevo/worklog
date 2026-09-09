@@ -304,7 +304,7 @@ function InvoiceRow(
           config={config}
           busy={busy}
           onCancel={() => setEditing(false)}
-          onSave={async (lines, number, override, taxRate) => {
+          onSave={async (lines, number, override, taxRate, paymentOverride) => {
             await act(() =>
               call({
                 t: "invoice-update",
@@ -313,6 +313,7 @@ function InvoiceRow(
                 number,
                 config: override,
                 taxRate,
+                paymentOverride,
               })
             );
             setEditing(false);

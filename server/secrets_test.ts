@@ -50,6 +50,12 @@ const SECRETS = {
   payName: "A Fictional Payee",
 };
 
+/** 25.12's half, distinct from the configured ones so a leak says which route it took. */
+const OVERRIDE_SECRET = {
+  payBsb: "555-111-QQX",
+  payBank: "The Other Fictional Bank",
+};
+
 function context(): ServerContext {
   const db = open({ path: ":memory:" });
   setConfig(db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
@@ -389,6 +395,13 @@ Deno.test("20.1/20.3 -- nothing secret comes back in a response either, across t
     period: "2026-09",
     clock: { today: "2026-09-08", nowMinutes: 600 },
   }) as { id: string };
+  // 25.12 — the per-invoice payment override, which is the reason this sweep was written before
+  // the feature was. Distinct values, so a leak names itself.
+  await watch({
+    t: "invoice-update",
+    id: draft.id,
+    paymentOverride: { payBsb: OVERRIDE_SECRET.payBsb, payBank: OVERRIDE_SECRET.payBank },
+  });
   await watch({ t: "invoice-issue", id: draft.id });
   await watch({ t: "invoice-mark-paid", id: draft.id });
   await watch({ t: "invoices" });
@@ -400,9 +413,12 @@ Deno.test("20.1/20.3 -- nothing secret comes back in a response either, across t
   await watch({ t: "logs", limit: 200, minLevel: "debug" });
 
   const responses = JSON.stringify(seen);
-  for (const [field, value] of Object.entries(SECRETS)) {
+  for (const [field, value] of Object.entries({ ...SECRETS, ...OVERRIDE_SECRET })) {
     assertEquals(responses.includes(value), false, `${field} came back in a response`);
   }
+  // Whether, not what — and the flag has to be there, or the line above passes because the
+  // override was never stored.
+  assertStringIncludes(responses, "paymentOverridden");
   // And the flags that stand in for them are there, or the assertions above pass by the values
   // simply never having been set.
   assertStringIncludes(responses, "paymentDetailsSet");

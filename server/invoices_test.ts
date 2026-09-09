@@ -5,11 +5,13 @@ import { addEntry, entriesInMonth, Refused, updateEntry } from "./work.ts";
 import {
   attachPdf,
   createDraft,
+  frozenConfigFor,
   getInvoice,
   invoiceForPeriod,
   issue,
   listInvoices,
   markPaid,
+  paymentOverrideFor,
   revertIssue,
   unmarkPaid,
   updateDraft,
@@ -430,5 +432,52 @@ Deno.test("a tax rate that is really a percentage is refused", () => {
   // 10 meaning "10%" would bill a thousand percent tax, silently. 25.3, with money attached.
   assertThrows(() => updateDraft(db, a.id, { taxRate: 10 }, T0), Refused, "not a fraction");
   assertThrows(() => updateDraft(db, a.id, { taxRate: -0.1 }, T0), Refused, "not a fraction");
+  db.close();
+});
+
+Deno.test("25.12 -- a draft can be paid into somewhere else, and it does not travel", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+
+  updateDraft(db, a.id, { paymentOverride: { payBsb: "999-999", payBank: "Another Bank" } }, T0);
+
+  // The values are readable server-side, where the renderer needs them...
+  assertEquals(paymentOverrideFor(db, a.id)?.payBsb, "999-999");
+  assertEquals(paymentOverrideFor(db, a.id)?.payBank, "Another Bank");
+  // ...and the record the handlers return says only that there is one.
+  const record = getInvoice(db, a.id)!;
+  assertEquals(record.paymentOverridden, true);
+  assertEquals(JSON.stringify(record).includes("999-999"), false, "the BSB is on the wire");
+  db.close();
+});
+
+Deno.test("an empty box leaves the stored payment override alone", () => {
+  // The client cannot see what is there, so it cannot send it back unchanged; a blank has to mean
+  // "leave it" or every save would wipe the fields it did not fill in.
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+
+  updateDraft(db, a.id, { paymentOverride: { payBsb: "999-999", payBank: "Another Bank" } }, T0);
+  updateDraft(db, a.id, { paymentOverride: { payBsb: "", payBank: "A Third Bank" } }, T0);
+
+  assertEquals(paymentOverrideFor(db, a.id)?.payBsb, "999-999", "the blank cleared it");
+  assertEquals(paymentOverrideFor(db, a.id)?.payBank, "A Third Bank");
+  assertEquals(getInvoice(db, a.id)?.paymentOverridden, true);
+  db.close();
+});
+
+Deno.test("and issuing freezes it, so a lost PDF still pays into the right place", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  updateDraft(db, a.id, { paymentOverride: { payAccountNumber: "11112222" } }, T0);
+  issue(db, a.id, T0);
+
+  // 24.30 — what the renderer would be handed if the file went missing.
+  assertEquals(frozenConfigFor(db, a.id)?.payAccountNumber, "11112222");
+  // And the invoice's own settings, not the ones it inherited.
+  assertEquals(frozenConfigFor(db, a.id)?.payBank, "Bank of Nowhere");
   db.close();
 });

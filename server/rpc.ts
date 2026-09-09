@@ -26,7 +26,7 @@ import {
 import type { AccessRole } from "@worklog/shared/auth";
 import { project } from "@worklog/shared/pacing";
 import { shapeOf } from "@worklog/shared/schedule";
-import { invoiceWarnings } from "@worklog/shared/invoice";
+import { appliedPaymentOverride, invoiceWarnings } from "@worklog/shared/invoice";
 import type { DayInterval, Holiday, PacingOverride } from "@worklog/shared/types";
 import { type Db, transact } from "./db.ts";
 import {
@@ -83,6 +83,7 @@ import {
   issue,
   listInvoices,
   markPaid,
+  paymentOverrideFor,
   revertIssue,
   unmarkPaid,
   updateDraft,
@@ -529,6 +530,7 @@ export async function handle(
         ...(req.config !== undefined ? { config: req.config } : {}),
         ...(req.currency !== undefined ? { currency: req.currency } : {}),
         ...(req.taxRate !== undefined ? { taxRate: req.taxRate } : {}),
+        ...(req.paymentOverride !== undefined ? { paymentOverride: req.paymentOverride } : {}),
       }, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
       return saved;
@@ -655,10 +657,13 @@ export async function handle(
         // invoice issued before that column existed, falls back to the current ones.
         const frozenConfig = frozenConfigFor(db, invoice.id);
         if (!frozenConfig) requireInvoiceConfig(db);
-        bytes = await renderInvoicePdf(
-          invoice.snapshot ?? invoice.draft,
-          frozenConfig ?? getConfig(db, "invoice"),
-        );
+        // A draft has no frozen settings, so its payment override is applied here; an issued one
+        // already had it folded in at issuance and must not have today's applied over the top.
+        const config = frozenConfig ?? {
+          ...getConfig(db, "invoice"),
+          ...appliedPaymentOverride(paymentOverrideFor(db, invoice.id)),
+        };
+        bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, config);
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, invoice.id, relative, now);
         ctx.log("info", "invoice", "rendered a PDF", {

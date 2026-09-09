@@ -19,7 +19,12 @@
  */
 
 import { useState } from "react";
-import { type InvoiceConfigOverride, OVERRIDABLE } from "@worklog/shared/invoice";
+import {
+  type InvoiceConfigOverride,
+  OVERRIDABLE,
+  PAYMENT_OVERRIDABLE,
+  type PaymentOverride,
+} from "@worklog/shared/invoice";
 import type { InvoiceLine } from "@worklog/shared/invoice";
 import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
 import { money, parseNumber } from "../format.ts";
@@ -31,6 +36,14 @@ import { money, parseNumber } from "../format.ts";
  * applied to the smaller surface: someone checking an override against a printed invoice reads
  * top to bottom.
  */
+const PAYMENT_LABELS: Record<keyof PaymentOverride, string> = {
+  payMethod: "Payment method",
+  payName: "Account name",
+  payBsb: "BSB",
+  payAccountNumber: "Account number",
+  payBank: "Bank",
+};
+
 const OVERRIDE_LABELS: Record<keyof InvoiceConfigOverride, string> = {
   fromName: "Your name",
   fromAbn: "Your ABN",
@@ -149,6 +162,7 @@ export function InvoiceEditor(
       number: string,
       override: InvoiceConfigOverride,
       taxRate: number,
+      paymentOverride: PaymentOverride,
     ) => Promise<void>;
     onCancel: () => void;
   },
@@ -163,6 +177,13 @@ export function InvoiceEditor(
   const [override, setOverride] = useState<InvoiceConfigOverride>(
     invoice.draft.config ?? {},
   );
+  /*
+   * 25.12's payment half. Write-only, exactly like the settings screen's.
+   *
+   * The server never sends these back, so an empty box means "leave whatever is stored" and not
+   * "clear it" — `paymentOverridden` is the only thing this side knows about what is there.
+   */
+  const [pay, setPay] = useState<PaymentOverride>({});
   const [taxRate, setTaxRate] = useState(
     String(Math.round(invoice.draft.taxRate * 1000) / 10),
   );
@@ -205,7 +226,7 @@ export function InvoiceEditor(
     setProblem(undefined);
     // Sent whole, blanks included: an emptied box means "go back to following the settings", and
     // omitting it would mean "leave the override as it was", which is the opposite.
-    await onSave(lines, number.trim(), override, percent / 100);
+    await onSave(lines, number.trim(), override, percent / 100, pay);
   };
 
   // Shown as it will be, from the values on screen — but only where they are all readable. A
@@ -385,6 +406,39 @@ export function InvoiceEditor(
                     onChange={(e) => setTaxRate(e.target.value)}
                   />
                 </label>
+              </div>
+
+              {
+                /*
+                25.12, 25.42 — paid into somewhere else, just this once.
+
+                Write-only: the values are on the server and never come back, so these boxes are
+                empty whether or not this invoice already has an override. `paymentOverridden` is
+                what says which, and filling one in replaces that field.
+              */
+              }
+              <h4 className="invform-rule" style={{ marginTop: 4 }}>
+                METHOD OF PAYMENT{" "}
+                {invoice.paymentOverridden && <span className="pill">this invoice only</span>}
+              </h4>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                {invoice.paymentOverridden
+                  ? "This invoice pays into somewhere other than the configured account. Filling a box in replaces that field; leaving them all empty keeps it as it is."
+                  : "Leave these empty and this invoice uses the configured account."}
+              </p>
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}
+              >
+                {PAYMENT_OVERRIDABLE.map((key) => (
+                  <label className="field" key={key}>
+                    {PAYMENT_LABELS[key]}
+                    <input
+                      value={pay[key] ?? ""}
+                      onChange={(e) => setPay({ ...pay, [key]: e.target.value })}
+                    />
+                  </label>
+                ))}
               </div>
             </div>
           )}

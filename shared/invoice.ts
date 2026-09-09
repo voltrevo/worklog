@@ -44,12 +44,10 @@ export interface InvoiceTotals {
  * override is a short list of deliberate exceptions rather than a full second copy of the config
  * that drifts out of date the moment the real one changes.
  *
- * **The payment details are not here, and the omission is deliberate.** The server never sends
- * those back to any client — `config-get` answers with `paymentDetailsSet: boolean` and nothing
- * else — whereas a draft is sent whole, so putting a BSB in one would publish it to every
- * authorised device the next time the list loaded. Doing it properly needs the redact-on-read
- * boundary that 25.42 and 25.43 are about; until that exists, a per-invoice payment method is not
- * available and saying so is better than a leak nobody asked for.
+ * **The payment details are not in here**, for the reason everything else about them is kept
+ * apart: a draft is sent to every authorised device and a BSB is not. They *are* overridable —
+ * see `PaymentOverride` and the `override_secrets_json` column — by the same route the frozen
+ * configuration takes, which is a column no wire object names.
  */
 export interface InvoiceConfigOverride {
   fromName?: string;
@@ -62,6 +60,29 @@ export interface InvoiceConfigOverride {
   approver?: string;
   note?: string;
 }
+
+/**
+ * 25.12, the half that cannot travel.
+ *
+ * Kept out of `InvoiceConfigOverride` rather than filtered out of it later: a type that cannot
+ * hold a secret is a stronger boundary than a function that removes one, and this way the draft
+ * JSON has no field for it to be put in by mistake.
+ */
+export interface PaymentOverride {
+  payMethod?: string;
+  payName?: string;
+  payBsb?: string;
+  payAccountNumber?: string;
+  payBank?: string;
+}
+
+export const PAYMENT_OVERRIDABLE: readonly (keyof PaymentOverride)[] = [
+  "payMethod",
+  "payName",
+  "payBsb",
+  "payAccountNumber",
+  "payBank",
+];
 
 /** The override's fields, as a value, so a validator does not have to restate the type. */
 export const OVERRIDABLE: readonly (keyof InvoiceConfigOverride)[] = [
@@ -86,8 +107,25 @@ export const OVERRIDABLE: readonly (keyof InvoiceConfigOverride)[] = [
 export function appliedOverride(
   override: InvoiceConfigOverride | undefined,
 ): Partial<InvoiceConfigOverride> {
-  const out: Record<string, string> = {};
-  for (const key of OVERRIDABLE) {
+  return kept(override, OVERRIDABLE);
+}
+
+/** The same, for the half that lives in its own column. */
+export function appliedPaymentOverride(
+  override: PaymentOverride | undefined,
+): Partial<PaymentOverride> {
+  return kept(override, PAYMENT_OVERRIDABLE);
+}
+
+/**
+ * The keys that were given a non-blank value, and only those.
+ *
+ * A blank has to be *removed* rather than spread: `{...global, ...{clientName: ""}}` is a nameless
+ * client, and an empty box on an override form means "I did not say anything about this one".
+ */
+function kept<T>(override: T | undefined, keys: readonly (keyof T)[]): Partial<T> {
+  const out: Partial<T> = {};
+  for (const key of keys) {
     const value = override?.[key];
     if (typeof value === "string" && value.trim() !== "") out[key] = value;
   }
