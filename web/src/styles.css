@@ -402,8 +402,7 @@ button.btn:hover:not(:disabled) {
  * danger and good.
  */
 button.btn.primary:hover:not(:disabled),
-button.btn.danger:hover:not(:disabled),
-button.btn.good:hover:not(:disabled) {
+button.btn.danger:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
@@ -415,11 +414,6 @@ button.btn.primary:hover:not(:disabled) {
 button.btn.danger:hover:not(:disabled) {
   background: var(--bad);
   border-color: var(--bad);
-}
-
-button.btn.good:hover:not(:disabled) {
-  background: var(--good);
-  border-color: var(--good);
 }
 
 button.link:hover:not(:disabled) {
@@ -440,12 +434,6 @@ button.btn.primary {
 button.btn.danger {
   background: var(--bad);
   border-color: var(--bad);
-  color: #fff;
-}
-
-button.btn.good {
-  background: var(--good);
-  border-color: var(--good);
   color: #fff;
 }
 
