@@ -53,6 +53,31 @@ export function Timer() {
   const targetMs = snapshot.todayScheduledHours * 3_600_000;
   const remainingMs = targetMs - todayMs;
   const progress = targetMs > 0 ? Math.min(1, todayMs / targetMs) : 0;
+
+  /*
+   * 25.26 — the pieces the bar is made of.
+   *
+   * Scaled by `progress / (todayMs / targetMs)` rather than by `targetMs` directly, so that an
+   * over-run day still fills exactly the width the bar has: `progress` is capped at 1, and
+   * segments sized against the raw target would keep going and overflow. `scale` is 1 on an
+   * ordinary day and shrinks the set proportionally once you are past the target, which keeps the
+   * relative sizes right while the total stays inside.
+   */
+  const scale = todayMs > 0 ? (progress * targetMs) / todayMs : 0;
+  const segments = [
+    ...snapshot.today.map((e: WorkEntry) => ({
+      key: e.id,
+      ms: e.durationMs,
+      running: false,
+    })),
+    ...(active ? [{ key: "running", ms: runningMs, running: true }] : []),
+  ]
+    // A zero-width segment is a gap with a rounded end on each side: visible, and meaningless.
+    .filter((seg) => seg.ms > 0)
+    .map((seg) => ({
+      ...seg,
+      percent: targetMs > 0 ? (seg.ms / targetMs) * 100 * scale : 0,
+    }));
   const paced = pace(snapshot.pacing.paceHours);
 
   const retag = async () => {
@@ -140,11 +165,25 @@ export function Timer() {
           </div>
         </div>
 
-        <div className="bar" style={{ marginTop: 16 }}>
-          <span
-            className={remainingMs < 0 ? "over" : ""}
-            style={{ width: `${Math.round(progress * 100)}%` }}
-          />
+        {
+          /*
+          25.26 — one segment per entry, each with its own rounded ends.
+
+          A single fill says "you have done 5.2 of 8 hours" and stops there. The same width split
+          into the sessions it was actually made of says the same thing and also that it was six
+          sittings rather than one, which is the shape of the day and is not recoverable from a
+          bar. The running session is the last segment and grows as you watch.
+        */
+        }
+        <div className="bar segmented" style={{ marginTop: 16 }}>
+          {segments.map((seg) => (
+            <span
+              key={seg.key}
+              className={remainingMs < 0 ? "over" : ""}
+              style={{ width: `${seg.percent}%` }}
+              title={`${duration(seg.ms)}${seg.running ? " — still running" : ""}`}
+            />
+          ))}
         </div>
       </div>
 

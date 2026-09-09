@@ -19,6 +19,13 @@
   --panel-2: #f8f9fb;
   --line: #e3e6ea;
   --line-strong: #cdd2d9;
+  /*
+   * 25.45 — hover was `--panel-2`, six units of lightness from `--panel`. Invisible in dark mode
+   * and very nearly invisible in light: the same subtlety, reported as a dark-mode fault because
+   * that is where it crossed from subtle into absent. Its own token, so it can be a real step in
+   * each theme instead of borrowing a surface colour chosen for something else.
+   */
+  --hover: #e9ecf1;
 
   --accent: #2563eb;
   --accent-ink: #ffffff;
@@ -56,6 +63,7 @@
     --panel-2: #1d222a;
     --line: #272d36;
     --line-strong: #39414c;
+    --hover: #2b3340;
 
     --accent: #5b8cf5;
     --accent-ink: #0b1220;
@@ -317,6 +325,16 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+button.btn,
+button.link {
+  /*
+   * 25.47 — a double-click on a button selected its label, and dragging across a row of them left
+   * the screen streaked with highlight. None of it is text anyone would want to copy.
+   */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 button.btn {
   padding: 9px 14px;
   border-radius: var(--r);
@@ -330,7 +348,41 @@ button.btn {
 }
 
 button.btn:hover:not(:disabled) {
-  background: var(--panel-2);
+  background: var(--hover);
+  border-color: var(--line-strong);
+}
+
+/*
+ * The filled buttons need their own, and not only for contrast.
+ *
+ * `button.btn:hover:not(:disabled)` is (0,3,1) and `button.btn.primary` is (0,2,1), so the hover
+ * rule outranked the variant: a blue Save button turned panel-grey the moment the pointer touched
+ * it, which reads as the button going disabled rather than as it being about to work. Same for
+ * danger and good.
+ */
+button.btn.primary:hover:not(:disabled),
+button.btn.danger:hover:not(:disabled),
+button.btn.good:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button.btn.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+button.btn.danger:hover:not(:disabled) {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+button.btn.good:hover:not(:disabled) {
+  background: var(--good);
+  border-color: var(--good);
+}
+
+button.link:hover:not(:disabled) {
+  text-decoration: underline;
 }
 
 button.btn:disabled {
@@ -453,6 +505,26 @@ label.field {
 
 .bar > span.over {
   background: var(--accent);
+}
+
+/*
+ * 25.26 — a row of segments rather than one fill.
+ *
+ * `overflow: hidden` on the track would clip the rounded ends of every segment back into square
+ * ones, which is the whole point lost, so the track clips nothing and the arithmetic in `Timer`
+ * keeps the total inside instead. The gap is what makes them read as separate; it also means the
+ * drawn width is a little under the true fraction, which is a display artefact and not a number
+ * anybody reads off this.
+ */
+.bar.segmented {
+  display: flex;
+  gap: 2px;
+  overflow: visible;
+}
+
+.bar.segmented > span {
+  min-width: 3px;
+  flex: 0 0 auto;
 }
 
 /* A wide table must scroll inside its own box rather than the page. */
@@ -831,11 +903,29 @@ input[type="range"] {
   gap: var(--s-2);
 }
 
+/*
+ * 25.25 — the two bars have to be the same bar.
+ *
+ * The label column was already fixed, so they started together; the last two columns were `auto`,
+ * so "5.2h of 160.0h of the target" and "84.0h of 168.0h of the scheduled hours" reserved
+ * different widths and the `1fr` between them ended in a different place on each row. The bars
+ * finished at different x, which makes comparing two fills — the entire reason there are two of
+ * them — an optical illusion rather than a reading.
+ *
+ * Every column fixed. Text that overruns is clipped rather than allowed to push the bar.
+ */
 .barline {
   display: grid;
-  grid-template-columns: 7.5rem 1fr auto auto;
+  grid-template-columns: 7.5rem minmax(0, 1fr) 4.5rem 14.5rem;
   align-items: center;
   gap: var(--s-3);
+}
+
+.barline .figure,
+.barline .days {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .barline .barlabel {
@@ -1036,4 +1126,43 @@ input[aria-invalid="true"]:focus {
   background: var(--panel-2);
   color: var(--ink-dim);
   cursor: not-allowed;
+}
+
+/*
+ * 25.46 — the month label holds its width.
+ *
+ * `MonthNav` already went to some trouble to stop "This month" appearing and disappearing under
+ * the pointer, and then let the label itself do the same thing: "May 2026" is a good deal narrower
+ * than "September 2026", so both arrows slid inwards on the short months and the ‹ you had just
+ * pressed was no longer under the cursor when you went to press it again.
+ *
+ * Wide enough for the longest month name at this weight, centred, and it never changes.
+ */
+.month-nav {
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.month-name {
+  display: inline-block;
+  width: 10.5rem;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .month-name {
+    /* The narrow shell has less room; still fixed, just fixed at a smaller number. */
+    width: 9rem;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Not enough width for four fixed columns; the label and the bar are the pair that must align. */
+  .barline {
+    grid-template-columns: 6rem minmax(0, 1fr) 4.5rem;
+  }
+
+  .barline .days {
+    grid-column: 2 / -1;
+  }
 }

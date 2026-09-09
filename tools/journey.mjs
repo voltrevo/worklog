@@ -885,6 +885,51 @@ async function main() {
     `elapsed ${fills[0]}%, worked ${fills[1]}%`,
   );
 
+  // 25.25 — and the comparison above is only readable if the two tracks are the same track. They
+  // were not: the label column was fixed but the two columns after the bar were `auto`, so "of the
+  // target" and "of the scheduled hours" reserved different widths and each bar ended somewhere
+  // else. A percentage check cannot see that; the geometry can.
+  const tracks = await desktop.page.locator(".barline .bar").evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: Math.round(r.left), right: Math.round(r.right) };
+    })
+  );
+  check(
+    "25.25 — both bars start and end at the same x",
+    tracks.length === 2 && tracks[0].left === tracks[1].left &&
+      tracks[0].right === tracks[1].right,
+    JSON.stringify(tracks),
+  );
+
+  // 25.46 — neither arrow moves as the month changes, so pressing ‹ twice does not mean chasing it.
+  const arrowX = async () =>
+    (await desktop.page.locator(".month-nav button").first().boundingBox()).x;
+  const beforeArrow = await arrowX();
+  await desktop.page.locator(".month-nav button").first().click();
+  await desktop.page.waitForTimeout(300);
+  check("25.46 — the back arrow stays put when the month changes", await arrowX() === beforeArrow);
+  await desktop.page.getByRole("button", { name: "This month" }).click();
+  await desktop.page.waitForTimeout(300);
+
+  // 25.26 — today's bar is assembled from the sessions it was made of.
+  await nav(desktop.page, "Timer");
+  const segmentsBefore = await desktop.page.locator(".bar.segmented > span").count();
+  await desktop.page.getByRole("button", { name: /Start/ }).click();
+  await desktop.page.waitForTimeout(1200);
+  await desktop.page.getByRole("button", { name: /Stop/ }).click();
+  const grew = await until(
+    "segment added",
+    desktop.page,
+    async (p) => (await p.locator(".bar.segmented > span").count()) > segmentsBefore,
+  );
+  check("25.26 — a session adds a segment to today's bar", grew, `${segmentsBefore}`);
+  // Each with its own rounded ends, which is only true if the track is not clipping them.
+  const clipped = await desktop.page.locator(".bar.segmented").evaluate((e) =>
+    getComputedStyle(e).overflow
+  );
+  check("and the track does not clip their ends back to square", clipped === "visible", clipped);
+
   // 24.19, 24.20, 24.21 — the things that made this screen busy are gone.
   for (const gone of ["How the projection adds up", "Public holidays used", "Monthly target"]) {
     check(
