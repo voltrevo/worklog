@@ -170,6 +170,24 @@ That is a property of how a webview was compiled rather than of this container, 
 so in a sentence instead of throwing `Can't find variable: RTCPeerConnection`, which reads like a
 bug in the frontend and is not one.
 
+**Three more of the same shape**, each found by asking the real window rather than reasoning about
+it, and each now measured by `desktop:check` so the branch that works around it has a fact attached:
+
+- **A PDF in an iframe draws nothing** — not from a blob URL, not from a data URL — while
+  `navigator.pdfViewerEnabled` reports `true`, so the capability flag cannot be asked. An HTML blob
+  in the same iframe loads, which is what makes it the format and not the frame. The desktop build
+  saves the invoice and says where it went; every other presentation opens the viewer.
+- **`MediaRecorder` exists, supports no container at all, and throws from the constructor.** A
+  spoken note is not offered there. Text notes are unaffected, and any device that can record still
+  can.
+- **An Audio element accepts `play()`, reports `paused: false` against a running `AudioContext`,
+  and leaves `currentTime` at zero.** That is the shape of every audio complaint this app has had,
+  so the player checks the clock a second later and says the loop is not playing rather than that
+  it is.
+
+The pattern is worth naming: each of these is a capability the engine claims and does not have, and
+each was invisible until something rendered the actual artefact and looked at the result.
+
 ## Why there is a package.json
 
 Deno cannot install `@kpstreams/server` itself. Its QUIC backend lists
@@ -194,14 +212,23 @@ by `deno task shots`.
 
 ## Two browser harnesses, and what each is for
 
-`deno task shots` proves every screen renders. `deno task journey` proves pressing things on them
-works — eighty-eight checks across three concurrent browsers: run a timer and watch the other device
-learn about it unasked, record time from the phone, edit an entry down to duration-only, delete
-one, write a work note and see it arrive, record a voice note through a synthetic microphone and play
-it back off the server's disk, wait for a server-initiated prompt to reach both devices, invoice a month, take delivery of the PDF, issue it, and
-change the schedule and watch the projection move on another device, revoke the phone while it is
-still holding an open subscription, and confirm a `read` device is shown none of the controls it
-would be refused.
+`deno task shots` proves every screen renders — in both themes, on a phone, and on a server with
+nothing in it yet, which is the state every new install starts in and the one nothing had ever
+looked at. `deno task journey` proves pressing things on them works: a hundred and twenty-eight
+checks across five concurrent browsers, one of them dark and one of them read-only. Run a timer and
+watch the other device learn about it unasked, record time from the phone, edit an entry down to
+duration-only, delete one, write a work note and see it arrive, record a voice note through a
+synthetic microphone and play it back off the server's disk, wait for a server-initiated prompt to
+reach both devices, invoice a month, open the PDF in the viewer and read its bytes back out of the
+blob the person is looking at, issue it, change the schedule and watch the projection move on
+another device, revoke the phone while it is still holding an open subscription, confirm a `read`
+device is shown none of the controls it would be refused — and then kill the server and watch the
+app notice, say so, and come back on its own.
+
+Some of the claims are checked against something other than the app's own opinion of itself. The
+background loop is asserted through Chromium's media pipeline over CDP, because "playing" in this
+app has meant "the request was accepted" three separate times, and each time it was wrong in a way
+the interface reported as success.
 
 Some of it is checked as geometry rather than as text, because some of the claims are about
 pixels: that the two pacing bars begin and end at the same x, or that saving the settings does not
