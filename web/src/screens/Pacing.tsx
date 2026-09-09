@@ -12,7 +12,6 @@
 import { useStore } from "../state.tsx";
 import { hours, pace } from "../format.ts";
 import { MonthNav } from "./MonthNav.tsx";
-import { today } from "@worklog/shared/dates";
 
 export function Pacing() {
   const { snapshot, month, setMonth } = useStore();
@@ -20,7 +19,6 @@ export function Pacing() {
 
   const p = snapshot.pacing;
   const paced = pace(p.paceHours);
-  const now = today();
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -104,14 +102,27 @@ export function Pacing() {
         <h3>Days</h3>
         <div className="daygrid" style={{ marginTop: 10 }}>
           {p.days.map((d) => {
-            const scheduled = d.remaining > 0 || d.actual > 0;
-            const state = d.date > now
-              ? "future"
-              : d.actual > 0
+            /*
+             * Four states, asked in the order that makes each of them reachable.
+             *
+             * This asked "is it in the future" first, and that answer won over "is it a workday at
+             * all" — so a Saturday three weeks out was drawn as a day still to fill. Worse, it
+             * decided "scheduled" from `remaining > 0 || actual > 0`, and a past workday with
+             * nothing recorded has neither: the red state, the one thing a pacing screen exists to
+             * point at, could not be reached by any day at all.
+             *
+             * `d.scheduled` is the day's own hours and answers the workday question directly.
+             * `d.remaining` then separates "there is still time" from "the day is over" without
+             * needing today's date: a future day has all its hours left, this afternoon has some,
+             * and a day that has ended has none.
+             */
+            const state = d.actual > 0
               ? "worked"
-              : scheduled
-              ? "missed"
-              : "off";
+              : d.scheduled === 0
+              ? "off"
+              : d.remaining > 0
+              ? "future"
+              : "missed";
             return (
               <div
                 key={d.date}

@@ -283,6 +283,56 @@ async function main() {
     );
   }
 
+  /*
+   * The day grid, before anything in this run has touched the schedule.
+   *
+   * Four states with four swatches in the legend, and the ladder that picks between them asks
+   * "is this day in the future" first. That answer wins over "is this a workday at all", so a
+   * Saturday three weeks from now is drawn as a day you might still work — and it means the red
+   * state, the one the screen exists to show, is unreachable: a past workday with nothing recorded
+   * has no hours remaining and no hours worked, which the ladder reads as "not a workday".
+   */
+  console.log("\nthe day grid:");
+  await nav(desktop.page, "Pacing");
+  const dayCells = async (page) =>
+    await page.locator(".daygrid .day").evaluateAll((els) =>
+      els.map((el) => ({
+        cls: [...el.classList].filter((c) => c !== "day").join(" "),
+        title: el.getAttribute("title") ?? "",
+      }))
+    );
+  const dayOf = (title) => title.slice(0, 10);
+  const workedIn = (title) => Number.parseFloat(title.split(": ")[1] ?? "");
+  const isWeekend = (date) => [0, 6].includes(new Date(`${date}T00:00:00`).getDay());
+
+  const thisMonth = await dayCells(desktop.page);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const futureWeekend = thisMonth.filter((c) =>
+    dayOf(c.title) > todayIso && isWeekend(dayOf(c.title))
+  );
+  check(
+    "a weekend still to come is drawn as a non-workday, not as a day left to fill",
+    futureWeekend.length > 0 && futureWeekend.every((c) => c.cls === "off"),
+    `${futureWeekend.length} of them: ${[...new Set(futureWeekend.map((c) => c.cls))].join(", ")}`,
+  );
+
+  // Last month, which is entirely in the past, and which the seed does not fill every weekday of.
+  await desktop.page.getByRole("button", { name: /^Go to/ }).first().click();
+  await desktop.page.waitForTimeout(700);
+  const lastMonth = await dayCells(desktop.page);
+  const unworkedWeekdays = lastMonth.filter((c) =>
+    !isWeekend(dayOf(c.title)) && workedIn(c.title) === 0
+  );
+  check(
+    "a scheduled day that went unworked is drawn as one",
+    unworkedWeekdays.length > 0 && unworkedWeekdays.every((c) => c.cls === "missed"),
+    `${unworkedWeekdays.length} of them: ${
+      [...new Set(unworkedWeekdays.map((c) => c.cls))].join(", ")
+    }`,
+  );
+  await desktop.page.getByRole("button", { name: /^Go to/ }).last().click();
+  await desktop.page.waitForTimeout(700);
+
   // ---------------------------------------------------------------- a timer, and a second device
   console.log("\ntimer:");
 
