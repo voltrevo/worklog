@@ -69,12 +69,45 @@ interface Ctx {
   regular: PDFFont;
   bold: PDFFont;
   italic: PDFFont;
+  /**
+   * Anything drawn outside the margins — see `text`.
+   *
+   * Every column width in this file is a number chosen against the *fixture*, and the fixture is
+   * polite. Given a real trading name the from-block printed through the invoice-number box, and
+   * given a sentence in the note the note started at a negative x and ran off both edges of the
+   * page. Neither threw, neither was caught by any test, and both produce a document somebody
+   * sends to a client.
+   *
+   * So the renderer notices. `pdf_test.ts` asserts this is empty for deliberately awkward input,
+   * and `rpc.ts` logs it, because the next such number will also be chosen against the fixture.
+   */
+  outside: string[];
+}
+
+/**
+ * The bytes, and anything the renderer had to draw outside its own margins.
+ *
+ * Separate from `renderInvoicePdf` so the ordinary caller keeps a one-value signature; the one
+ * caller that wants to *say something* about a bad layout uses this.
+ */
+export async function renderInvoicePdfChecked(
+  draft: InvoiceDraft,
+  config: InvoiceConfig,
+): Promise<{ bytes: Uint8Array; outside: string[] }> {
+  return await render(draft, config);
 }
 
 export async function renderInvoicePdf(
   draft: InvoiceDraft,
   config: InvoiceConfig,
 ): Promise<Uint8Array> {
+  return (await render(draft, config)).bytes;
+}
+
+async function render(
+  draft: InvoiceDraft,
+  config: InvoiceConfig,
+): Promise<{ bytes: Uint8Array; outside: string[] }> {
   const content = invoiceContent(draft, config);
   const doc = await PDFDocument.create();
   const ctx: Ctx = {
@@ -84,6 +117,7 @@ export async function renderInvoicePdf(
     regular: await doc.embedFont(StandardFonts.Helvetica),
     bold: await doc.embedFont(StandardFonts.HelveticaBold),
     italic: await doc.embedFont(StandardFonts.HelveticaOblique),
+    outside: [],
   };
 
   doc.setTitle(`${draft.number}${config.fromName ? ` — ${config.fromName}` : ""}`);
@@ -97,7 +131,7 @@ export async function renderInvoicePdf(
   totals(ctx, content);
   payment(ctx, content);
 
-  return await doc.save();
+  return { bytes: await doc.save(), outside: ctx.outside };
 }
 
 // ------------------------------------------------------------------ drawing
@@ -111,6 +145,18 @@ interface TextOpts {
 
 function text(ctx: Ctx, value: string, x: number, y: number, opts: TextOpts = {}): void {
   if (!value) return;
+
+  // Half a point of slack for rounding. A right-aligned string starting left of the margin means
+  // it was wider than the space allowed, which is the shape both real faults took.
+  const size = opts.size ?? 9;
+  const width = (opts.font ?? ctx.regular).widthOfTextAtSize(value, size);
+  if (x < M - 0.5 || x + width > M + CONTENT + 0.5) {
+    ctx.outside.push(
+      `"${value.slice(0, 40)}" spans ${Math.round(x)}..${Math.round(x + width)} ` +
+        `outside ${M}..${M + CONTENT}`,
+    );
+  }
+
   ctx.page.drawText(value, {
     x,
     y,
@@ -213,9 +259,25 @@ function header(ctx: Ctx, c: InvoiceContent): void {
     idY -= 24;
   }
 
-  // 8.23 — who is billing.
+  /*
+   * 8.23 — who is billing.
+   *
+   * The wrap width was a flat 250pt while the value column starts at `M + 148`, so anything past
+   * about 40 characters ran straight under the invoice-number box in the top right. A trading
+   * name of ordinary length did it: "Wren Consulting and Associated Reliability Engineering
+   * Services Pty Limited" printed *through* "INV-2026-09".
+   *
+   * Derived from where the identity block actually starts, so the two cannot disagree again —
+   * and from its *labels*, which are right-aligned to the left of the box and are the thing this
+   * runs into first. Bounding to the box alone still left "Reliability" printing through
+   * "Inv. number".
+   */
+  const identityLabels = Math.max(
+    ...c.identity.map((p) => ctx.regular.widthOfTextAtSize(p.label, 9)),
+  );
+  const fromWidth = boxX - 12 - identityLabels - 12 - (M + 148);
   for (const pair of c.from) {
-    for (const [i, line] of wrap(ctx.regular, pair.value, 9, 250).entries()) {
+    for (const [i, line] of wrap(ctx.regular, pair.value, 9, fromWidth).entries()) {
       if (i === 0) labelled(ctx, pair.label, line, ctx.y, 148);
       else text(ctx, line, M + 148, ctx.y);
       ctx.y -= 13;
@@ -355,11 +417,30 @@ function payment(ctx: Ctx, c: InvoiceContent): void {
   ctx.y -= 20;
 
   labelled(ctx, c.paymentMethod.label, c.paymentMethod.value, ctx.y, 118);
-  // 8.32 — the note sits beside the block rather than under it, as the format has it.
+
+  /*
+   * 8.32 — the note sits beside the block rather than under it, as the format has it.
+   *
+   * It was one call to `right`, which draws a single line starting at `edge - width`. Given a
+   * sentence rather than a phrase that start goes *negative*: the note ran off the left edge of
+   * the page, through "Payment request in: Wire Transfer", and off the right edge as well. A note
+   * is a free-text field and a sentence is the ordinary thing to put in one.
+   *
+   * Wrapped to the half of the page it is allowed, and right-aligned line by line so it still
+   * reads as an aside rather than as a second column.
+   */
   if (c.note) {
-    right(ctx, `(${c.note})`, M + CONTENT, ctx.y, { font: ctx.italic, color: DIM, size: 8.5 });
+    const noteWidth = CONTENT / 2 - 12;
+    let noteY = ctx.y;
+    for (const line of wrap(ctx.italic, `(${c.note})`, 8.5, noteWidth)) {
+      right(ctx, line, M + CONTENT, noteY, { font: ctx.italic, color: DIM, size: 8.5 });
+      noteY -= 11;
+    }
+    // The account block below starts from whichever of the two ran longer.
+    ctx.y = Math.min(ctx.y - 18, noteY - 4);
+  } else {
+    ctx.y -= 18;
   }
-  ctx.y -= 18;
 
   for (const pair of c.account) {
     text(ctx, pair.label, M + 118, ctx.y, { font: ctx.bold });

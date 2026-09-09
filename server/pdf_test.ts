@@ -13,7 +13,7 @@ import { PDFDocument } from "pdf-lib";
 import { buildDraft } from "@worklog/shared/invoice";
 import { DEFAULTS, type InvoiceConfig } from "./config.ts";
 import { allText, formatDate, invoiceContent, money, periodRange } from "./invoiceContent.ts";
-import { renderInvoicePdf } from "./pdf.ts";
+import { renderInvoicePdf, renderInvoicePdfChecked } from "./pdf.ts";
 
 const HOUR = 3_600_000;
 
@@ -226,4 +226,48 @@ Deno.test("an override left blank falls through rather than printing empty", () 
   const words = allText(invoiceContent(draft, CONFIG)).join("\n");
   assertStringIncludes(words, CONFIG.clientName);
   assertStringIncludes(words, CONFIG.approver);
+});
+
+Deno.test("nothing is drawn outside the margins, however awkward the content", async () => {
+  /*
+   * Every column width in `pdf.ts` is a number chosen against the fixture, and the fixture is
+   * polite: "Wren & Co", "Product Development". Given a real trading name the from-block printed
+   * *through* the invoice-number box, and given a sentence in the note — a free-text field, where
+   * a sentence is the ordinary thing to put — the note started at a negative x and ran off both
+   * edges of the page, over the payment method on its way.
+   *
+   * Neither threw. Neither was caught by anything here. Both produce a document somebody sends to
+   * a client, and the only way either was found was rendering one and looking at it.
+   *
+   * So: awkward values in every free-text field at once, and the renderer reports what it had to
+   * put outside its own margins.
+   */
+  const long = "Platform reliability, observability and incident response retrospective work";
+  const unbroken = "ReconciliationOfQuarterlySubcontractorInvoicingAndDisbursements";
+  const draft = draftWith(3, 25_000);
+  const { outside } = await renderInvoicePdfChecked({
+    ...draft,
+    lines: draft.lines.map((l, i) => ({ ...l, description: i === 0 ? long : unbroken })),
+  }, {
+    ...CONFIG,
+    fromName: "Wren Consulting and Associated Reliability Engineering Services Pty Limited",
+    clientName: `${unbroken} Holdings Pty Ltd`,
+    approver: "Wren Alexandra Fairweather-Montgomery III",
+    note:
+      "This invoice covers work performed under the master services agreement dated the first of " +
+      "January, and is payable within twenty-eight days of the date shown above.",
+    teamProject: long,
+  });
+
+  assertEquals(outside, []);
+});
+
+Deno.test("and the check can see an overflow when there is one", async () => {
+  // Otherwise the test above passes by the renderer never looking. A note this long cannot fit
+  // the half-width column it is given, and one word of it has nowhere to break.
+  const { outside } = await renderInvoicePdfChecked(draftWith(1, 0), {
+    ...CONFIG,
+    note: "x".repeat(400),
+  });
+  assertEquals(outside.length > 0, true, "a 400-character unbroken note fitted the page");
 });

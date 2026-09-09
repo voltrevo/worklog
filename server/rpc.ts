@@ -73,7 +73,7 @@ import {
   stopTimer,
   updateEntry,
 } from "./work.ts";
-import { renderInvoicePdf } from "./pdf.ts";
+import { renderInvoicePdfChecked } from "./pdf.ts";
 import {
   attachPdf,
   createDraft,
@@ -554,10 +554,26 @@ export async function handle(
        * have to do with a document you had already sent.
        */
       if (ctx.dataDir) {
-        const bytes = await renderInvoicePdf(
+        /*
+         * The settings `issue` just froze, not the global ones.
+         *
+         * They are the same values at this instant *except* for a per-invoice payment override
+         * (25.12), which lives in its own column and is folded into the frozen copy. Rendering
+         * from the global config here would write the file with the configured account and then
+         * serve that file forever — the override would apply to the arithmetic and to a
+         * re-render, and not to the document actually sent.
+         */
+        const rendered = await renderInvoicePdfChecked(
           issued.snapshot ?? issued.draft,
-          getConfig(db, "invoice"),
+          frozenConfigFor(db, issued.id) ?? getConfig(db, "invoice"),
         );
+        const bytes = rendered.bytes;
+        if (rendered.outside.length > 0) {
+          ctx.log("warn", "invoice", "the PDF layout overflowed its margins", {
+            number: issued.number,
+            outside: rendered.outside.slice(0, 5),
+          });
+        }
         const relative = `invoices/${fileNameFor(issued.number)}`;
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, issued.id, relative, now);
@@ -663,7 +679,18 @@ export async function handle(
           ...getConfig(db, "invoice"),
           ...appliedPaymentOverride(paymentOverrideFor(db, invoice.id)),
         };
-        bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, config);
+        const rendered = await renderInvoicePdfChecked(invoice.snapshot ?? invoice.draft, config);
+        bytes = rendered.bytes;
+        // Every column width in the renderer is a number chosen against the fixture. When a real
+        // value does not fit one of them the document is still produced — refusing to hand over
+        // an invoice would be worse — but it is not something to find out from a client.
+        if (rendered.outside.length > 0) {
+          ctx.log("warn", "invoice", "the PDF layout overflowed its margins", {
+            number: invoice.number,
+            outside: rendered.outside.slice(0, 5),
+            more: Math.max(0, rendered.outside.length - 5),
+          });
+        }
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, invoice.id, relative, now);
         ctx.log("info", "invoice", "rendered a PDF", {

@@ -36,6 +36,8 @@ import type { WorkEntry } from "@worklog/shared/types";
 import { open } from "./db.ts";
 import { ChallengeStore } from "./access.ts";
 import { getConfig, setConfig } from "./config.ts";
+import { frozenConfigFor, getInvoice } from "./invoices.ts";
+import { renderInvoicePdf } from "./pdf.ts";
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
 import { loggerFor, query as queryLogs } from "./logs.ts";
 import { PromptHub } from "./prompts.ts";
@@ -397,3 +399,75 @@ function wholeLog(ctx: ServerContext): string {
   return queryLogs(ctx.db, { admin: true, limit: 10_000, minLevel: "debug" })
     .map((e) => `${e.message} ${JSON.stringify(e.context ?? {})}`).join("\n");
 }
+
+Deno.test({
+  name: "25.12 -- a payment override is on the invoice that was sent, not only on a re-render",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * Issuing writes the PDF once and every download reads that file. That write used the *global*
+     * configuration while `issue` was separately freezing a copy with the per-invoice payment
+     * override folded in — so the override reached the arithmetic, and the frozen settings, and a
+     * re-render after the file was lost, and not the document actually sent. The one artefact it
+     * missed is the only one the client ever sees.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "override-pdf-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+
+    const ctx = context(dir);
+    setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(ctx, "s1");
+    await claimAdmin(ctx, admin);
+    await call(ctx, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 3_600_000,
+      billingTag: "Product Development",
+    });
+    const draft = await call(ctx, admin, {
+      t: "invoice-create",
+      period: "2026-09",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    await call(ctx, admin, {
+      t: "invoice-update",
+      id: draft.id,
+      paymentOverride: { payBank: "TheOverriddenBankOfNowhere" },
+    });
+    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+
+    /*
+     * Compared as artefacts, not searched as text: `doc.save()` compresses its streams, so a
+     * string that is plainly on the page is not a string in the file. My first version of this
+     * looked for the bank name in the bytes and failed against correct code.
+     *
+     * The claim is exactly this equality anyway — the document that was sent is the one the
+     * frozen settings produce. Before the fix it was the one the *global* settings produce.
+     */
+    const stored = await Deno.readFile(`${dir}/invoices/INV-2026-09.pdf`);
+    const record = getInvoice(ctx.db, draft.id)!;
+    const fromFrozen = await renderInvoicePdf(
+      record.snapshot ?? record.draft,
+      frozenConfigFor(ctx.db, draft.id)!,
+    );
+    const fromGlobal = await renderInvoicePdf(
+      record.snapshot ?? record.draft,
+      getConfig(ctx.db, "invoice"),
+    );
+    assertEquals(
+      stored.length === fromFrozen.length && stored.every((b, i) => b === fromFrozen[i]),
+      true,
+      "the file written at issuance is not what the frozen settings render",
+    );
+    // And the two really do differ, or the assertion above holds for the wrong reason.
+    assertEquals(
+      fromFrozen.length === fromGlobal.length && fromFrozen.every((b, i) => b === fromGlobal[i]),
+      false,
+      "the override changed nothing, so this test proves nothing",
+    );
+
+    ctx.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});
