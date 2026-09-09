@@ -1249,6 +1249,36 @@ async function main() {
    * the app believes the loop is playing.
    */
   const playingNow = () => desktop.page.getByText("playing now").count();
+
+  /*
+   * 26.1 — and whether it is *actually* playing, which the app's own rendering cannot say.
+   *
+   * Everything else here reads the card: the hint appears when the app believes the loop is
+   * playing. That belief has been wrong twice, reported twice, and was four separate silent faults
+   * the second time — so a check that consults it is a check that agrees with the bug.
+   *
+   * Chromium's media pipeline is a second opinion that owes the app nothing. The `Media` CDP
+   * domain reports what the decoder is doing: a player created, a pipeline state, an audio track
+   * with a codec and a sample rate. `kPlaying` there means bytes are being decoded, whatever the
+   * interface says about it.
+   */
+  const media = await desktop.page.context().newCDPSession(desktop.page);
+  const pipeline = [];
+  const played = [];
+  await media.send("Media.enable");
+  media.on("Media.playerEventsAdded", ({ events }) => {
+    for (const e of events) {
+      let body;
+      try {
+        body = JSON.parse(e.value ?? "{}");
+      } catch {
+        continue;
+      }
+      if (body.pipeline_state) pipeline.push(body.pipeline_state);
+      if (body.event === "kPlay" || body.event === "kPause") played.push(body.event);
+    }
+  });
+
   await desktop.page.getByRole("button", { name: "▶ Preview" }).click();
   check(
     "the preview starts the loop",
@@ -1259,10 +1289,27 @@ async function main() {
     ),
   );
 
+  check(
+    "26.1 — and the media pipeline agrees: something is being decoded and played",
+    await until(
+      "pipeline playing",
+      desktop.page,
+      () => Promise.resolve(pipeline.includes("kPlaying")),
+      15_000,
+    ),
+    `pipeline states: ${JSON.stringify(pipeline)}`,
+  );
+
+  const pausesBefore = played.filter((e) => e === "kPause").length;
   await nav(desktop.page, "Timer");
   await nav(desktop.page, "Settings");
   await desktop.page.waitForTimeout(600);
   check("26.3 — and a visit to another screen does not stop it", (await playingNow()) > 0);
+  check(
+    "and the pipeline was not paused by the visit either",
+    played.filter((e) => e === "kPause").length === pausesBefore,
+    JSON.stringify(played),
+  );
 
   check(
     "26.5 — Preview is unavailable while it plays",
