@@ -39,11 +39,23 @@ const CONFIG: InvoiceConfig = {
 function draftWith(lines: number, bonusMinor = 0, over: Record<string, unknown> = {}) {
   return buildDraft({
     period: "2026-08",
+    /*
+     * `lines` really is the number of lines.
+     *
+     * It used to be the number of *entries*, and `buildLines` aggregates by date and tag — with
+     * one tag and dates cycling over 28 days, every value above 28 produced exactly 28 rows.
+     * `draftWith(100)` and `draftWith(28)` were the same document, so "a long month spills onto a
+     * second page" was the largest invoice this suite could describe, and everything past the
+     * first page break had never been rendered at all.
+     *
+     * The tag varies once the dates run out, so the rows stay distinct. Below 28 nothing changes,
+     * which is every other caller.
+     */
     entries: Array.from({ length: lines }, (_, i) => ({
       id: `e${i}`,
       date: `2026-08-${String((i % 28) + 1).padStart(2, "0")}`,
       durationMs: 7.5 * HOUR,
-      billingTag: "Feature development",
+      billingTag: i < 28 ? "Feature development" : `Feature development ${Math.floor(i / 28)}`,
     })),
     teamProject: "Product Development",
     rateMinor: 12_000,
@@ -270,4 +282,23 @@ Deno.test("and the check can see an overflow when there is one", async () => {
     note: "x".repeat(400),
   });
   assertEquals(outside.length > 0, true, "a 400-character unbroken note fitted the page");
+});
+
+Deno.test("a very long month paginates rather than piling up at the bottom", async () => {
+  /*
+   * 28 lines proves there is a second page. It does not prove there is a third, and "spills onto
+   * a second page" is the kind of claim that holds for exactly one page break — a `y` that is
+   * reset once at the top of a new page and then never checked again looks correct on the only
+   * case anybody tried.
+   *
+   * A hundred lines is more than a month of work can produce, which is the point: the bound is
+   * the paper, not the plausible.
+   */
+  const bytes = await renderInvoicePdf(draftWith(100, 25_000), CONFIG);
+  const pages = (await PDFDocument.load(bytes)).getPageCount();
+  assertEquals(pages >= 4, true, `100 lines fitted ${pages} page(s)`);
+
+  // And nothing was drawn off the sides on any of them.
+  const { outside } = await renderInvoicePdfChecked(draftWith(100, 25_000), CONFIG);
+  assertEquals(outside, []);
 });
