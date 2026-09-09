@@ -217,6 +217,40 @@ globalThis.__run = async () => {
       setTimeout(() => done("never settled"), 5000);
     } catch (e) { done("threw:" + e.name + " " + e.message); }
   });
+  /*
+   * 17.x — and IndexedDB, which is where the loop audio lives.
+   *
+   * The capability list asks whether indexedDB exists. It does. Whether a file:// page may *open*
+   * a database is a different question, and one several engines answer no to -- which on this
+   * build would mean the audio file cannot be stored at all, with the same "it does not work and
+   * says nothing" shape as everything else here.
+   *
+   * No backticks anywhere in this region: it is a template literal on the Deno side.
+   */
+  out.idb = await new Promise((res) => {
+    let settled = false;
+    const done = (why) => { if (!settled) { settled = true; res(String(why)); } };
+    try {
+      const req = indexedDB.open("worklog-selftest", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("s");
+      req.onerror = () => done("open error:" + (req.error ? req.error.name : "unknown"));
+      req.onblocked = () => done("blocked");
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          const tx = db.transaction("s", "readwrite");
+          tx.objectStore("s").put(new Uint8Array([1, 2, 3]), "k");
+          tx.oncomplete = () => {
+            const read = db.transaction("s").objectStore("s").get("k");
+            read.onsuccess = () => done("stored:" + (read.result ? read.result.length : "nothing"));
+            read.onerror = () => done("read error");
+          };
+          tx.onerror = () => done("write error:" + (tx.error ? tx.error.name : "unknown"));
+        } catch (e) { done("threw:" + e.name); }
+      };
+      setTimeout(() => done("no answer"), 5000);
+    } catch (e) { done("threw:" + e.name + " " + e.message); }
+  });
   out.htmlBlobFrame = await frameLoads(
     URL.createObjectURL(new Blob(["<p>hello</p>"], { type: "text/html" })),
   );
@@ -374,6 +408,7 @@ try {
     pdfFrame: parsed.pdfFrame ?? "",
     recorded: parsed.recorded ?? "",
     looped: parsed.looped ?? "",
+    idb: parsed.idb ?? "",
     htmlBlobFrame: parsed.htmlBlobFrame ?? "",
     pdfDataFrame: parsed.pdfDataFrame ?? "",
     pdfMime: parsed.pdfMime ?? "",
@@ -439,6 +474,7 @@ try {
   };
   console.log(`  · recording a synthetic stream here: ${out.recorded}`);
   console.log(`  · the loop path here: ${out.looped}`);
+  check("17.x — a file:// page can store the loop audio", out.idb === "stored:3", out.idb);
   console.log(
     `  · navigator.pdfViewerEnabled = ${out.pdfViewer}, application/pdf = ${out.pdfMime}, ` +
       `html blob = ${out.htmlBlobFrame}, pdf blob = ${out.pdfFrame}, ` +
@@ -602,6 +638,21 @@ try {
       ["navigator.mediaDevices", "typeof navigator.mediaDevices?.getUserMedia === 'function'"],
       ["CSS clamp with min", "CSS.supports('font-size', 'clamp(40px, min(13vh, 20vw), 168px)')"],
       ["CSS custom properties", "CSS.supports('--inv-navy', 'rgb(1 2 3)')"],
+      /*
+       * The schedule is edited with time inputs and entries with a date input. An engine that does
+       * not implement them falls the element back to a plain text box, silently -- and then the
+       * value is whatever somebody typed, against parsers that expect HH:MM and YYYY-MM-DD.
+       */
+      [
+        "input type=time",
+        "(() => { const i = document.createElement('input'); i.type = 'time'; " +
+        "return i.type === 'time'; })()",
+      ],
+      [
+        "input type=date",
+        "(() => { const i = document.createElement('input'); i.type = 'date'; " +
+        "return i.type === 'date'; })()",
+      ],
     ];
     const supported = await js(
       "typeof MediaRecorder === 'function' ? " +
