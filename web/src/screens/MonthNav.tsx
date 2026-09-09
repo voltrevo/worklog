@@ -20,11 +20,29 @@ export function MonthNav(
   const onCurrent = month === current;
   return (
     <div className="row month-nav">
-      <button className="btn" type="button" onClick={() => setMonth(shiftMonth(month, -1))}>
+      {
+        /*
+        Named, because the glyph *is* the label and a glyph is not a word. Read aloud these two
+        announced themselves as "‹" and "›" — which is what they say, and says nothing. The month
+        is in the name too, so moving back twice does not sound like the same button pressed
+        twice with no effect.
+      */
+      }
+      <button
+        className="btn"
+        type="button"
+        aria-label={`Go to ${monthName(shiftMonth(month, -1))}`}
+        onClick={() => setMonth(shiftMonth(month, -1))}
+      >
         ‹
       </button>
       <strong className="month-name">{monthName(month)}</strong>
-      <button className="btn" type="button" onClick={() => setMonth(shiftMonth(month, 1))}>
+      <button
+        className="btn"
+        type="button"
+        aria-label={`Go to ${monthName(shiftMonth(month, 1))}`}
+        onClick={() => setMonth(shiftMonth(month, 1))}
+      >
         ›
       </button>
       <button

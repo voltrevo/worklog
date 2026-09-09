@@ -616,8 +616,8 @@ async function main() {
   check("25.28 — a timed entry's duration cannot be typed into", await howLong.isDisabled());
 
   const spanBefore = await howLong.inputValue();
-  await desktop.page.getByLabel("From").fill("09:00");
-  await desktop.page.getByLabel("To").fill("11:30");
+  await desktop.page.getByLabel("From", { exact: true }).fill("09:00");
+  await desktop.page.getByLabel("To", { exact: true }).fill("11:30");
   // 25.29 — before saving, not after.
   check(
     "25.29 — and it recomputes as the times are typed",
@@ -1150,6 +1150,34 @@ async function main() {
   await desktop.page.getByRole("button", { name: "Discard these changes" }).click();
 
   check("every field has a name to be announced by", nameless.length === 0, nameless.join("; "));
+
+  // And the same question of the controls. A button whose whole label is a glyph is announced as
+  // that glyph: the month arrows said "‹" and "›", which is exactly what they say and nothing
+  // about what they do. `MonthNav` had gone to some trouble to stop them *moving* and none at all
+  // to make them nameable.
+  const mute = (page, where) =>
+    page.evaluate((where) => {
+      const out = [];
+      for (const b of document.querySelectorAll("button, a[href]")) {
+        const name = (b.getAttribute("aria-label") ?? b.textContent ?? "").trim();
+        // At least one letter or digit. A name of only symbols is read out as those symbols.
+        if (name && /[\p{L}\p{N}]/u.test(name)) continue;
+        out.push(`${where}: <${b.tagName.toLowerCase()}> named ${JSON.stringify(name)}`);
+      }
+      return out;
+    }, where);
+
+  const glyphs = [];
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+    await nav(desktop.page, screen);
+    await desktop.page.waitForTimeout(250);
+    glyphs.push(...await mute(desktop.page, screen));
+  }
+  check(
+    "and every control has a name that can be pronounced",
+    glyphs.length === 0,
+    [...new Set(glyphs)].join("; "),
+  );
 
   // ---------------------------------------------------------------- revoking, while connected
   //
