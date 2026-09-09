@@ -9,6 +9,8 @@
  * it was a second dialog somewhere else that would drift — which is the fault 25.30 was about,
  * arriving in a different file.
  */
+import { Sheet } from "./Sheet.tsx";
+
 export function Dialog(
   { title, body, confirmLabel, danger, busy, onConfirm, onCancel }: {
     title: string;
@@ -21,7 +23,7 @@ export function Dialog(
   },
 ) {
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+    <Sheet label={title} onDismiss={onCancel} dismissOnBackdrop>
       <div className="card stack" style={{ gap: 14, maxWidth: 520 }}>
         <h2 style={{ margin: 0 }}>{title}</h2>
         <p className="muted" style={{ margin: 0 }}>{body}</p>
@@ -39,6 +41,6 @@ export function Dialog(
           </button>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }

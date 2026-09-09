@@ -28,6 +28,7 @@ import {
 import type { InvoiceLine } from "@worklog/shared/invoice";
 import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
 import { money, parseNumber } from "../format.ts";
+import { Sheet } from "./Sheet.tsx";
 
 /**
  * 25.12 — the fields a draft may say differently, and what to call them.
@@ -245,12 +246,7 @@ export function InvoiceEditor(
     : undefined;
 
   return (
-    <div
-      className="sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Edit ${invoice.number}`}
-    >
+    <Sheet label={`Edit ${invoice.number}`} onDismiss={onCancel}>
       <div className="card stack editor" style={{ gap: 14 }}>
         <div className="row between wrap">
           <h2 style={{ margin: 0 }}>Edit this draft</h2>
@@ -496,6 +492,6 @@ export function InvoiceEditor(
           </button>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }

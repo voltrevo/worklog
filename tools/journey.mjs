@@ -1060,6 +1060,44 @@ async function main() {
     );
   }
 
+  // ------------------------------------------------------------ a modal that behaves like one
+  //
+  // Four sheets declared `role="dialog" aria-modal="true"` — a promise that the rest of the page
+  // is inert — and then handled no keys at all. Escape did nothing, focus stayed wherever it was,
+  // and Tab wandered off behind the overlay into the controls the overlay exists to cover.
+  // Announcing yourself as a modal and not being one is worse than not announcing it, because the
+  // announcement is what stops somebody looking for another way out.
+  console.log("\nsheets:");
+  const openSheets = () => desktop.page.getByRole("dialog").count();
+
+  await nav(desktop.page, "History");
+  await desktop.page.getByRole("button", { name: "Add past time" }).click();
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  check(
+    "opening a sheet puts focus inside it",
+    await desktop.page.evaluate(() => document.activeElement?.closest("[role=dialog]") !== null),
+  );
+  await desktop.page.keyboard.press("Escape");
+  await desktop.page.waitForTimeout(300);
+  check("Escape closes it", (await openSheets()) === 0);
+  check(
+    "and focus goes back to what opened it",
+    (await desktop.page.evaluate(() => document.activeElement?.textContent?.trim())) ===
+      "Add past time",
+  );
+
+  // A confirmation may also be dismissed by the backdrop; an editor may not, because a stray
+  // click at the edge of a long invoice would discard every edit with no warning and no undo.
+  await nav(desktop.page, "Invoices");
+  await desktop.page.getByRole("button", { name: "Edit lines" }).first().click();
+  await desktop.page.getByRole("button", { name: "Add a line" }).waitFor({ timeout: 15_000 });
+  await desktop.page.mouse.click(20, 20);
+  await desktop.page.waitForTimeout(300);
+  check("a backdrop click does not discard an editor's unsaved edits", (await openSheets()) === 1);
+  await desktop.page.keyboard.press("Escape");
+  await desktop.page.waitForTimeout(300);
+  check("but Escape does close it", (await openSheets()) === 0);
+
   // ------------------------------------------------------------ nothing hidden sideways
   //
   // 23.x. A container with `overflow-x: auto` never makes the *document* overflow, so every

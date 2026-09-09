@@ -19,6 +19,7 @@
  */
 
 import { useState } from "react";
+import { Sheet } from "./Sheet.tsx";
 import { useStore } from "../state.tsx";
 import { duration, instantAt, parseDuration, timeValue } from "../format.ts";
 import { today } from "@worklog/shared/dates";
@@ -113,7 +114,7 @@ export function EntryEditor(
   const title = entry ? "Edit this entry" : "Add past time";
 
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+    <Sheet label={title} onDismiss={onClose}>
       <div className="card stack" style={{ gap: 14 }}>
         <h2 style={{ margin: 0 }}>{title}</h2>
 
@@ -215,6 +216,6 @@ export function EntryEditor(
           <button className="btn" type="button" onClick={onClose}>Cancel</button>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }

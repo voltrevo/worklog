@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { meterStream, TRACE_LENGTH } from "../levels.ts";
 import { useStore } from "../state.tsx";
 import { clock } from "../format.ts";
+import { Sheet } from "./Sheet.tsx";
 
 /** 5.27 — enough for intelligible speech and nothing more. */
 const BITS_PER_SECOND = 20_000;
@@ -79,12 +80,7 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
   };
 
   return (
-    <div
-      className="sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Work note"
-    >
+    <Sheet label="Work note" onDismiss={onClose}>
       <div className="card stack" style={{ gap: 14 }}>
         <div className="row between">
           <h2>{prompted ? "What are you working on?" : "Work note"}</h2>
@@ -193,7 +189,7 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
           </button>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }
 
