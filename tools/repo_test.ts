@@ -173,3 +173,50 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "every requirement has its own number, and no section skips one",
+  permissions: { read: ["."] },
+  async fn() {
+    /*
+     * The document is append-only within each list, and three review passes have appended to it.
+     * Adding an item means reading off the last number in a section — and the last number in
+     * *section 6* is not the one nearest the bottom of section 6, because 6.37 is struck through
+     * and 6.38 came later. I wrote a second 6.38 that way this afternoon and caught it by eye.
+     *
+     * Two properties, and the second is the one that finds a typo: numbers are unique, and each
+     * section runs 1..N with nothing missing. A gap means somebody skipped, and a skip is usually
+     * a mistyped number that is now also a duplicate somewhere else.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const text = await Deno.readTextFile(`${root}REQUIREMENTS.md`);
+    const numbers = [...text.matchAll(/^(\d+)\.(\d+)\.\s/gm)]
+      .map(([, section, item]) => ({ section: Number(section), item: Number(item) }));
+
+    const seen = new Set<string>();
+    const duplicated: string[] = [];
+    for (const { section, item } of numbers) {
+      const key = `${section}.${item}`;
+      if (seen.has(key)) duplicated.push(key);
+      seen.add(key);
+    }
+    assertEquals(duplicated, [], "a requirement number is used twice");
+
+    const gaps: string[] = [];
+    const bySection = new Map<number, Set<number>>();
+    for (const { section, item } of numbers) {
+      if (!bySection.has(section)) bySection.set(section, new Set());
+      bySection.get(section)!.add(item);
+    }
+    for (const [section, items] of [...bySection].sort((a, b) => a[0] - b[0])) {
+      const highest = Math.max(...items);
+      for (let i = 1; i <= highest; i++) {
+        if (!items.has(i)) gaps.push(`${section}.${i}`);
+      }
+    }
+    assertEquals(gaps, [], "a section skips a number, which is usually a mistyped one");
+
+    // And the count, so that a regex which stops matching reads as a fault rather than a pass.
+    assertEquals(numbers.length > 500, true, `only found ${numbers.length} requirements`);
+  },
+});
