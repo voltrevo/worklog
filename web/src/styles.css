@@ -599,13 +599,30 @@ label.field {
  */
 .bar.segmented {
   display: flex;
-  gap: 2px;
   overflow: visible;
 }
 
-.bar.segmented > span {
-  min-width: 3px;
-  flex: 0 0 auto;
+/*
+ * 26.19 — the fill is exactly `progress` wide, and the parts divide it.
+ *
+ * They used to be percentages of the whole track with a 2px gap and a 3px minimum each, so every
+ * extra session made the bar longer than the work: six short ones added ten pixels of gap and up
+ * to eighteen of minimum. Starting and stopping the timer visibly ran the bar ahead of the day.
+ *
+ * With the separators inside the fill, they cost the segments rather than the total.
+ */
+.bar-fill {
+  display: flex;
+  gap: 2px;
+  height: 100%;
+  min-width: 0;
+}
+
+.bar.segmented .bar-fill > span {
+  /* `flex-grow` carries the proportion; a zero basis is what makes it exact. */
+  flex-basis: 0;
+  min-width: 0;
+  width: auto;
 }
 
 /* A wide table must scroll inside its own box rather than the page. */

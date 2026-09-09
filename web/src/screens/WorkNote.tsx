@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { meterStream, TRACE_LENGTH } from "../levels.ts";
 import { useStore } from "../state.tsx";
+import { Dialog } from "./Dialog.tsx";
 import { clock } from "../format.ts";
 import { Sheet } from "./Sheet.tsx";
 
@@ -45,11 +46,31 @@ export interface WorkNoteProps {
 }
 
 export function WorkNote({ prompted, onClose }: WorkNoteProps) {
-  const { call, refresh } = useStore();
+  const { call, refresh, acknowledgePrompt } = useStore();
+  /** Only for a prompted note: an ordinary one has no tune to stop. */
+  const attend = () => {
+    if (prompted) acknowledgePrompt();
+  };
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string>();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const recorder = useRecorder();
+
+  /**
+   * 26.9 — closing a note that has something in it asks first.
+   *
+   * A note is typed once and there is no draft anywhere: Escape, the backdrop, or a mis-aimed
+   * "Not now" and the words are gone with nothing to recover them from. A recording is worse,
+   * because it cannot be typed again.
+   *
+   * Only when there is something to lose. Confirming an empty dialog is a dialog about nothing.
+   */
+  const hasContent = () => body.trim().length > 0 || recorder.recording !== undefined;
+  const leave = () => {
+    if (hasContent()) setConfirmDiscard(true);
+    else onClose();
+  };
 
   const save = async () => {
     if (!body.trim() && !recorder.recording) {
@@ -80,12 +101,26 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
   };
 
   return (
-    <Sheet label="Work note" onDismiss={onClose}>
-      <div className="card stack" style={{ gap: 14 }}>
+    <Sheet label="Work note" onDismiss={leave}>
+      {
+        /*
+        26.7 — touching the dialog silences the tune.
+
+        Not the sheet's own opening focus, which happens without anybody doing anything: an alarm
+        that stops because it appeared is not an alarm. A pointer or a key is somebody attending
+        to it, and from that moment the sound is noise over the thing it was summoning them to.
+      */
+      }
+      <div
+        className="card stack"
+        style={{ gap: 14 }}
+        onPointerDown={attend}
+        onKeyDown={attend}
+      >
         <div className="row between">
           <h2>{prompted ? "What are you working on?" : "Work note"}</h2>
           {/* 5.21 — always available, and it costs nothing. */}
-          <button className="link" type="button" onClick={onClose}>
+          <button className="link" type="button" onClick={leave}>
             {prompted ? "Not now" : "Close"}
           </button>
         </div>
@@ -184,11 +219,29 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
           >
             Save note
           </button>
-          <button className="btn" type="button" onClick={onClose}>
+          <button className="btn" type="button" onClick={leave}>
             Cancel
           </button>
         </div>
       </div>
+
+      {/* 26.9 — over the note, not instead of it, so the words are still visible behind. */}
+      {confirmDiscard && (
+        <Dialog
+          title="Throw this note away?"
+          body={recorder.recording
+            ? "There is a recording here, and it is not saved anywhere else. Closing loses it."
+            : "What you have typed is not saved anywhere else. Closing loses it."}
+          confirmLabel="Throw it away"
+          danger
+          busy={false}
+          onConfirm={() => {
+            setConfirmDiscard(false);
+            onClose();
+          }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
     </Sheet>
   );
 }

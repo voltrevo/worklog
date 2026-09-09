@@ -73,15 +73,21 @@ export function Timer() {
   const progress = targetMs > 0 ? Math.min(1, todayMs / targetMs) : 0;
 
   /*
-   * 25.26 — the pieces the bar is made of.
+   * 25.26, 26.19 — the pieces the bar is made of, inside a fill that is exactly the right size.
    *
-   * Scaled by `progress / (todayMs / targetMs)` rather than by `targetMs` directly, so that an
-   * over-run day still fills exactly the width the bar has: `progress` is capped at 1, and
-   * segments sized against the raw target would keep going and overflow. `scale` is 1 on an
-   * ordinary day and shrinks the set proportionally once you are past the target, which keeps the
-   * relative sizes right while the total stays inside.
+   * Each segment used to be a percentage of the whole track, with `gap: 2px` between them and a
+   * `min-width: 3px` on each. Both add width the data did not ask for: six short sessions added
+   * ten pixels of gap and up to eighteen of minimum, so starting and stopping the timer repeatedly
+   * advanced the bar far faster than the work did. A progress bar that is wrong in the direction
+   * of "you have done more than you have" is worse than no bar.
+   *
+   * So the *fill* is `progress` wide and exact, and the segments divide it by `flex-grow`. Gaps
+   * and rounding now consume space inside the fill instead of extending it, which is what makes
+   * both true at once: the total is right, and the parts are still visibly parts.
+   *
+   * `progress` is already capped at 1, so the old `scale` correction for an over-run day is gone
+   * with the arithmetic that needed it.
    */
-  const scale = todayMs > 0 ? (progress * targetMs) / todayMs : 0;
   const segments = [
     ...snapshot.today.map((e: WorkEntry) => ({
       key: e.id,
@@ -91,11 +97,7 @@ export function Timer() {
     ...(active ? [{ key: "running", ms: runningMs, running: true }] : []),
   ]
     // A zero-width segment is a gap with a rounded end on each side: visible, and meaningless.
-    .filter((seg) => seg.ms > 0)
-    .map((seg) => ({
-      ...seg,
-      percent: targetMs > 0 ? (seg.ms / targetMs) * 100 * scale : 0,
-    }));
+    .filter((seg) => seg.ms > 0);
   const paced = pace(snapshot.pacing.paceHours);
 
   const moveStart = async () => {
@@ -214,14 +216,18 @@ export function Timer() {
         */
         }
         <div className="bar segmented" style={{ marginTop: 16 }}>
-          {segments.map((seg) => (
-            <span
-              key={seg.key}
-              className={remainingMs < 0 ? "over" : ""}
-              style={{ width: `${seg.percent}%` }}
-              title={`${duration(seg.ms)}${seg.running ? " — still running" : ""}`}
-            />
-          ))}
+          <div className="bar-fill" style={{ width: `${progress * 100}%` }}>
+            {segments.map((seg) => (
+              <span
+                key={seg.key}
+                className={remainingMs < 0 ? "over" : ""}
+                // Proportional *within* the fill, so the separators cost the segments and not
+                // the total.
+                style={{ flexGrow: seg.ms }}
+                title={`${duration(seg.ms)}${seg.running ? " — still running" : ""}`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

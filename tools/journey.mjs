@@ -105,6 +105,24 @@ async function until(label, page, predicate, timeout = 20_000) {
 
 const nav = (page, name) => page.getByRole("button", { name, exact: true }).first().click();
 
+/**
+ * Close whatever sheet is open, if any.
+ *
+ * The seed sets a one-second prompt mean so the prompt section has something to catch, which means
+ * a prompt panel can appear over *any* screen at *any* point in the run — and the next click then
+ * lands on the overlay instead of the control, failing hundreds of lines from its cause. 26.9 made
+ * dismissing one that has content ask first, so the confirmation is answered too.
+ */
+async function clearSheets(page) {
+  for (let i = 0; i < 3 && (await page.getByRole("dialog").count()) > 0; i++) {
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const discard = page.getByRole("button", { name: "Throw it away" });
+    if (await discard.count()) await discard.click();
+    await page.waitForTimeout(300);
+  }
+}
+
 async function main() {
   // A one-second mean makes the first ten-second poll after a timer starts a certainty (5.31's
   // cap), which is the only way a memoryless process becomes something a test can wait for.
@@ -118,6 +136,84 @@ async function main() {
 
   // ---------------------------------------------------------------- a timer, and a second device
   console.log("\ntimer:");
+
+  /*
+   * 26.19 — and the bar is the size the numbers say.
+   *
+   * Every segment used to be a percentage of the whole track, with a 2px gap between them and a
+   * 3px minimum on each — both of which add width the data did not ask for. Starting and stopping
+   * the timer a few times visibly ran the bar ahead of the day: six short sessions added ten
+   * pixels of gap and up to eighteen of minimum, about six percentage points on this track. A
+   * progress bar wrong in the direction of "you have done more than you have" is worse than none.
+   *
+   * Measured against the two figures printed beside it rather than against the model, because the
+   * whole fault was that the drawing and the arithmetic disagreed.
+   *
+   * First thing in the run, and that placement is load-bearing. It sat later, after the entries
+   * and schedule changes, where today's total is 20.3h against 8h scheduled — `progress` is
+   * capped at 1, so both sides of the comparison were 1 and the check stayed green through a
+   * deliberate four-point inflation of the fill. Zero error to seven decimal places was the
+   * tell: a real measurement of a rendered width is never exact.
+   */
+  // `claimAndApprove` leaves the desktop on the admin screen.
+  await nav(desktop.page, "Timer");
+
+  // A prompt can fire at any moment; see `clearSheets`.
+  await clearSheets(desktop.page);
+
+  let worstBar = 0;
+  let usable = 0;
+  const readings = [];
+  for (let i = 0; i < 4; i++) {
+    await desktop.page.getByRole("button", { name: /Start/ }).click();
+    await desktop.page.waitForTimeout(500);
+    await desktop.page.getByRole("button", { name: /Stop/ }).click();
+    await desktop.page.waitForTimeout(600);
+    const m = await desktop.page.evaluate(() => {
+      const bar = document.querySelector(".bar.segmented");
+      const fill = bar?.querySelector(".bar-fill");
+      const done = document.querySelector(".huge")?.textContent ?? "";
+      const of = [...document.querySelectorAll("*")].map((e) => e.textContent ?? "")
+        .find((t) => /^of [\d.]+h scheduled$/.test(t.trim())) ?? "";
+      return {
+        track: bar?.getBoundingClientRect().width ?? 0,
+        fill: fill?.getBoundingClientRect().width ?? 0,
+        segs: fill ? fill.children.length : 0,
+        doneH: parseFloat(done),
+        ofH: parseFloat(of.replace("of ", "")),
+      };
+    });
+    // The measurement has to be a measurement. A `.huge` that is not today's figure, or a track
+    // of zero width, gives a comparison that quietly succeeds — and a check that cannot fail is
+    // the thing this whole exercise keeps turning up.
+    readings.push(m);
+    if (!(m.track > 0) || !(m.ofH > 0) || !Number.isFinite(m.doneH) || m.segs === 0) continue;
+    const want = Math.min(1, m.doneH / m.ofH);
+    /*
+     * A full bar proves nothing.
+     *
+     * `progress` is capped at 1, so once the day is over its scheduled hours both sides of this
+     * comparison are 1 whatever the drawing does — and this check sat green through a deliberate
+     * four-point inflation of the fill because of it. It reads exactly zero error, which is the
+     * tell: a real measurement of a rendered width is never exact.
+     */
+    if (want > 0.95) continue;
+    worstBar = Math.max(worstBar, Math.abs(m.fill / m.track - want));
+    usable++;
+  }
+  // Well inside the ~6pp the old minimums and gaps added, and outside the 0.6pp that the figure's
+  // own one-decimal rounding (25.6) can account for.
+  // And leave the screen as it was found: four cycles is four chances for a prompt to appear.
+  await clearSheets(desktop.page);
+
+  check(
+    "26.19 — the bar stays the size the figures say, however many sessions",
+    usable >= 3 && worstBar < 0.015,
+    `${usable} usable readings, worst ${(worstBar * 100).toFixed(2)}pp out — ${
+      JSON.stringify(readings)
+    }`,
+  );
+
   await nav(desktop.page, "Timer");
   await desktop.page.getByLabel("Billing tag").fill(TAG);
   await desktop.page.getByRole("button", { name: /Start/ }).click();
@@ -171,6 +267,7 @@ async function main() {
 
   // Long enough that the entry is not zero-length, short enough not to pad the run.
   await desktop.page.waitForTimeout(2_000);
+  await clearSheets(desktop.page);
   await desktop.page.getByRole("button", { name: /Stop/ }).click();
 
   // 24.8 — in History, which is now the only place entries are listed. The timer screen used to
@@ -1127,14 +1224,14 @@ async function main() {
 
   // 25.26 — today's bar is assembled from the sessions it was made of.
   await nav(desktop.page, "Timer");
-  const segmentsBefore = await desktop.page.locator(".bar.segmented > span").count();
+  const segmentsBefore = await desktop.page.locator(".bar-fill > span").count();
   await desktop.page.getByRole("button", { name: /Start/ }).click();
   await desktop.page.waitForTimeout(1200);
   await desktop.page.getByRole("button", { name: /Stop/ }).click();
   const grew = await until(
     "segment added",
     desktop.page,
-    async (p) => (await p.locator(".bar.segmented > span").count()) > segmentsBefore,
+    async (p) => (await p.locator(".bar-fill > span").count()) > segmentsBefore,
   );
   check("25.26 — a session adds a segment to today's bar", grew, `${segmentsBefore}`);
   // Each with its own rounded ends, which is only true if the track is not clipping them.

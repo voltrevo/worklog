@@ -105,6 +105,15 @@ export interface Store {
   /** 5.16, 5.17 — set when the server fires a prompt; cleared when it is answered or dismissed. */
   prompt?: { id: string; firedAt: number };
   dismissPrompt(): void;
+  /**
+   * 26.7 — the tune stops when the prompt is *acknowledged*, which is not the same as answering it.
+   *
+   * It used to play until `dismissPrompt`, which is called on save or on "Not now" — so it went on
+   * over somebody who had already turned to the dialog and started typing. Reaching the dialog is
+   * the acknowledgement; what happens after is note-taking, and a tune playing through it is an
+   * alarm that has stopped conveying anything.
+   */
+  acknowledgePrompt(): void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -480,6 +489,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...(lastError ? { lastError } : {}),
     clearError: () => setLastError(undefined),
     ...(prompt ? { prompt } : {}),
+    acknowledgePrompt: () => {
+      stopTuneRef.current?.();
+      stopTuneRef.current = undefined;
+    },
     dismissPrompt: () => {
       // 25.39 — "until the prompt is answered or dismissed". Both routes end here: `WorkNote`
       // calls `onClose` after saving as well as on cancel.
