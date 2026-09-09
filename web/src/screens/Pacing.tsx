@@ -158,17 +158,6 @@ export function Pacing() {
   );
 }
 
-/**
- * Pacing-day overrides (6.19, 6.20).
- *
- * **These are not work.** They live in their own table on the server precisely so that nothing
- * reporting or billing can pick them up, and the wording here says so: a day off changes what the
- * month is expected to hold, not what was done in it.
- *
- * An override outranks a public holiday, which is the point of "intentional weekend work" — a
- * holiday you have decided to work is the same case.
- */
-
 function Figure(
   { label, value, hint, tone }: {
     label: string;
