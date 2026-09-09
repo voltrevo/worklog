@@ -73,7 +73,16 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
    *
    * Only when there is something to lose. Confirming an empty dialog is a dialog about nothing.
    */
-  const hasContent = () => body.trim().length > 0 || recorder.recording !== undefined;
+  /*
+   * 26.9 — what there is to lose.
+   *
+   * Typed words, a finished recording, and a recording *in progress*. The third was missing: a
+   * note dismissed while the microphone was still open closed without asking and threw away
+   * however long somebody had been talking. The recording only becomes `recorder.recording` when
+   * it stops, so until then there was nothing here to notice.
+   */
+  const hasContent = () =>
+    body.trim().length > 0 || recorder.recording !== undefined || recorder.state === "recording";
   const leave = () => {
     if (hasContent()) setConfirmDiscard(true);
     else onClose();
@@ -237,7 +246,9 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
       {confirmDiscard && (
         <Dialog
           title="Throw this note away?"
-          body={recorder.recording
+          body={recorder.state === "recording"
+            ? "This is still recording, and nothing has been kept yet. Closing loses it."
+            : recorder.recording
             ? "There is a recording here, and it is not saved anywhere else. Closing loses it."
             : "What you have typed is not saved anywhere else. Closing loses it."}
           confirmLabel="Throw it away"

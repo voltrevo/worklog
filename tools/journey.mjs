@@ -1179,6 +1179,34 @@ async function main() {
         (p) => p.getByText(/● recording/).isVisible(),
       ),
     );
+
+    /*
+     * 26.9 — and Escape, while it is still recording.
+     *
+     * The confirmation covers typed words and a finished recording. A recording in progress is
+     * neither until it stops, so a note dismissed with the microphone open used to close without
+     * asking and take however long somebody had been talking with it.
+     */
+    await desktop.page.keyboard.press("Escape");
+    check(
+      "26.9 — dismissing mid-recording asks before throwing it away",
+      await until(
+        "discard asked",
+        desktop.page,
+        async (p) => (await p.getByRole("button", { name: "Throw it away" }).count()) > 0,
+      ),
+      await visibleText(desktop.page),
+    );
+    // Keep it: everything below records against this same note.
+    await desktop.page.getByRole("button", { name: "Not now" }).click();
+    check(
+      "and keeping it leaves the recording running",
+      await until(
+        "still recording",
+        desktop.page,
+        (p) => p.getByText(/● recording/).isVisible(),
+      ),
+    );
     // Long enough to be a real Opus frame rather than an empty container.
     await desktop.page.waitForTimeout(1_500);
 
