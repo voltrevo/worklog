@@ -11,7 +11,7 @@
  * remaining risk is layout — which is what a person looking at the page is for.
  */
 
-import type { InvoiceDraft } from "@worklog/shared/invoice";
+import { appliedOverride, type InvoiceDraft } from "@worklog/shared/invoice";
 import type { DateString } from "@worklog/shared/types";
 import type { InvoiceConfig } from "./config.ts";
 
@@ -118,8 +118,15 @@ function set(pairs: Array<[string, string]>): Pair[] {
   return pairs.filter(([, v]) => v.trim().length > 0).map(([label, value]) => ({ label, value }));
 }
 
-export function invoiceContent(draft: InvoiceDraft, config: InvoiceConfig): InvoiceContent {
+export function invoiceContent(
+  draft: InvoiceDraft,
+  globalConfig: InvoiceConfig,
+): InvoiceContent {
   const cur = draft.currency;
+  // 25.12 — the draft's own exceptions win, and only for this document. Blanks are dropped by
+  // `appliedOverride`, so an untouched field falls through to the configured value rather than
+  // printing as empty.
+  const config: InvoiceConfig = { ...globalConfig, ...appliedOverride(draft.config) };
 
   const content: InvoiceContent = {
     from: set([

@@ -203,3 +203,27 @@ Deno.test("25.7 -- the totals on the page are the sum of the lines on the page",
   const hours = c.rows.reduce((t, r) => t + Number(r[3]), 0);
   assertEquals(Number(c.totalRow[3]), Math.round(hours * 10) / 10);
 });
+
+Deno.test("25.12 -- a draft's own settings are what the document prints", () => {
+  const draft = draftWith(3, 25_000);
+  const overridden = {
+    ...draft,
+    config: { clientName: "Nightjar Analytics", approver: "Wren Delacroix" },
+  };
+  const words = allText(invoiceContent(overridden, CONFIG)).join("\n");
+
+  assertStringIncludes(words, "Nightjar Analytics");
+  assertStringIncludes(words, "Wren Delacroix");
+  // ...and only what it said differently. Everything else still comes from the settings, which is
+  // what makes an override a short list of exceptions rather than a stale second copy.
+  assertEquals(words.includes(CONFIG.clientName), false);
+  assertStringIncludes(words, CONFIG.fromName);
+});
+
+Deno.test("an override left blank falls through rather than printing empty", () => {
+  // `{...config, ...{clientName: ""}}` is a nameless client, which is not what an empty box means.
+  const draft = { ...draftWith(3, 25_000), config: { clientName: "  ", approver: "" } };
+  const words = allText(invoiceContent(draft, CONFIG)).join("\n");
+  assertStringIncludes(words, CONFIG.clientName);
+  assertStringIncludes(words, CONFIG.approver);
+});

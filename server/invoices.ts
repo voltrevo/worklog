@@ -16,6 +16,7 @@ import {
   canIssue,
   defaultInvoiceNumber,
   dueDateFor,
+  type InvoiceConfigOverride,
   type InvoiceDraft,
   type InvoiceLine,
   type InvoiceRecord,
@@ -174,7 +175,15 @@ function unusedNumber(all: readonly StoredInvoice[], period: string): string {
 export function updateDraft(
   db: Db,
   id: string,
-  edit: { lines?: InvoiceLine[]; bonusLine?: InvoiceLine | null; number?: string },
+  edit: {
+    lines?: InvoiceLine[];
+    bonusLine?: InvoiceLine | null;
+    number?: string;
+    /** 25.12. Replaces the draft's override wholesale; `{}` clears it. */
+    config?: InvoiceConfigOverride;
+    currency?: string;
+    taxRate?: number;
+  },
   now: Instant = Date.now(),
 ): StoredInvoice {
   return transact(db, () => {
@@ -188,7 +197,21 @@ export function updateDraft(
     }
 
     const number = edit.number?.trim() || current.draft.number;
-    const draft = recomputeDraft({ ...current.draft, number }, edit);
+    if (edit.taxRate !== undefined && !(edit.taxRate >= 0 && edit.taxRate < 1)) {
+      // A rate outside this is a percentage somebody typed into a fraction field, and silently
+      // billing 250% tax is 25.3 at its most expensive.
+      throw new Refused("bad-tax-rate", `a tax rate of ${edit.taxRate} is not a fraction`);
+    }
+    // Recomputed *after* the tax rate is applied, not before: the tax line is derived from it, so
+    // storing the new rate beside the old tax figure would leave the document disagreeing with
+    // itself until the next unrelated edit.
+    const draft = recomputeDraft({
+      ...current.draft,
+      number,
+      ...(edit.currency !== undefined ? { currency: edit.currency } : {}),
+      ...(edit.taxRate !== undefined ? { taxRate: edit.taxRate } : {}),
+      ...(edit.config !== undefined ? { config: edit.config } : {}),
+    }, edit);
     db.prepare("UPDATE invoice SET number = ?, draft_json = ?, updated_at = ? WHERE id = ?")
       .run(number, JSON.stringify(draft), now, id);
     return getInvoice(db, id)!;

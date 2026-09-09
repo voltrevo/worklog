@@ -517,6 +517,9 @@ export async function handle(
         ...(req.lines !== undefined ? { lines: req.lines } : {}),
         ...(req.bonusLine !== undefined ? { bonusLine: req.bonusLine } : {}),
         ...(req.number !== undefined ? { number: req.number } : {}),
+        ...(req.config !== undefined ? { config: req.config } : {}),
+        ...(req.currency !== undefined ? { currency: req.currency } : {}),
+        ...(req.taxRate !== undefined ? { taxRate: req.taxRate } : {}),
       }, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
       return saved;

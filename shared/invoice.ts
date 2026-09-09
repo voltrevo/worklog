@@ -36,6 +36,64 @@ export interface InvoiceTotals {
   totalMinor: number;
 }
 
+/**
+ * 25.12 — what one draft may say differently from the global settings.
+ *
+ * A blank or absent field means "use the configured one". That is what lets this be additive: a
+ * draft made before the feature existed has no override and behaves exactly as it did, and an
+ * override is a short list of deliberate exceptions rather than a full second copy of the config
+ * that drifts out of date the moment the real one changes.
+ *
+ * **The payment details are not here, and the omission is deliberate.** The server never sends
+ * those back to any client — `config-get` answers with `paymentDetailsSet: boolean` and nothing
+ * else — whereas a draft is sent whole, so putting a BSB in one would publish it to every
+ * authorised device the next time the list loaded. Doing it properly needs the redact-on-read
+ * boundary that 25.42 and 25.43 are about; until that exists, a per-invoice payment method is not
+ * available and saying so is better than a leak nobody asked for.
+ */
+export interface InvoiceConfigOverride {
+  fromName?: string;
+  fromAbn?: string;
+  fromEmail?: string;
+  fromAddress?: string;
+  clientName?: string;
+  clientAddress?: string;
+  taxLabel?: string;
+  approver?: string;
+  note?: string;
+}
+
+/** The override's fields, as a value, so a validator does not have to restate the type. */
+export const OVERRIDABLE: readonly (keyof InvoiceConfigOverride)[] = [
+  "fromName",
+  "fromAbn",
+  "fromEmail",
+  "fromAddress",
+  "clientName",
+  "clientAddress",
+  "taxLabel",
+  "approver",
+  "note",
+];
+
+/**
+ * The override with its blanks dropped, ready to spread over the global config.
+ *
+ * A blank string has to be removed rather than spread: `{...global, ...{clientName: ""}}` is a
+ * nameless client, which is not what an empty box on the override form means. It means "I did not
+ * say anything about this one".
+ */
+export function appliedOverride(
+  override: InvoiceConfigOverride | undefined,
+): Partial<InvoiceConfigOverride> {
+  const out: Record<string, string> = {};
+  for (const key of OVERRIDABLE) {
+    const value = override?.[key];
+    if (typeof value === "string" && value.trim() !== "") out[key] = value;
+  }
+  return out;
+}
+
 /** What an invoice looks like before it is issued, recomputed freely (8.16, 10.7). */
 export interface InvoiceDraft extends InvoiceTotals {
   period: string;
@@ -64,6 +122,8 @@ export interface InvoiceDraft extends InvoiceTotals {
   workSubtotalMinor: number;
   /** 11.23 — every entry that went in, so 11.25 can notice one that did not. */
   entryIds: string[];
+  /** 25.12 — this draft's exceptions to the global settings. Absent on a draft that has none. */
+  config?: InvoiceConfigOverride;
 }
 
 /** The frozen copy taken at issuance (11.6, 10.8). */

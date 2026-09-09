@@ -14,29 +14,9 @@ import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
 import { LocalAudioCard } from "./LocalAudio.tsx";
 import { WEEKDAY_NAMES } from "@worklog/shared/schedule";
 import type { DayInterval, PacingConfig, Weekday } from "@worklog/shared/types";
+import type { PublicInvoiceConfig } from "@worklog/shared/protocol";
 
 const REPO = "https://github.com/voltrevo/worklog";
-
-/** Mirrors `publicInvoiceConfig` on the server: the payment block is not in it, by construction. */
-interface PublicInvoiceConfig {
-  fromName: string;
-  fromAddress: string;
-  fromEmail: string;
-  fromAbn: string;
-  fromPhone: string;
-  clientName: string;
-  clientAddress: string;
-  currency: string;
-  rateMinor: number;
-  taxRate: number;
-  taxLabel: string;
-  approver: string;
-  teamProject: string;
-  bonusMinor: number;
-  bonusTeamProject: string;
-  note: string;
-  paymentDetailsSet: boolean;
-}
 
 interface ConfigWire {
   pacing: PacingConfig;

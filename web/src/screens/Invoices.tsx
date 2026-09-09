@@ -21,7 +21,11 @@ import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, type Saved, saveFile } from "../download.ts";
-import type { InvoicePdfResult, StoredInvoiceWire } from "@worklog/shared/protocol";
+import type {
+  InvoicePdfResult,
+  PublicInvoiceConfig,
+  StoredInvoiceWire,
+} from "@worklog/shared/protocol";
 import type { InvoiceWarning } from "@worklog/shared/invoice";
 import { InvoiceEditor } from "./InvoiceEditor.tsx";
 
@@ -50,11 +54,16 @@ function ordered(invoices: StoredInvoiceWire[]): StoredInvoiceWire[] {
 export function Invoices() {
   const { snapshot, call, refresh, phase } = useStore();
   const [invoices, setInvoices] = useState<StoredInvoiceWire[]>();
+  // 25.12 — what a blank override falls through to, shown in the editor as placeholder text.
+  const [config, setConfig] = useState<PublicInvoiceConfig>();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
-  const load = async () => setInvoices(await call<StoredInvoiceWire[]>({ t: "invoices" }));
+  const load = async () => {
+    setInvoices(await call<StoredInvoiceWire[]>({ t: "invoices" }));
+    setConfig((await call<{ invoice: PublicInvoiceConfig }>({ t: "config-get" })).invoice);
+  };
   // 1.12 — follow the store, so an invoice issued on another device appears here.
   useEffect(() => {
     void load().catch(() => {});
@@ -144,6 +153,7 @@ export function Invoices() {
                 <InvoiceRow
                   key={i.id}
                   invoice={i}
+                  config={config}
                   canWrite={canWrite}
                   busy={busy}
                   act={act}
@@ -164,8 +174,9 @@ function StatusPill({ status }: { status: StoredInvoiceWire["status"] }) {
 }
 
 function InvoiceRow(
-  { invoice, canWrite, busy, act }: {
+  { invoice, config, canWrite, busy, act }: {
     invoice: StoredInvoiceWire;
+    config: PublicInvoiceConfig | undefined;
     canWrite: boolean;
     busy: boolean;
     act: (body: () => Promise<unknown>) => Promise<void>;
@@ -289,10 +300,20 @@ function InvoiceRow(
       {editing && (
         <InvoiceEditor
           invoice={invoice}
+          config={config}
           busy={busy}
           onCancel={() => setEditing(false)}
-          onSave={async (lines, number) => {
-            await act(() => call({ t: "invoice-update", id: invoice.id, lines, number }));
+          onSave={async (lines, number, override, taxRate) => {
+            await act(() =>
+              call({
+                t: "invoice-update",
+                id: invoice.id,
+                lines,
+                number,
+                config: override,
+                taxRate,
+              })
+            );
             setEditing(false);
           }}
         />

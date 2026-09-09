@@ -22,7 +22,13 @@
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
 import type { DateString, Instant, PacingConfig, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
-import type { InvoiceDraft, InvoiceLine, InvoiceSnapshot, InvoiceWarning } from "./invoice.ts";
+import type {
+  InvoiceConfigOverride,
+  InvoiceDraft,
+  InvoiceLine,
+  InvoiceSnapshot,
+  InvoiceWarning,
+} from "./invoice.ts";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -164,6 +170,10 @@ export type Request =
     lines?: InvoiceLine[];
     bonusLine?: InvoiceLine | null;
     number?: string;
+    /** 25.12 — this draft's exceptions to the settings. Sent whole; `{}` clears them. */
+    config?: InvoiceConfigOverride;
+    currency?: string;
+    taxRate?: number;
   }
   | { t: "invoice-issue"; id: string }
   | { t: "invoice-mark-paid"; id: string }
@@ -271,6 +281,36 @@ export interface WorkNoteWire {
   audioMs?: number;
   audioType?: string;
   prompted: boolean;
+}
+
+/**
+ * What `config-get` answers with for the invoice section.
+ *
+ * Mirrors `publicInvoiceConfig` on the server: the payment block is not in it, by construction —
+ * the server never sends those values back to anyone, which is why the Settings boxes for them
+ * start empty even when they are set.
+ *
+ * It lived in `Settings.tsx` until the invoice editor needed it too (25.12), to show what a blank
+ * override falls through to.
+ */
+export interface PublicInvoiceConfig {
+  fromName: string;
+  fromAddress: string;
+  fromEmail: string;
+  fromAbn: string;
+  fromPhone: string;
+  clientName: string;
+  clientAddress: string;
+  currency: string;
+  rateMinor: number;
+  taxRate: number;
+  taxLabel: string;
+  approver: string;
+  teamProject: string;
+  bonusMinor: number;
+  bonusTeamProject: string;
+  note: string;
+  paymentDetailsSet: boolean;
 }
 
 export interface StoredInvoiceWire {

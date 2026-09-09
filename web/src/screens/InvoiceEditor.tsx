@@ -19,9 +19,29 @@
  */
 
 import { useState } from "react";
+import { type InvoiceConfigOverride, OVERRIDABLE } from "@worklog/shared/invoice";
 import type { InvoiceLine } from "@worklog/shared/invoice";
-import type { StoredInvoiceWire } from "@worklog/shared/protocol";
+import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
 import { money, parseNumber } from "../format.ts";
+
+/**
+ * 25.12 — the fields a draft may say differently, and what to call them.
+ *
+ * Ordered as they read on the document rather than as they are declared, which is 25.15's idea
+ * applied to the smaller surface: someone checking an override against a printed invoice reads
+ * top to bottom.
+ */
+const OVERRIDE_LABELS: Record<keyof InvoiceConfigOverride, string> = {
+  fromName: "Your name",
+  fromAbn: "Your ABN",
+  fromEmail: "Your email",
+  fromAddress: "Your address",
+  clientName: "Client name",
+  clientAddress: "Client address",
+  approver: "Work approver",
+  taxLabel: "Tax label",
+  note: "Note under the totals",
+};
 
 /** A row being typed into. Text, not numbers: 25.44's rule applies to every one of these fields. */
 interface Draft {
@@ -73,32 +93,64 @@ function fromDraft(d: Draft): { line: InvoiceLine } | { problem: string } {
 
   if (!hasHours) {
     const amount = parseNumber(d.amount);
-    if (amount === undefined) return { problem: `"${description}" needs an amount` };
+    if (amount === undefined) {
+      return { problem: `"${description}" needs an amount` };
+    }
     return {
-      line: { ...base, hours: null, rateMinor: null, amountMinor: Math.round(amount * 100) },
+      line: {
+        ...base,
+        hours: null,
+        rateMinor: null,
+        amountMinor: Math.round(amount * 100),
+      },
     };
   }
 
   const hours = parseNumber(d.hours);
   const rate = parseNumber(d.rate);
-  if (hours === undefined) return { problem: `the hours on "${description}" are not a number` };
-  if (rate === undefined) return { problem: `the rate on "${description}" is not a number` };
+  if (hours === undefined) {
+    return { problem: `the hours on "${description}" are not a number` };
+  }
+  if (rate === undefined) {
+    return { problem: `the rate on "${description}" is not a number` };
+  }
   // `amountMinor` is a placeholder: the server derives it. Sending the old one would be a number
   // that disagrees with the row it is attached to for as long as it is in flight.
-  return { line: { ...base, hours, rateMinor: Math.round(rate * 100), amountMinor: 0 } };
+  return {
+    line: { ...base, hours, rateMinor: Math.round(rate * 100), amountMinor: 0 },
+  };
 }
 
 export function InvoiceEditor(
-  { invoice, busy, onSave, onCancel }: {
+  { invoice, busy, config, onSave, onCancel }: {
     invoice: StoredInvoiceWire;
     busy: boolean;
-    onSave: (lines: InvoiceLine[], number: string) => Promise<void>;
+    config: PublicInvoiceConfig | undefined;
+    onSave: (
+      lines: InvoiceLine[],
+      number: string,
+      override: InvoiceConfigOverride,
+      taxRate: number,
+    ) => Promise<void>;
     onCancel: () => void;
   },
 ) {
   const [rows, setRows] = useState<Draft[]>(invoice.draft.lines.map(toDraft));
   const [number, setNumber] = useState(invoice.draft.number);
   const [problem, setProblem] = useState<string>();
+  // 25.12. Blank means "whatever the settings say", which is why these start from the stored
+  // override and not from the configured values — prefilling them would turn every field into an
+  // override the moment the draft was opened, and the invoice would then stop following the
+  // settings without anyone having asked for that.
+  const [override, setOverride] = useState<InvoiceConfigOverride>(
+    invoice.draft.config ?? {},
+  );
+  const [taxRate, setTaxRate] = useState(
+    String(Math.round(invoice.draft.taxRate * 1000) / 10),
+  );
+  const [showOverride, setShowOverride] = useState(
+    Object.values(invoice.draft.config ?? {}).some((v) => v),
+  );
 
   const currency = invoice.draft.currency;
   const set = (i: number, patch: Partial<Draft>) =>
@@ -118,6 +170,14 @@ export function InvoiceEditor(
 
   const save = async () => {
     if (!number.trim()) return setProblem("an invoice needs a number");
+    const percent = parseNumber(taxRate);
+    if (percent === undefined) {
+      return setProblem("the tax rate is not a number");
+    }
+    if (percent < 0 || percent >= 100) {
+      return setProblem("a tax rate is a percentage under 100");
+    }
+
     const lines: InvoiceLine[] = [];
     for (const row of rows) {
       const result = fromDraft(row);
@@ -125,7 +185,9 @@ export function InvoiceEditor(
       lines.push(result.line);
     }
     setProblem(undefined);
-    await onSave(lines, number.trim());
+    // Sent whole, blanks included: an emptied box means "go back to following the settings", and
+    // omitting it would mean "leave the override as it was", which is the opposite.
+    await onSave(lines, number.trim(), override, percent / 100);
   };
 
   // Shown as it will be, from the values on screen — but only where they are all readable. A
@@ -144,7 +206,12 @@ export function InvoiceEditor(
     : undefined;
 
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label={`Edit ${invoice.number}`}>
+    <div
+      className="sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Edit ${invoice.number}`}
+    >
       <div className="card stack editor" style={{ gap: 14 }}>
         <div className="row between wrap">
           <h2 style={{ margin: 0 }}>Edit this draft</h2>
@@ -152,8 +219,7 @@ export function InvoiceEditor(
             Invoice number
             <input
               value={number}
-              onChange={(e) =>
-                setNumber(e.target.value)}
+              onChange={(e) => setNumber(e.target.value)}
             />
           </label>
         </div>
@@ -191,22 +257,19 @@ export function InvoiceEditor(
                 <input
                   value={row.description}
                   aria-label={`Description on line ${i + 1}`}
-                  onChange={(e) =>
-                    set(i, { description: e.target.value })}
+                  onChange={(e) => set(i, { description: e.target.value })}
                 />
                 <input
                   value={row.teamProject}
                   aria-label={`Team or project on line ${i + 1}`}
-                  onChange={(e) =>
-                    set(i, { teamProject: e.target.value })}
+                  onChange={(e) => set(i, { teamProject: e.target.value })}
                 />
                 <input
                   className="num"
                   inputMode="decimal"
                   value={row.hours}
                   aria-label={`Hours on line ${i + 1}`}
-                  onChange={(e) =>
-                    set(i, { hours: e.target.value })}
+                  onChange={(e) => set(i, { hours: e.target.value })}
                 />
                 <input
                   className="num"
@@ -245,7 +308,9 @@ export function InvoiceEditor(
         </div>
 
         <div className="row between wrap">
-          <button className="btn" type="button" onClick={add}>Add a line</button>
+          <button className="btn" type="button" onClick={add}>
+            Add a line
+          </button>
           <span className="faint">
             {total === undefined
               ? "Work rows total — once every line reads"
@@ -253,13 +318,74 @@ export function InvoiceEditor(
           </span>
         </div>
 
+        <div className="stack" style={{ gap: 10 }}>
+          <button
+            className="link"
+            type="button"
+            // A stretched flex item, so it centred itself across the whole sheet and read as a
+            // heading rather than as something to press.
+            style={{ alignSelf: "flex-start" }}
+            aria-expanded={showOverride}
+            onClick={() => setShowOverride(!showOverride)}
+          >
+            {showOverride ? "Hide" : "Show"} what this invoice says differently
+          </button>
+          {showOverride && (
+            <div className="stack" style={{ gap: 10 }}>
+              <p className="muted" style={{ margin: 0 }}>
+                Leave a box empty and this invoice follows Settings; the grey text is what it would
+                use. Anything typed here applies to this invoice only.
+              </p>
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                }}
+              >
+                {OVERRIDABLE.map((key) => (
+                  <label className="field" key={key}>
+                    {OVERRIDE_LABELS[key]}
+                    <input
+                      value={override[key] ?? ""}
+                      placeholder={config ? String(config[key] ?? "") : "loading…"}
+                      onChange={(e) => setOverride({ ...override, [key]: e.target.value })}
+                    />
+                  </label>
+                ))}
+                {
+                  /*
+                  Not part of the override map: the tax rate is a number on the draft itself, not a
+                  string that falls back to the settings, and "blank means inherit" cannot be said
+                  about a rate — zero is a real answer and the commonest one.
+                */
+                }
+                <label className="field">
+                  Tax rate (%) for this invoice
+                  <input
+                    value={taxRate}
+                    inputMode="decimal"
+                    onChange={(e) => setTaxRate(e.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
         {problem && <div className="notice bad">{problem}</div>}
 
         <div className="row">
-          <button className="btn primary" type="button" disabled={busy} onClick={() => void save()}>
+          <button
+            className="btn primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void save()}
+          >
             Save the draft
           </button>
-          <button className="btn" type="button" onClick={onCancel}>Discard these changes</button>
+          <button className="btn" type="button" onClick={onCancel}>
+            Discard these changes
+          </button>
         </div>
       </div>
     </div>

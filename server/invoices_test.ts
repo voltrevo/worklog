@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { type Db, open } from "./db.ts";
-import { missingInvoiceConfig, setConfig } from "./config.ts";
+import { getConfig, missingInvoiceConfig, setConfig } from "./config.ts";
 import { addEntry, entriesInMonth, Refused, updateEntry } from "./work.ts";
 import {
   attachPdf,
@@ -384,4 +384,51 @@ Deno.test("whitespace is not a value", () => {
     missingInvoiceConfig({ ...COMPLETE_INVOICE_CONFIG, clientName: "   " }),
     ["the client's name"],
   );
+});
+
+Deno.test("25.12 -- a draft can say something different from the settings, for itself alone", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const b = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+
+  // The configured rate is 0.1; this invoice is going somewhere that does not charge it.
+  updateDraft(db, a.id, { config: { clientName: "Nightjar Analytics" }, taxRate: 0 }, T0);
+
+  assertEquals(getInvoice(db, a.id)?.draft.config?.clientName, "Nightjar Analytics");
+  assertEquals(getInvoice(db, a.id)?.draft.taxRate, 0);
+  // ...for itself alone: the other draft and the global settings are untouched.
+  assertEquals(getInvoice(db, b.id)?.draft.config, undefined);
+  assertEquals(getInvoice(db, b.id)?.draft.taxRate, 0.1);
+  assertEquals(getConfig(db, "invoice").clientName, "Kestrel Labs");
+  db.close();
+});
+
+Deno.test("changing the tax rate moves the tax figure with it", () => {
+  // The two have to move together. Storing the rate and leaving the old tax line would give a
+  // document that disagrees with itself until some unrelated edit happened to recompute it.
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  assertEquals(a.draft.taxMinor, 6_000, "the configured 10% of 600.00");
+
+  const taxed = updateDraft(db, a.id, { taxRate: 0.2 }, T0);
+  assertEquals(taxed.draft.subtotalMinor, 60_000);
+  assertEquals(taxed.draft.taxMinor, 12_000);
+  assertEquals(taxed.draft.totalMinor, 72_000);
+
+  const untaxed = updateDraft(db, a.id, { taxRate: 0 }, T0);
+  assertEquals(untaxed.draft.taxMinor, 0);
+  assertEquals(untaxed.draft.totalMinor, 60_000);
+  db.close();
+});
+
+Deno.test("a tax rate that is really a percentage is refused", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  // 10 meaning "10%" would bill a thousand percent tax, silently. 25.3, with money attached.
+  assertThrows(() => updateDraft(db, a.id, { taxRate: 10 }, T0), Refused, "not a fraction");
+  assertThrows(() => updateDraft(db, a.id, { taxRate: -0.1 }, T0), Refused, "not a fraction");
+  db.close();
 });
