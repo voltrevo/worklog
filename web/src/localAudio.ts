@@ -81,6 +81,14 @@ export function saveVolume(position: number): void {
  * independent of the system's, and a `GainNode` is a multiplier this app owns. It also puts the dB
  * curve somewhere real instead of leaving it to the element's own linear scale.
  */
+/**
+ * How long to wait before deciding a start that was accepted never began.
+ *
+ * Long enough that a slow first buffer is not a stall, short enough that somebody who pressed a
+ * button is still looking at the screen when it says so.
+ */
+const STALL_MS = 1_200;
+
 export class LoopPlayer {
   #audio?: HTMLAudioElement;
   #context?: AudioContext;
@@ -90,7 +98,14 @@ export class LoopPlayer {
   #url?: string;
   #blocked = false;
   #position = 0;
-  #silent?: "no-file";
+  #silent?: "no-file" | "stalled";
+  /**
+   * The pending "did it actually start" check, so a second start does not race the first.
+   *
+   * Typed from the call rather than as `number`: this file is checked once with the DOM lib and
+   * once with Deno's, and the two disagree about what a timer handle is.
+   */
+  #stall?: ReturnType<typeof globalThis.setTimeout>;
   /** What is loaded, so an identical load is not a reload. */
   #loaded?: string;
   /** In-flight load, so a start that arrives first waits rather than doing nothing. */
@@ -218,7 +233,36 @@ export class LoopPlayer {
     } catch (err) {
       this.#blocked = (err as Error)?.name === "NotAllowedError";
       if (!this.#blocked) throw err;
+      return;
     }
+
+    /*
+     * 26.1 — and then whether it *went*.
+     *
+     * `play()` resolving means the element accepted the request, not that a sound is being made.
+     * On `deno desktop`'s WebKitGTK the element reports `paused: false` with an `AudioContext` in
+     * state `running` while `currentTime` sits at zero — measured, in `desktop/selftest.ts`. That
+     * is the exact shape of every audio complaint this app has had: it says it is playing and
+     * nothing happens, with no error to find.
+     *
+     * A clock that has not moved after a second is the one check that can tell the two apart, and
+     * it costs a timer. What it cannot do is say *why* — a missing output device, a sink that
+     * failed to open, a codec the build has no plugin for — so it says the true thing, which is
+     * that the file is not playing here.
+     */
+    const at = audio.currentTime;
+    if (this.#stall !== undefined) globalThis.clearTimeout(this.#stall);
+    this.#stall = globalThis.setTimeout(() => {
+      if (this.#audio !== audio || audio.paused) return;
+      if (audio.currentTime > at) {
+        if (this.#silent === "stalled") this.#silent = undefined;
+        return;
+      }
+      this.#silent = "stalled";
+      // The stall is discovered a second after anything the interface did, so nothing is about to
+      // re-render on its own; this is exactly what `subscribeAudio` is for.
+      notifyAudioChanged();
+    }, STALL_MS);
   }
 
   /**
@@ -237,12 +281,16 @@ export class LoopPlayer {
    * `undefined` means the last start had no complaint. Anything else is a sentence the interface
    * can show instead of leaving somebody looking at a control that appears to do nothing.
    */
-  get silent(): "no-file" | undefined {
+  get silent(): "no-file" | "stalled" | undefined {
     return this.#silent;
   }
 
   /** 14.13 */
   stop(): void {
+    if (this.#stall !== undefined) {
+      globalThis.clearTimeout(this.#stall);
+      this.#stall = undefined;
+    }
     this.#audio?.pause();
   }
 

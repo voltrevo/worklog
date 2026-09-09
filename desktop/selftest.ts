@@ -188,6 +188,35 @@ globalThis.__run = async () => {
       setTimeout(() => done("never stopped"), 5000);
     } catch (e) { done("threw:" + e.name + " " + e.message); }
   });
+  /*
+   * 14.x — and the loop, which is the other thing this window is for.
+   *
+   * The reported faults were all "it does not play and says nothing", twice, and every check for
+   * them runs in Chromium. The path is an Audio element through createMediaElementSource into a
+   * gain node, so this builds exactly that over a one-second tone and asks whether time moved.
+   */
+  out.looped = await new Promise((res) => {
+    let settled = false;
+    const done = (why) => { if (!settled) { settled = true; res(String(why)); } };
+    try {
+      const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+      const ctx = new Ctx();
+      const el = new Audio("data:audio/wav;base64," + globalThis.__wavB64);
+      el.loop = true;
+      const src = ctx.createMediaElementSource(el);
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      el.play().then(() => {
+        setTimeout(() => {
+          done("state:" + ctx.state + " paused:" + el.paused + " t:" + el.currentTime.toFixed(2));
+          try { el.pause(); } catch (e) { /* nothing to do */ }
+        }, 900);
+      }, (e) => done("play rejected:" + e.name));
+      setTimeout(() => done("never settled"), 5000);
+    } catch (e) { done("threw:" + e.name + " " + e.message); }
+  });
   out.htmlBlobFrame = await frameLoads(
     URL.createObjectURL(new Blob(["<p>hello</p>"], { type: "text/html" })),
   );
@@ -287,6 +316,30 @@ function onePagePdf(): Uint8Array {
   return new TextEncoder().encode(pdf);
 }
 
+/** One second of a quiet sine, as a WAV — the smallest thing an Audio element will really play. */
+function oneSecondTone(): Uint8Array {
+  const rate = 8_000;
+  const bytes = new Uint8Array(44 + rate * 2);
+  const view = new DataView(bytes.buffer);
+  const put = (at: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(at + i, text.charCodeAt(i));
+  };
+  put(0, "RIFF");
+  view.setUint32(4, 36 + rate * 2, true);
+  put(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  put(36, "data");
+  view.setUint32(40, rate * 2, true);
+  for (let i = 0; i < rate; i++) view.setInt16(44 + i * 2, Math.sin(i / 8) * 12_000, true);
+  return bytes;
+}
+
 const MESSAGE = new TextEncoder().encode("worklog selftest message");
 const FILE = new TextEncoder().encode("%PDF-1.7 selftest\n");
 
@@ -300,6 +353,7 @@ try {
   await js(`globalThis.__message = ${JSON.stringify(toBase64(MESSAGE))};`);
   await js(`globalThis.__fileB64 = ${JSON.stringify(toBase64(FILE))};`);
   await js(`globalThis.__pdfB64 = ${JSON.stringify(toBase64(onePagePdf()))};`);
+  await js(`globalThis.__wavB64 = ${JSON.stringify(toBase64(oneSecondTone()))};`);
   await js("globalThis.__run(); 'started'");
 
   const raw = await waitFor(
@@ -319,6 +373,7 @@ try {
     pdfViewer: parsed.pdfViewer ?? "",
     pdfFrame: parsed.pdfFrame ?? "",
     recorded: parsed.recorded ?? "",
+    looped: parsed.looped ?? "",
     htmlBlobFrame: parsed.htmlBlobFrame ?? "",
     pdfDataFrame: parsed.pdfDataFrame ?? "",
     pdfMime: parsed.pdfMime ?? "",
@@ -383,6 +438,7 @@ try {
     isAlwaysOnTop?: () => boolean;
   };
   console.log(`  · recording a synthetic stream here: ${out.recorded}`);
+  console.log(`  · the loop path here: ${out.looped}`);
   console.log(
     `  · navigator.pdfViewerEnabled = ${out.pdfViewer}, application/pdf = ${out.pdfMime}, ` +
       `html blob = ${out.htmlBlobFrame}, pdf blob = ${out.pdfFrame}, ` +

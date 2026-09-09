@@ -400,3 +400,56 @@ Deno.test("26.4 -- a new file is wired into the gain node, not just swapped in",
     restore();
   }
 });
+
+/*
+ * 26.1 — the difference between "playing" and "started".
+ *
+ * `play()` resolving means the element accepted the request. On `deno desktop`'s WebKitGTK it
+ * resolves, `paused` goes false, the `AudioContext` reports `running`, and `currentTime` sits at
+ * zero — which is the shape of every audio complaint this app has had. A clock that has not moved
+ * is the only thing that tells the two apart.
+ */
+Deno.test("26.1 -- a start the element accepted and never began says so", async () => {
+  const { restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.start();
+    assertEquals(player.playing, true);
+    assertEquals(player.silent, undefined, "nothing is known until the clock has had a chance");
+    await new Promise((r) => setTimeout(r, 1_400));
+    assertEquals(player.silent, "stalled");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("and one that does begin is not reported as stalled", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.start();
+    // What a working element does: the clock moves.
+    const element = calls.created[0] as unknown as { currentTime: number };
+    element.currentTime = 0.8;
+    await new Promise((r) => setTimeout(r, 1_400));
+    assertEquals(player.silent, undefined);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("and stopping cancels the check rather than reporting on a stopped loop", async () => {
+  const { restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.start();
+    player.stop();
+    await new Promise((r) => setTimeout(r, 1_400));
+    assertEquals(player.silent, undefined);
+  } finally {
+    restore();
+  }
+});

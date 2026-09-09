@@ -79,11 +79,31 @@ export function LoopPlayback() {
    */
   const state = useSyncExternalStore(
     subscribeAudio,
-    () => `${player().playing}:${player().blocked}`,
-    () => "false:false",
+    () => `${player().playing}:${player().blocked}:${player().silent ?? ""}`,
+    () => "false:false:",
   );
-  const blocked = state.endsWith(":true");
-  if (!blocked || !active) return null;
+  const [, refused, silent] = state.split(":");
+  const blocked = refused === "true";
+  if (!active || (!blocked && silent !== "stalled")) return null;
+
+  /*
+   * 26.1 — two different silences, and they want different sentences.
+   *
+   * A refusal is an autoplay policy and a button fixes it. A *stall* is the element accepting the
+   * request and then not moving: `play()` resolved, `paused` is false, and `currentTime` has not
+   * advanced a second later. Nothing the app can press fixes that, so it says the true thing and
+   * stops there rather than offering a control that will do the same nothing again.
+   */
+  if (!blocked) {
+    return (
+      <div className="notice warn audio-blocked">
+        <span>
+          The background loop was started and is not playing. This device may have no sound output
+          the app can reach.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="notice warn audio-blocked">
