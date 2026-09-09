@@ -965,12 +965,35 @@ input[type="range"] {
   overflow: hidden;
 }
 
+/*
+ * 26.18 — no transition, and that was the whole bug.
+ *
+ * `transition: height 60ms linear` on 120 bars, every one of which is given a new height on every
+ * animation frame. Each transition is retargeted after 16ms, a quarter of the way through the
+ * previous one, so no bar ever arrives anywhere: the trace is smeared toward its own mean and
+ * reads as flat with the occasional spike large enough to survive the averaging. Which is exactly
+ * what was reported, twice.
+ *
+ * Measured before removing it: the *rendered* height differed from the height actually set by
+ * 5.7px on average and 36px at worst, on a trace 44px tall. The data was fine. The rendering was
+ * showing something else.
+ *
+ * A scrolling waveform must not tween. Each frame is the animation.
+ */
 .trace span {
   flex: 1 1 0;
   min-width: 1px;
+  /*
+   * A visible baseline. The floor in the markup is 2% of a 44px box — under a pixel — so between
+   * sounds the trace was not quiet, it was *absent*, which reads as a meter that has stopped
+   * rather than one hearing silence.
+   *
+   * A minimum here is fine in a way it is not on the progress bar (26.19): this is a picture of a
+   * signal, not a measurement of a total, so nothing is made wrong by a floor.
+   */
+  min-height: 3px;
   background: var(--bad, #c62828);
   border-radius: 1px;
-  transition: height 60ms linear;
 }
 
 /*

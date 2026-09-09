@@ -33,6 +33,18 @@ export function Sheet(
 ) {
   const card = useRef<HTMLDivElement>(null);
 
+  /*
+   * 26.8 — the handler is read through a ref so the effect below can depend on nothing.
+   *
+   * It used to depend on `onDismiss`, which every caller writes inline, so it was a new function
+   * on every render — and the effect therefore tore down and re-ran on every render, taking the
+   * initial focus with it. Typing in the second field of a sheet moved the caret back to the
+   * first, repeatedly, for as long as anything above kept re-rendering. Which is what a sheet
+   * over a live store does constantly.
+   */
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+
   useEffect(() => {
     // Captured before focus moves, so it can go back to the control that opened this.
     const opener = document.activeElement as HTMLElement | null;
@@ -42,7 +54,7 @@ export function Sheet(
         // Stopped, so one Escape closes one sheet: the work-note panel can be open over a prompt,
         // and a bubbling key would take both.
         e.stopPropagation();
-        onDismiss();
+        dismiss.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -105,7 +117,8 @@ export function Sheet(
        */
       if (document.activeElement === document.body && opener?.isConnected) opener.focus();
     };
-  }, [onDismiss]);
+    // Once. See `dismiss` above: this list being empty is the whole point.
+  }, []);
 
   return (
     <div
@@ -121,7 +134,7 @@ export function Sheet(
       onMouseDown={(e) => {
         // `currentTarget` only: a mousedown that began inside the card and ended out here is a
         // drag-select that overshot, not a click on the backdrop.
-        if (dismissOnBackdrop && e.target === e.currentTarget) onDismiss();
+        if (dismissOnBackdrop && e.target === e.currentTarget) dismiss.current();
       }}
     >
       {children}

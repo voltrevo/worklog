@@ -739,6 +739,32 @@ async function main() {
       els.map((e) => e.style.height)
     );
     check("the recording trace is drawn", heights.length > 0, `${heights.length} bars`);
+    /*
+     * 26.18 — and what is *drawn* is what was set.
+     *
+     * The check below reads `style.height`, which is the value the app asked for, and it has
+     * passed throughout — while the trace on screen was reported as broken twice. `.trace span`
+     * carried `transition: height 60ms` and gets a new height every animation frame, so every
+     * transition was retargeted a quarter of the way through and no bar ever arrived: the picture
+     * was smeared toward its own mean and read as flat with occasional spikes.
+     *
+     * Measured on the old code the rendered height was 5.7px from the set height on average and
+     * 36px at worst, on a box 44px tall. Asserting the model and calling it the view is how a
+     * display bug survives two rounds of fixing the data behind it.
+     */
+    const drawn = await desktop.page.locator(".trace").evaluate((trace) => {
+      const bars = [...trace.querySelectorAll("span")];
+      const box = trace.getBoundingClientRect().height;
+      let worst = 0;
+      for (const b of bars) {
+        const want = (parseFloat(b.style.height) || 0) / 100 * box;
+        worst = Math.max(worst, Math.abs(want - b.getBoundingClientRect().height));
+      }
+      return +worst.toFixed(2);
+    });
+    // Three pixels of slack: the markup's own floor and sub-pixel rounding, nothing like 36.
+    check("and the trace drawn is the trace measured", drawn < 3.5, `worst bar off by ${drawn}px`);
+
     check(
       "and it moves with the input rather than sitting flat",
       new Set(heights).size > 3,
