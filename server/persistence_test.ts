@@ -307,6 +307,91 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "24.30 -- and it re-renders as the document that was sent, not as one wearing today's letterhead",
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * The half the warning could only describe. Losing the file used to mean the invoice came back
+     * with whatever the settings say *now* — a different letterhead, a different account to pay
+     * into, a different tax label — under the same invoice number, to a client who already has the
+     * original. The numbers were frozen and the document was not.
+     *
+     * The settings in force at issuance are kept in their own column, out of everything that goes
+     * on the wire, and this is the check that it is those the renderer gets.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "letterhead-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+
+    const ctx = context(dir);
+    setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(ctx, "s1");
+    await claimAdmin(ctx, admin);
+    await call(ctx, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 3_600_000,
+      billingTag: "Product Development",
+    });
+    const draft = await call(ctx, admin, {
+      t: "invoice-create",
+      period: "2026-09",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+    const sent = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
+      path: string;
+      pdfBase64: string;
+    };
+
+    // Everything on the document that is not a number, changed.
+    setConfig(ctx.db, "invoice", {
+      fromName: "Someone Else Entirely",
+      fromAddress: "1 Different Road, Elsewhere",
+      payAccountNumber: "99999999",
+      payBank: "A Different Bank",
+      taxLabel: "VAT",
+    }, NOW);
+
+    await Deno.remove(`${dir}/${sent.path}`);
+    const again = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
+      pdfBase64: string;
+    };
+
+    // Byte-identical. A PDF is deterministic here — no timestamp, no id generator — so the whole
+    // artefact can be compared rather than a few strings picked out of it, which is the stronger
+    // claim: nothing at all about the document moved.
+    assertEquals(
+      again.pdfBase64,
+      sent.pdfBase64,
+      "the re-rendered invoice is a different document",
+    );
+
+    // And a draft, which has no frozen settings, does follow the current ones — otherwise the
+    // check above could be passing because nothing reads the configuration at all.
+    const second = await call(ctx, admin, {
+      t: "invoice-create",
+      period: "2026-08",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    const draftPdf = await call(ctx, admin, { t: "invoice-pdf", id: second.id }) as {
+      pdfBase64: string;
+    };
+    const text = new TextDecoder("latin1").decode(fromBase64(draftPdf.pdfBase64));
+    assertEquals(
+      draftPdf.pdfBase64 === sent.pdfBase64,
+      false,
+      "a draft rendered identically to an invoice issued under different settings",
+    );
+    assertEquals(text.length > 0, true);
+
+    ctx.db.close();
+    await Deno.remove(dir, { recursive: true });
+  },
+});
+
 /** Every log line, as one string. Admin, so nothing is filtered out (12.17). */
 function wholeLog(ctx: ServerContext): string {
   return queryLogs(ctx.db, { admin: true, limit: 10_000, minLevel: "debug" })

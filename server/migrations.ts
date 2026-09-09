@@ -158,4 +158,21 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    id: 2,
+    name: "freeze-invoice-config",
+    sql: `
+      -- 24.30, completed. Issuing froze the *numbers* in \`snapshot_json\`, and every download
+      -- reads the PDF file written at that moment — but if that file is lost the server falls
+      -- back to re-rendering, and the letterhead, payment details and tax label then came from
+      -- the configuration as it stands now. A frozen document that quietly changes is the one
+      -- thing freezing was for.
+      --
+      -- Its own column rather than a field inside \`snapshot_json\`, because the snapshot is sent
+      -- to every authorised device and this holds the payment block. \`SELECT\` in
+      -- \`invoices.ts\` names its columns, so nothing that reads an invoice for the wire can pick
+      -- this up by accident; the one reader is \`frozenConfigFor\`.
+      ALTER TABLE invoice ADD COLUMN config_json TEXT;
+    `,
+  },
 ];

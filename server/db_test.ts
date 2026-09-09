@@ -27,16 +27,19 @@ Deno.test("a failing migration rolls back and leaves nothing behind", () => {
   const db = fresh();
   assertThrows(
     () =>
+      // A number no real migration will reach. It was `2`, which stopped failing the moment
+      // there *was* a migration 2: `fresh()` had already applied it, so this one was skipped as
+      // done and never ran. A test whose fixture collides with production data silently inverts.
       migrate(db, [{
-        id: 2,
+        id: 90_002,
         name: "bad",
         sql:
           "CREATE TABLE ok_so_far (x INTEGER) STRICT; CREATE TABLE ok_so_far (x INTEGER) STRICT;",
       }]),
     Error,
-    "migration 2 (bad) failed",
+    "migration 90002 (bad) failed",
   );
-  assertEquals(appliedMigrations(db).includes(2), false);
+  assertEquals(appliedMigrations(db).includes(90_002), false);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE name = 'ok_so_far'").all();
   assertEquals(tables.length, 0, "the half that succeeded was rolled back too");
   db.close();

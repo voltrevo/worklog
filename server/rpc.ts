@@ -78,6 +78,7 @@ import {
   attachPdf,
   createDraft,
   deleteInvoice,
+  frozenConfigFor,
   getInvoice,
   issue,
   listInvoices,
@@ -639,16 +640,25 @@ export async function handle(
          * Both paths logged, distinguishably, and the lossy one at `warn`.
          */
         if (invoice.status !== "draft") {
+          const kept = frozenConfigFor(db, invoice.id) !== undefined;
           ctx.log("warn", "invoice", "the frozen PDF is missing; re-rendering it", {
             number: invoice.number,
             status: invoice.status,
             expected: invoice.pdfPath ?? null,
-            note: "letterhead and payment details come from the current settings, not from the " +
-              "ones in force when it was issued",
+            note: kept
+              ? "re-rendered from the settings it was issued under, so it should be identical"
+              : "issued before those settings were kept, so the letterhead and payment details " +
+                "come from the current ones",
           });
         }
-        requireInvoiceConfig(db);
-        bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, getConfig(db, "invoice"));
+        // 24.30 — the settings it went out under, where those were kept. Only a draft, or an
+        // invoice issued before that column existed, falls back to the current ones.
+        const frozenConfig = frozenConfigFor(db, invoice.id);
+        if (!frozenConfig) requireInvoiceConfig(db);
+        bytes = await renderInvoicePdf(
+          invoice.snapshot ?? invoice.draft,
+          frozenConfig ?? getConfig(db, "invoice"),
+        );
         await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
         attachPdf(db, invoice.id, relative, now);
         ctx.log("info", "invoice", "rendered a PDF", {

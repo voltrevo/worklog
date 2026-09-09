@@ -12,6 +12,7 @@
 
 import type { Instant, InvoiceStatus } from "@worklog/shared/types";
 import {
+  appliedOverride,
   buildDraft,
   canIssue,
   defaultInvoiceNumber,
@@ -26,7 +27,7 @@ import {
 } from "@worklog/shared/invoice";
 import { today } from "@worklog/shared/dates";
 import { type Db, transact } from "./db.ts";
-import { getConfig } from "./config.ts";
+import { getConfig, type InvoiceConfig } from "./config.ts";
 import { entriesInMonth, Refused } from "./work.ts";
 
 interface Row {
@@ -56,6 +57,24 @@ function toRecord(row: Row): InvoiceRecord & { draft: InvoiceDraft; pdfPath?: st
 }
 
 export type StoredInvoice = ReturnType<typeof toRecord>;
+
+/**
+ * The configuration an invoice was issued under (24.30).
+ *
+ * **Deliberately not on `StoredInvoice`.** That record is what the handlers return down the wire,
+ * and this holds the payment block. A field is safe here only for as long as nobody adds it to
+ * something that gets serialised, and "for as long as nobody" is not a boundary. So it is not
+ * there at all: one column, one reader, and the only caller is the PDF path.
+ *
+ * `undefined` for a draft, and for anything issued before this column existed — the caller falls
+ * back to the current settings, which is what it did for everything before.
+ */
+export function frozenConfigFor(db: Db, id: string): InvoiceConfig | undefined {
+  const row = db.prepare("SELECT config_json FROM invoice WHERE id = ?").get(id) as
+    | { config_json: string | null }
+    | undefined;
+  return row?.config_json ? JSON.parse(row.config_json) as InvoiceConfig : undefined;
+}
 
 const SELECT =
   `SELECT id, period, number, status, draft_json, snapshot_json, pdf_path, issued_at, paid_at
@@ -256,10 +275,25 @@ export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvo
     }
 
     const snapshot: InvoiceSnapshot = { ...refreshed, issuedAt: now };
+    // 24.30 — the settings this invoice went out under, so a lost PDF re-renders as the document
+    // that was sent rather than as one wearing today's letterhead. Resolved here, override and
+    // all (25.12), because that is what the renderer was handed.
+    const frozenConfig: InvoiceConfig = {
+      ...getConfig(db, "invoice"),
+      ...appliedOverride(refreshed.config),
+    };
     db.prepare(
       `UPDATE invoice SET status = 'issued', number = ?, draft_json = ?, snapshot_json = ?,
-                          issued_at = ?, updated_at = ? WHERE id = ?`,
-    ).run(refreshed.number, JSON.stringify(refreshed), JSON.stringify(snapshot), now, now, id);
+                          config_json = ?, issued_at = ?, updated_at = ? WHERE id = ?`,
+    ).run(
+      refreshed.number,
+      JSON.stringify(refreshed),
+      JSON.stringify(snapshot),
+      JSON.stringify(frozenConfig),
+      now,
+      now,
+      id,
+    );
     return getInvoice(db, id)!;
   });
 }
