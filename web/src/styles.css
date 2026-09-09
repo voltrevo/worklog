@@ -1542,3 +1542,29 @@ button.maskfield:disabled {
 .brand .dot.warn {
   background: var(--warn);
 }
+
+/*
+ * 26.2 — the "press this and it will play" offer, above whatever screen is showing.
+ *
+ * Pinned rather than in the flow: it appears when a timer starts, which is when the person is
+ * mid-action, and pushing the page down under them to say so would be its own small fault.
+ */
+.audio-blocked {
+  position: fixed;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  z-index: 30;
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  max-width: min(30rem, calc(100vw - 2 * var(--s-4)));
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 900px) {
+  .audio-blocked {
+    /* Clear of the tab bar. */
+    bottom: 76px;
+    left: var(--s-4);
+  }
+}

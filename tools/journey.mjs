@@ -32,14 +32,37 @@ const TAG = "Journey work";
  * A minimal but real Ogg page, so `setInputFiles` hands the app something a browser will accept as
  * audio rather than a text file with an audio MIME type.
  *
- * It is a fixture, not music: what section 14 stores and reloads is a name and a byte count, and
- * playback is the browser's problem. Base64 rather than a file on disk because a binary fixture
- * that nothing can read is the sort of thing that rots without anyone noticing.
+ * **It has to be decodable now.** It was a 60-byte Ogg header, which was enough while the only
+ * claim was that section 14 stores a name and a byte count — and useless the moment the checks
+ * became about whether the loop actually *plays* (26.3, 26.5). A stub that cannot decode makes
+ * `play()` reject, which looks exactly like the bug being tested for.
+ *
+ * Synthesised rather than committed as a binary: WAV needs no codec in any browser, the header is
+ * eleven fields, and a fixture nobody can read is the sort of thing that rots unnoticed.
  */
-const OGG_BYTES = Buffer.from(
-  "T2dnUwACAAAAAAAAAABtSAAAAAAAAKvhFJ0BHgF2b3JiaXMAAAAAAUSsAAAAAAAAgLsAAAAAAAC4AQ==",
-  "base64",
-);
+function toneWav(seconds = 0.4, hz = 440, rate = 8_000) {
+  const frames = Math.floor(rate * seconds);
+  const data = Buffer.alloc(frames * 2);
+  for (let i = 0; i < frames; i++) {
+    data.writeInt16LE(Math.round(12_000 * Math.sin((2 * Math.PI * hz * i) / rate)), i * 2);
+  }
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0);
+  head.writeUInt32LE(36 + data.length, 4);
+  head.write("WAVEfmt ", 8);
+  head.writeUInt32LE(16, 16); // PCM header length
+  head.writeUInt16LE(1, 20); // PCM
+  head.writeUInt16LE(1, 22); // mono
+  head.writeUInt32LE(rate, 24);
+  head.writeUInt32LE(rate * 2, 28); // bytes per second
+  head.writeUInt16LE(2, 32); // block align
+  head.writeUInt16LE(16, 34); // bits
+  head.write("data", 36);
+  head.writeUInt32LE(data.length, 40);
+  return Buffer.concat([head, data]);
+}
+
+const LOOP_BYTES = toneWav();
 
 let checks = 0;
 const failures = [];
@@ -822,16 +845,16 @@ async function main() {
   console.log("\nlocal audio:");
   await nav(desktop.page, "Settings");
   await desktop.page.locator('input[type="file"]').setInputFiles({
-    name: "loop.ogg",
-    mimeType: "audio/ogg",
-    buffer: OGG_BYTES,
+    name: "loop.wav",
+    mimeType: "audio/wav",
+    buffer: LOOP_BYTES,
   });
   check(
     "a chosen file is copied onto this device",
     await until(
       "loop stored",
       desktop.page,
-      (p) => p.getByText(/loop\.ogg/).isVisible(),
+      (p) => p.getByText(/loop\.wav/).isVisible(),
     ),
   );
 
@@ -843,9 +866,51 @@ async function main() {
     await until(
       "loop persisted",
       desktop.page,
-      (p) => p.getByText(/loop\.ogg/).isVisible(),
+      (p) => p.getByText(/loop\.wav/).isVisible(),
     ),
   );
+
+  /*
+   * 26.3, 26.5, 26.6 — playing, and staying that way.
+   *
+   * The reported fault was that walking to the settings screen silenced a loop that was running.
+   * `LoopPlayer.load` began with `stop()`, and the settings card loads the stored file when it
+   * mounts, so opening the screen that configures the audio was the thing that stopped it.
+   *
+   * `new Audio()` makes a *detached* element, so there is nothing in the DOM to query about it.
+   * The card's own rendering is the surface that matters anyway: the hint appears exactly when
+   * the app believes the loop is playing.
+   */
+  const playingNow = () => desktop.page.getByText("playing now").count();
+  await desktop.page.getByRole("button", { name: "▶ Preview" }).click();
+  check(
+    "the preview starts the loop",
+    await until(
+      "loop playing",
+      desktop.page,
+      async (p) => (await p.getByText("playing now").count()) > 0,
+    ),
+  );
+
+  await nav(desktop.page, "Timer");
+  await nav(desktop.page, "Settings");
+  await desktop.page.waitForTimeout(600);
+  check("26.3 — and a visit to another screen does not stop it", (await playingNow()) > 0);
+
+  check(
+    "26.5 — Preview is unavailable while it plays",
+    await desktop.page.getByRole("button", { name: "▶ Preview" }).isDisabled(),
+  );
+  await desktop.page.getByText("playing now").click();
+  check(
+    "26.6 — and says why, with somewhere to report it if the sound is missing",
+    await until(
+      "preview explained",
+      desktop.page,
+      async (p) => (await p.getByRole("button", { name: "Report it" }).count()) > 0,
+    ),
+  );
+  await desktop.page.getByRole("button", { name: "Not now" }).click();
 
   // 14.3–14.5, 16.1, 16.3. The phone is authorised, connected, and looking at the same server.
   //

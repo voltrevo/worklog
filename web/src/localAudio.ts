@@ -85,26 +85,54 @@ export class LoopPlayer {
   #audio?: HTMLAudioElement;
   #context?: AudioContext;
   #gain?: GainNode;
+  /** Which element the graph is wired to. See `start`. */
+  #connected?: HTMLAudioElement;
   #url?: string;
   #blocked = false;
   #position = 0;
+  #silent?: "no-file";
+  /** What is loaded, so an identical load is not a reload. */
+  #loaded?: string;
+  /** In-flight load, so a start that arrives first waits rather than doing nothing. */
+  #loading?: Promise<void>;
 
-  /** Swap in a file, or `undefined` to unload. Stops anything playing. */
+  /**
+   * Swap in a file, or `undefined` to unload.
+   *
+   * **Loading the same file again does nothing at all**, and that is the fix for 26.3. Opening
+   * the settings screen mounts the audio card, whose first effect loads the stored loop — and
+   * `load` began with `this.stop()`, so walking to Settings silenced a loop that was playing.
+   * Twice over, since `LoopPlayback` loads it too.
+   */
   async load(loop: StoredLoop | undefined): Promise<void> {
-    this.stop();
-    if (this.#url) URL.revokeObjectURL(this.#url);
-    this.#url = undefined;
-    this.#audio = undefined;
-    if (!loop) return;
+    const key = loop ? `${loop.name}:${loop.type}:${loop.bytes.byteLength}` : "";
+    if (key === (this.#loaded ?? "")) {
+      // Already holding exactly this. Waiting on any load still in flight, so a caller that
+      // loads-then-starts is ordered even on the second call.
+      await this.#loading;
+      return;
+    }
 
-    this.#url = URL.createObjectURL(
-      new Blob([loop.bytes], { type: loop.type }),
-    );
-    const audio = new Audio(this.#url);
-    audio.loop = true; // 14.12 — continuously, with no gap and nothing to press
-    audio.preload = "auto";
-    this.#audio = audio;
-    await Promise.resolve();
+    // Not `async`: nothing in here awaits, and the point of the promise is that a `start`
+    // arriving mid-load has something to wait on, not that the body is asynchronous.
+    const work = Promise.resolve().then(() => {
+      this.stop();
+      if (this.#url) URL.revokeObjectURL(this.#url);
+      this.#url = undefined;
+      this.#audio = undefined;
+      this.#loaded = key;
+      if (!loop) return;
+
+      this.#url = URL.createObjectURL(
+        new Blob([loop.bytes], { type: loop.type }),
+      );
+      const audio = new Audio(this.#url);
+      audio.loop = true; // 14.12 — continuously, with no gap and nothing to press
+      audio.preload = "auto";
+      this.#audio = audio;
+    });
+    this.#loading = work;
+    await work;
   }
 
   setVolume(position: number): void {
@@ -129,8 +157,22 @@ export class LoopPlayer {
    * something has in fact changed.
    */
   async start(): Promise<void> {
+    /*
+     * 26.1 — wait for a load that is still in flight.
+     *
+     * This began `if (!this.#audio) return;`, and the loop is read out of IndexedDB, so on a page
+     * that opens with a timer already running the start effect reached here before the file did
+     * and returned — no sound, no error, no `blocked`, nothing to find. Whether it worked came
+     * down to which promise resolved first, which is why it "worked sometimes".
+     */
+    await this.#loading;
     const audio = this.#audio;
-    if (!audio) return;
+    if (!audio) {
+      this.#blocked = false;
+      this.#silent = "no-file";
+      return;
+    }
+    this.#silent = undefined;
 
     if (!this.#context) {
       const Ctx = globalThis.AudioContext ??
@@ -140,7 +182,19 @@ export class LoopPlayer {
       this.#context = new Ctx();
       this.#gain = this.#context.createGain();
       this.#gain.connect(this.#context.destination);
-      this.#context.createMediaElementSource(audio).connect(this.#gain);
+    }
+    /*
+     * 26.4 — wire *this* element into the graph.
+     *
+     * The source node was created once, inside the `if (!this.#context)` above, and bound to
+     * whichever element happened to be loaded then. Choosing a different file replaced
+     * `this.#audio` and left the graph pointing at the old one — so the new file played through
+     * the default output at full volume, with the gain node connected to nothing that made a
+     * sound. That is "volume sometimes not honoured": specifically, after changing the file.
+     */
+    if (this.#connected !== audio) {
+      this.#context.createMediaElementSource(audio).connect(this.#gain!);
+      this.#connected = audio;
     }
     this.setVolume(this.#position);
     // A context created before a user gesture starts suspended; this is a no-op once running.
@@ -177,6 +231,16 @@ export class LoopPlayer {
     return this.#blocked;
   }
 
+  /**
+   * 26.1, 26.6 — why nothing is playing, when the answer is not "the browser refused".
+   *
+   * `undefined` means the last start had no complaint. Anything else is a sentence the interface
+   * can show instead of leaving somebody looking at a control that appears to do nothing.
+   */
+  get silent(): "no-file" | undefined {
+    return this.#silent;
+  }
+
   /** 14.13 */
   stop(): void {
     this.#audio?.pause();
@@ -193,7 +257,9 @@ export class LoopPlayer {
     this.#context = undefined;
     this.#gain = undefined;
     this.#audio = undefined;
+    this.#connected = undefined;
     this.#url = undefined;
+    this.#loaded = undefined;
   }
 }
 

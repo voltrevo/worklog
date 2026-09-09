@@ -17,6 +17,10 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore } from "../state.tsx";
+import { Dialog } from "./Dialog.tsx";
+
+/** Build metadata, as on the About card (18.4, 18.6). */
+const REPO = "https://github.com/voltrevo/worklog";
 import {
   clearLoop,
   labelFor,
@@ -61,7 +65,38 @@ export function LoopPlayback() {
     }
   }, [active, startedAt]);
 
-  return null;
+  /*
+   * 26.2 — the offer to unblock has to be where the failure is noticed.
+   *
+   * `blocked` was rendered on the settings card and nowhere else, so the one screen that said
+   * "this browser refused to start the loop" was the screen nobody was on: the timer had just
+   * started, which means the person is looking at the timer. From there the loop simply did not
+   * play and nothing anywhere said why — reported as "no errors to be found, no UI for
+   * unblocking", which is exactly right.
+   *
+   * `LoopPlayback` is mounted by the shell, above every screen, so it is the one component that
+   * is always there when this happens.
+   */
+  const state = useSyncExternalStore(
+    subscribeAudio,
+    () => `${player().playing}:${player().blocked}`,
+    () => "false:false",
+  );
+  const blocked = state.endsWith(":true");
+  if (!blocked || !active) return null;
+
+  return (
+    <div className="notice warn audio-blocked">
+      <span>This browser will not start the background loop on its own.</span>
+      <button
+        className="btn"
+        type="button"
+        onClick={() => void player().start().finally(notifyAudioChanged)}
+      >
+        Play it
+      </button>
+    </div>
+  );
 }
 
 export function LocalAudioCard() {
@@ -69,6 +104,7 @@ export function LocalAudioCard() {
   const [enabled, setEnabled] = useState(() => loadEnabled());
   const [volume, setVolume] = useState(() => loadVolume());
   const [dragging, setDragging] = useState(false);
+  const [playingNote, setPlayingNote] = useState(false);
 
   /**
    * The player's own state, which changes for reasons this tree did not cause: a timer starting on
@@ -165,20 +201,42 @@ export function LocalAudioCard() {
       }
       {loop && (
         <div className="row wrap" style={{ gap: 12, alignItems: "center", marginBottom: 12 }}>
+          {
+            /*
+            26.5 — Preview is unavailable while the loop is supposed to be playing, rather than
+            turning into a Stop. Stopping it here would fight the timer, which is what decides
+            whether the loop runs (14.15); a preview is for hearing the file when nothing else is.
+          */
+          }
           <button
             className={`btn ${blocked ? "primary" : ""}`}
             type="button"
-            onClick={() => {
-              if (playing) {
-                player().stop();
-                notifyAudioChanged();
-              } else {
-                void player().start().finally(notifyAudioChanged);
-              }
-            }}
+            disabled={playing}
+            onClick={() =>
+              void player().start().finally(notifyAudioChanged)}
           >
-            {playing ? "■ Stop preview" : "▶ Preview"}
+            ▶ Preview
           </button>
+          {
+            /*
+            26.6 — and a disabled control that does nothing when pressed is indistinguishable from
+            a broken one. `<button disabled>` swallows the click, so the explanation hangs off a
+            wrapper that still receives it.
+          */
+          }
+          {playing && (
+            <span
+              className="faint"
+              onClick={() => setPlayingNote(true)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && setPlayingNote(true)}
+              role="button"
+              tabIndex={0}
+              style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+            >
+              playing now — why is this unavailable?
+            </span>
+          )}
           {blocked && (
             <span className="faint">
               This browser blocked the loop from starting on its own. Press Preview once and it will
@@ -186,6 +244,29 @@ export function LocalAudioCard() {
             </span>
           )}
         </div>
+      )}
+
+      {playingNote && (
+        <Dialog
+          title="The loop is playing"
+          body={"Preview is for hearing the file when nothing else is. This device believes the " +
+            "loop is playing right now, so there is nothing to preview — stopping the timer stops " +
+            "it.\n\nIf you cannot hear anything, that is a fault worth reporting: the app and " +
+            "your speakers disagree, and the app cannot tell."}
+          confirmLabel="Report it"
+          busy={false}
+          onConfirm={() => {
+            globalThis.open(
+              `${REPO}/issues/new?title=${
+                encodeURIComponent("Background audio reports playing but is silent")
+              }`,
+              "_blank",
+              "noreferrer",
+            );
+            setPlayingNote(false);
+          }}
+          onCancel={() => setPlayingNote(false)}
+        />
       )}
 
       {/* 14.6 — one file, dropped or chosen. */}

@@ -34,11 +34,26 @@ interface Calls {
   resumed: number;
   /** The elements the player made, so their properties can be read rather than assumed. */
   created: { loop: boolean; preload: string; src: string }[];
+  /**
+   * The elements the graph was actually pointed at (26.4).
+   *
+   * Distinct from `created` on purpose: the fault was that a second element was built and the
+   * source node still fed from the first, so a test that only counted elements could not see it.
+   */
+  sources: unknown[];
 }
 
 /** Install just enough of a browser to run the player, and record what it does. */
 function stubBrowser(): { calls: Calls; restore: () => void } {
-  const calls: Calls = { play: 0, pause: 0, seeks: [], gains: [], resumed: 0, created: [] };
+  const calls: Calls = {
+    play: 0,
+    pause: 0,
+    seeks: [],
+    gains: [],
+    resumed: 0,
+    created: [],
+    sources: [],
+  };
   const g = globalThis as Record<string, unknown>;
 
   /**
@@ -96,7 +111,8 @@ function stubBrowser(): { calls: Calls; restore: () => void } {
     createGain() {
       return gainNode;
     }
-    createMediaElementSource() {
+    createMediaElementSource(el: unknown) {
+      calls.sources.push(el);
       return { connect: () => {} };
     }
     resume(): Promise<void> {
@@ -176,6 +192,8 @@ Deno.test("14.12 -- the file loops, and there is nothing to press", async () => 
       "load",
       "playing",
       "setVolume",
+      // 26.1 — why nothing is playing, when the answer is not "the browser refused".
+      "silent",
       "start",
       "stop",
     ]);
@@ -299,6 +317,85 @@ Deno.test("any other playback failure is thrown, not mistaken for an autoplay bl
     assertEquals(threw, "the file is not audio");
     assertEquals(player.blocked, false, "a decode failure is not something a button fixes");
     player.dispose();
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("26.3 -- loading the file that is already loaded does not stop it", async () => {
+  /*
+   * The reported fault: walking to the settings screen silenced a loop that was running. `load`
+   * began with `stop()`, and the settings card loads the stored file when it mounts — so opening
+   * the screen that *configures* the audio was the thing that stopped it. `LoopPlayback` loads it
+   * on mount too, so a reload did it as well.
+   */
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.start();
+    assertEquals(player.playing, true);
+
+    await player.load(LOOP);
+    assertEquals(player.playing, true, "loading the same file again stopped it");
+    assertEquals(calls.created.length, 1, "and it built a second element for the same file");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("26.1 -- a start that arrives before the file waits for it", async () => {
+  // The loop is read out of IndexedDB, so on a page that opens with a timer already running the
+  // start effect reached `start()` before the file did. It returned — no sound, no error, no
+  // `blocked`. Whether it worked came down to which promise resolved first.
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    const loading = player.load(LOOP);
+    const starting = player.start();
+    await Promise.all([loading, starting]);
+    assertEquals(calls.play, 1, "the start did not wait for the load");
+    assertEquals(player.playing, true);
+    assertEquals(player.silent, undefined);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("and a start with no file at all says so rather than going quiet", async () => {
+  // The same silent return covered both cases. They want different answers: one is a race worth
+  // waiting out, the other is a device with nothing configured.
+  const { restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.start();
+    assertEquals(player.silent, "no-file");
+    assertEquals(player.blocked, false, "no file is not the browser refusing");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("26.4 -- a new file is wired into the gain node, not just swapped in", async () => {
+  /*
+   * `createMediaElementSource` was called once, inside `if (!this.#context)`, and bound to
+   * whichever element happened to be loaded then. Choosing a different file replaced the element
+   * and left the graph pointing at the old one — so the new file played through the default
+   * output at full volume, with the gain node connected to something silent. That is "volume
+   * sometimes not honoured", specifically after changing the file.
+   */
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.start();
+    assertEquals(calls.sources.length, 1);
+
+    await player.load({ name: "other.wav", type: "audio/wav", bytes: new ArrayBuffer(8) });
+    await player.start();
+    assertEquals(calls.created.length, 2, "a second element was built");
+    assertEquals(calls.sources.length, 2, "but the graph was never pointed at it");
+    assertEquals(calls.sources[1], calls.created[1], "and it is the new element that is wired up");
   } finally {
     restore();
   }
