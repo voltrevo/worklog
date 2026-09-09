@@ -26,6 +26,7 @@ import {
   type Event,
   fromBase64,
   type HelloResult,
+  PROTOCOL_VERSION,
   type Request,
   type Response,
   splitLines,
@@ -172,6 +173,29 @@ export class WorklogClient {
       t: "hello",
       publicKey: toBase64(await this.publicKey()),
     });
+
+    /*
+     * The number the server has been sending since there was a protocol, which nothing read.
+     *
+     * `hello` carries `protocolVersion` for exactly one purpose — a frontend and a server that do
+     * not agree about what the messages mean — and the field sat unused, so the mismatch it exists
+     * to catch would have presented as requests failing for no stated reason. The frontend is a
+     * *static site*: a browser holding yesterday's build against a server updated this morning is
+     * the ordinary way this happens, and it is invisible from either end.
+     *
+     * Which way round it is decides what there is to do about it, so the message says.
+     */
+    if (hello.protocolVersion !== PROTOCOL_VERSION) {
+      const behind = hello.protocolVersion > PROTOCOL_VERSION;
+      throw new Error(
+        `this app speaks version ${PROTOCOL_VERSION} of the worklog protocol and the server ` +
+          `speaks ${hello.protocolVersion}. ` +
+          (behind
+            ? "Reload the page to pick up a newer build, or update the desktop app."
+            : "The server is older than this app, so update the server."),
+      );
+    }
+
     this.#state = {
       serverCertHash: hello.serverCertHash,
       version: hello.version,

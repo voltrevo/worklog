@@ -266,3 +266,36 @@ Deno.test("a whole day of use, through the client", async () => {
   assertEquals(snap.pacing.month, "2026-09");
   ctx.db.close();
 });
+
+/*
+ * A frontend and a server that do not agree about what the messages mean.
+ *
+ * `hello` has carried `protocolVersion` since there was a protocol and nothing read it, so the
+ * mismatch it exists to catch would have presented as requests failing for no stated reason. The
+ * frontend is a static site: a browser holding yesterday's build against a server updated this
+ * morning is the ordinary way this happens, and it is invisible from either end.
+ */
+Deno.test("a protocol mismatch is refused, saying which side is behind", async () => {
+  for (const [theirs, expected] of [[2, "Reload the page"], [0, "update the server"]] as const) {
+    const ctx = server();
+    const transport = loopback(ctx, "a");
+    // The server's own answer with a different number in it. Wrapped at the transport rather than
+    // changed in `rpc.ts`, because what is under test is the *client* noticing.
+    const real = transport.request.bind(transport);
+    transport.request = async (payload: Uint8Array) => {
+      const out = await real(payload);
+      const text = new TextDecoder().decode(out);
+      return new TextEncoder().encode(
+        text.replace(/"protocolVersion":\s*\d+/, `"protocolVersion":${theirs}`),
+      );
+    };
+    const a = new WorklogClient({
+      transport,
+      signer: webCryptoSigner(memoryKeyStore()),
+      deviceName: "MacBook Pro",
+      onEvent: () => {},
+    });
+    await assertRejects(() => a.hello(), Error, expected);
+    ctx.db.close();
+  }
+});
