@@ -212,6 +212,13 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
     if (!opts.noAddress) {
       await page.addInitScript(
         ([address, name]) => {
+          /*
+           * An init script runs in *every* frame, and 26.11 added one that is not a document of
+           * ours: the PDF viewer, in an iframe over a blob URL, where `localStorage` is null. This
+           * threw there on every open — a page error the harness then reported against the app,
+           * for a line the harness itself had injected.
+           */
+          if (!globalThis.localStorage) return;
           localStorage.setItem("worklog.serverAddress", address);
           localStorage.setItem("worklog.deviceName", name);
         },

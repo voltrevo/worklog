@@ -18,7 +18,6 @@
  */
 
 import { Buffer } from "node:buffer";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { claimAndApprove, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
@@ -113,6 +112,67 @@ const nav = (page, name) => page.getByRole("button", { name, exact: true }).firs
  * lands on the overlay instead of the control, failing hundreds of lines from its cause. 26.9 made
  * dismissing one that has content ask first, so the confirmation is answered too.
  */
+/**
+ * 26.12 — an invoice's state, read and set through the one control that now carries it.
+ *
+ * Four buttons became a `<select>`, so "is it a draft" is the value of a control rather than the
+ * presence of a word on the page. Reading it as text still worked for a while, because "Draft" is
+ * also an option label — which is exactly the kind of accidental pass worth not relying on.
+ */
+const stateOf = (row) => row.getByRole("combobox").inputValue();
+
+/**
+ * 26.11 — open an invoice's PDF in the viewer and read the bytes the viewer is showing.
+ *
+ * The old checks waited for a `download` event, which no longer happens: the button hands the file
+ * to an iframe over a blob URL instead of to the browser's downloader. Reading the blob back
+ * through `fetch` in the page is a stronger check than the download was, because it asserts the
+ * bytes *the person is looking at* rather than the bytes of a second request that happened to be
+ * made at the same time.
+ */
+async function viewPdf(page, row) {
+  await row.getByRole("button", { name: "View" }).click();
+  const frame = page.locator("iframe.viewer-frame");
+  await frame.waitFor({ state: "visible", timeout: 20_000 });
+  const src = await frame.getAttribute("src");
+  const bytes = src?.startsWith("blob:")
+    ? Buffer.from(
+      await page.evaluate(
+        async (url) => [...new Uint8Array(await (await fetch(url)).arrayBuffer())],
+        src,
+      ),
+    )
+    : undefined;
+  await page.getByRole("button", { name: "Close" }).click();
+  await frame.waitFor({ state: "detached", timeout: 10_000 });
+  return { src, bytes };
+}
+const setStateTo = async (row, value) => {
+  await row.getByRole("combobox").selectOption(value);
+  await row.page().waitForTimeout(700);
+};
+
+/**
+ * Source that escaped into the page.
+ *
+ * A JSX comment written bare — `/* ... *\/` between two tags, without the surrounding braces — is
+ * not a comment. It is text, and it renders. Four lines of reasoning about why issuing needs no
+ * confirmation appeared under every invoice row that way, and nothing else here would have
+ * noticed: it is visible, it has contrast, it has no role, it is simply prose nobody wrote for a
+ * reader. The same scan catches a stray `{...}` or an arrow function stringified into content.
+ */
+async function sourceOnScreen(page, where) {
+  const found = await page.evaluate(() =>
+    [...document.body.querySelectorAll("*")]
+      .flatMap((el) => [...el.childNodes])
+      .filter((n) => n.nodeType === 3)
+      .map((n) => n.textContent ?? "")
+      .filter((t) => /\/\*|\*\/|=>\s*\{|\bfunction\s*\(/.test(t))
+      .map((t) => t.trim().slice(0, 60))
+  );
+  return found.map((t) => `${where}: ${t}`);
+}
+
 async function clearSheets(page) {
   for (let i = 0; i < 3 && (await page.getByRole("dialog").count()) > 0; i++) {
     await page.keyboard.press("Escape");
@@ -284,6 +344,10 @@ async function main() {
   await nav(desktop.page, "Timer");
   // Not "Not working": the phone said that before the timer ever started, so it could not
   // disagree. The entry carrying this run's tag is something that was not there a moment ago.
+  //
+  // The phone gets its own prompts, and 26.9 made a note with typing in it refuse to vanish. With
+  // the prompt interval turned down to a second for this run, one is almost always open here.
+  await clearSheets(mobile.page);
   await nav(mobile.page, "History");
   check(
     "and the entry reaches the phone",
@@ -497,80 +561,87 @@ async function main() {
   const preparing = "September 2026";
   await monthPicker.selectOption({ label: preparing });
   await newInvoice.click();
+
+  const invoiceRow = () =>
+    desktop.page.locator(".stacked-row").filter({ hasText: preparing }).first();
+
+  /*
+   * The row for *this* month, in draft — not "a row somewhere in draft".
+   *
+   * This asked whether the first row in the list was a draft, and the seed ships an August draft
+   * that sits there from the moment the screen loads. So it answered yes before the click had
+   * reached the server, and every check below it began against a September row that did not exist
+   * yet. Most passed anyway, because a Playwright action auto-waits for its element to arrive; the
+   * one that did not wait — a `count() === 0` — was green for the whole run for want of anything
+   * to count.
+   */
   check(
     "a prepared invoice appears in the list as a draft",
     await until(
       "draft",
       desktop.page,
-      (p) => p.getByText("Draft", { exact: true }).first().isVisible(),
+      async (p) =>
+        (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 1 &&
+        (await stateOf(invoiceRow())) === "draft",
     ),
   );
 
-  const invoiceRow = () =>
-    desktop.page.locator(".stacked-row").filter({ hasText: preparing }).first();
-
-  // 8.33 — the download, which is the whole reason the button exists.
-  const firstDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
-    undefined
+  // 26.10 — the list offers reading, not saving. Saving is in the viewer the browser supplies.
+  check(
+    "26.10 — no download control on the list",
+    (await invoiceRow().getByRole("button", { name: /download/i }).count()) === 0,
   );
-  await invoiceRow().getByRole("button", { name: "Download" }).click();
-  const draftPdf = await firstDownload;
-  check("a draft's PDF downloads", draftPdf !== undefined);
-  if (draftPdf) {
-    const head = (await readFile(await draftPdf.path())).subarray(0, 5).toString("latin1");
-    check("and it is a PDF", head === "%PDF-", JSON.stringify(head));
-  }
+
+  // 8.33 / 26.11 — the document itself, in the viewer, over a blob URL.
+  const draftPdf = await viewPdf(desktop.page, invoiceRow());
+  check(
+    "26.11 — a draft's PDF opens in the viewer over a blob URL",
+    draftPdf.src?.startsWith("blob:") === true,
+    String(draftPdf.src).slice(0, 24),
+  );
+  check(
+    "and it is a PDF",
+    draftPdf.bytes?.subarray(0, 5).toString("latin1") === "%PDF-",
+    JSON.stringify(draftPdf.bytes?.subarray(0, 5).toString("latin1")),
+  );
 
   // 11.4 — generating changed no state.
   check(
     "generating did not issue anything",
-    await desktop.page.getByText("Draft", { exact: true }).first().isVisible(),
+    (await stateOf(invoiceRow())) === "draft",
   );
 
-  // 24.29 — issuing asks in a dialog.
-  await invoiceRow().getByRole("button", { name: "Issue", exact: true }).click();
+  // 26.13 — issuing asks nothing. The dialog that used to warn about the PDF freezing was warning
+  // about the feature working, so setting the state is the whole interaction.
+  await setStateTo(invoiceRow(), "issued");
   check(
-    "issuing asks first, in a dialog",
-    await until(
-      "issue dialog",
-      desktop.page,
-      async (p) => (await p.getByRole("dialog").count()) > 0,
-    ),
+    "26.13 — issuing does not stop to warn about the PDF freezing",
+    (await desktop.page.getByRole("dialog").count()) === 0,
   );
-  await desktop.page.getByRole("button", { name: "Issue it" }).click();
   check(
     "and issuing moves it out of draft",
     await until(
       "issued",
       desktop.page,
-      (p) => p.getByText("Issued", { exact: true }).first().isVisible(),
+      async (p) =>
+        (await p.locator(".stacked-row").first().getByRole("combobox").inputValue()) === "issued",
     ),
   );
 
   // 24.30 — the frozen document. Issued invoices serve the stored file rather than re-rendering,
   // so downloading twice must give the same bytes even though nothing stops the config changing
   // in between. Byte equality is the only assertion that distinguishes the two.
-  const secondDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
-    undefined
+  const frozenBytes = (await viewPdf(desktop.page, invoiceRow())).bytes;
+  check(
+    "an issued invoice's PDF opens",
+    frozenBytes?.subarray(0, 5).toString("latin1") === "%PDF-",
   );
-  await invoiceRow().getByRole("button", { name: "Download" }).click();
-  const issuedPdf = await secondDownload;
-  check("an issued invoice's PDF downloads", issuedPdf !== undefined);
-  let frozenBytes;
-  if (issuedPdf) {
-    frozenBytes = await readFile(await issuedPdf.path());
-    check("and it is a PDF", frozenBytes.subarray(0, 5).toString("latin1") === "%PDF-");
-  }
 
-  const thirdDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
-    undefined
-  );
-  await invoiceRow().getByRole("button", { name: "Download" }).click();
-  const again = await thirdDownload;
+  const again = (await viewPdf(desktop.page, invoiceRow())).bytes;
   check(
     "and it is frozen: the same bytes every time",
     again !== undefined && frozenBytes !== undefined &&
-      Buffer.compare(frozenBytes, await readFile(await again.path())) === 0,
+      Buffer.compare(frozenBytes, again) === 0,
   );
 
   // 25.10 — the reverse of what this used to assert. The month being spoken for used to remove
@@ -585,9 +656,9 @@ async function main() {
   );
   check("25.10 — a second draft for an issued month is allowed", secondDraft);
 
-  const draftRow = desktop.page.locator(".stacked-row").filter({ hasText: "Draft" }).first();
-  await draftRow.getByRole("button", { name: "Issue", exact: true }).click();
-  await desktop.page.getByRole("button", { name: "Issue it" }).click();
+  const draftRow = desktop.page.locator(".stacked-row")
+    .filter({ has: desktop.page.locator('option[value="draft"]:checked') }).first();
+  await setStateTo(draftRow, "issued");
   check(
     "and 11.19 refuses it at issuance, saying what covers the month",
     await until(
@@ -625,20 +696,26 @@ async function main() {
   // between the draft and the issued invoice the checks below still need.
   await draftRow.getByRole("button", { name: "Delete" }).click();
   await desktop.page.getByRole("button", { name: "Delete it" }).click();
-  await until(
-    "second draft gone",
-    desktop.page,
-    async (p) => (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 1,
+  // Checked, not merely awaited: everything below addresses `invoiceRow()`, which is `.first()`
+  // of the rows for this month. While the deleted draft is still there that is a coin flip
+  // between two rows in different states, and the failure surfaces as a confusing one further on.
+  check(
+    "the deleted draft leaves the list",
+    await until(
+      "second draft gone",
+      desktop.page,
+      async (p) => (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 1,
+    ),
   );
 
   // 24.27 — paid, and back again, from the row.
-  await invoiceRow().getByRole("button", { name: "Mark paid" }).click();
+  await setStateTo(invoiceRow(), "paid");
   check(
     "marking paid works from the row",
     await until(
       "paid",
       desktop.page,
-      (p) => p.getByText("Paid", { exact: true }).first().isVisible(),
+      async () => (await stateOf(invoiceRow())) === "paid",
     ),
   );
 
@@ -667,10 +744,13 @@ async function main() {
   // Prepared again, because the checks further down watch an invoice reach the phone and the
   // delete above left the month empty. Re-preparing is also the proof that deleting freed it.
   await newInvoice.click();
-  await until(
-    "re-prepared",
-    desktop.page,
-    (p) => p.getByText("Draft", { exact: true }).first().isVisible(),
+  check(
+    "and the month can be prepared again",
+    await until(
+      "re-prepared",
+      desktop.page,
+      async () => (await stateOf(invoiceRow())) === "draft",
+    ),
   );
 
   // 25.27 — the start of a running session is editable. The case is forgetting to press Start:
@@ -1333,22 +1413,31 @@ async function main() {
     }, where);
 
   const dim = [];
+
+  const leaks = [];
   for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(300);
     dim.push(...await lowContrast(desktop.page, screen));
+    leaks.push(...await sourceOnScreen(desktop.page, screen));
     // The phone renders the same palette in a different shell, and the dark device is a third set
     // of colours entirely — the theme nobody looked at for two months.
     if (await mobile.page.getByRole("button", { name: screen, exact: true }).count()) {
       await nav(mobile.page, screen);
       await mobile.page.waitForTimeout(250);
       dim.push(...await lowContrast(mobile.page, `${screen} (phone)`));
+      leaks.push(...await sourceOnScreen(mobile.page, `${screen} (phone)`));
     }
   }
   check(
     "every piece of text clears its contrast threshold",
     dim.length === 0,
     [...new Set(dim)].join("; "),
+  );
+  check(
+    "no source text is rendered as content",
+    leaks.length === 0,
+    [...new Set(leaks)].join("; "),
   );
 
   // ------------------------------------------------------------ a modal that behaves like one

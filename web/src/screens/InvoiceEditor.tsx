@@ -399,7 +399,16 @@ export function InvoiceEditor(
             aria-expanded={showOverride}
             onClick={() => setShowOverride(!showOverride)}
           >
-            {showOverride ? "Hide" : "Show"} what this invoice says differently
+            {
+              /*
+              26.14 — say what the control is.
+
+              It read "Show what this invoice says differently", which is slack in the way spoken
+              language is slack, and wrong besides: nothing is different until somebody has made
+              it so, and usually nobody has. It described a state the invoice was not in.
+            */
+            }
+            {showOverride ? "Hide settings for this invoice" : "Settings for this invoice only"}
           </button>
           {showOverride && (
             <div className="stack" style={{ gap: 10 }}>

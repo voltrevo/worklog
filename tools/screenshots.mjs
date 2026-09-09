@@ -55,6 +55,29 @@ async function main() {
   await capture(mobile.page, "mobile");
 
   /*
+   * 26.11 — the PDF viewer, which is the one screen in this app that is not a screen.
+   *
+   * `capture` walks navigation, and a dialog is not in any navigation, so the largest surface in
+   * the app was the only one never photographed. It is also the one most likely to be wrong: an
+   * iframe with no explicit height collapses to 150px and looks like a rendering failure.
+   */
+  await desktop.page.getByRole("button", { name: "Invoices", exact: true }).click();
+  const viewButton = desktop.page.locator(".stacked-row").first()
+    .getByRole("button", { name: "View" });
+  await viewButton.waitFor({ timeout: 20_000 }).catch(() => {});
+  if (await viewButton.isVisible().catch(() => false)) {
+    await viewButton.click();
+    await desktop.page.locator("iframe.viewer-frame").waitFor({ timeout: 30_000 });
+    // The PDF plugin paints on its own schedule; a shot taken the instant the iframe exists is of
+    // a white rectangle, which is indistinguishable from the bug this picture is here to catch.
+    await desktop.page.waitForTimeout(2_500);
+    await shot(desktop.page, "invoice-viewer-desktop");
+    await desktop.page.getByRole("button", { name: "Close" }).click();
+  } else {
+    throw new Error("no invoice to view: the seed should ship a draft");
+  }
+
+  /*
    * 19.17 — and the other half of the CSS.
    *
    * The dark palette is a second set of every colour in this app and went unlooked-at for its

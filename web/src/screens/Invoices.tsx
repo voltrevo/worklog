@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
-import { bytesFromBase64, type Saved, saveFile } from "../download.ts";
+import { bytesFromBase64 } from "../download.ts";
 import type {
   InvoicePdfResult,
   PublicInvoiceConfig,
@@ -29,6 +29,7 @@ import type {
 import type { InvoiceWarning } from "@worklog/shared/invoice";
 import { InvoiceEditor } from "./InvoiceEditor.tsx";
 import { Dialog } from "./Dialog.tsx";
+import { Sheet } from "./Sheet.tsx";
 
 /**
  * The months on offer: the last two years, newest first.
@@ -42,6 +43,9 @@ function monthChoices(): string[] {
   const now = monthOf(today());
   return Array.from({ length: 24 }, (_, i) => shiftMonth(now, -i));
 }
+
+/** The three states, in the order an invoice passes through them (11.2). */
+type Status = StoredInvoiceWire["status"];
 
 /** Unpaid first, and within that the most recent period. */
 function ordered(invoices: StoredInvoiceWire[]): StoredInvoiceWire[] {
@@ -184,24 +188,47 @@ function InvoiceRow(
   },
 ) {
   const { call } = useStore();
-  const [saved, setSaved] = useState<Saved>();
-  const [confirm, setConfirm] = useState<"issue" | "delete">();
+  const [viewing, setViewing] = useState<{ url: string; name: string }>();
+  const [confirm, setConfirm] = useState<"delete">();
   const [editing, setEditing] = useState(false);
   const shown = invoice.snapshot ?? invoice.draft;
 
-  /** 8.33 — generate, then actually hand it over. */
-  const generate = async () => {
-    const res = await call<InvoicePdfResult>({
-      t: "invoice-pdf",
-      id: invoice.id,
-    });
-    setSaved(
-      await saveFile(
-        res.fileName,
-        bytesFromBase64(res.pdfBase64),
-        "application/pdf",
-      ),
+  /**
+   * 26.11, 8.33 — fetch it and show it.
+   *
+   * It used to download. Reading the thing is the common case by a wide margin, and every browser
+   * already has a save button on its own PDF viewer, so the app offering one was a second way to
+   * do something the first way did better. The blob URL is revoked when the dialog closes.
+   */
+  const view = async () => {
+    const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
+    const url = URL.createObjectURL(
+      // `.slice()` gives a plain `ArrayBuffer`; a `Uint8Array` over a shared buffer is not a
+      // `BlobPart` as far as the DOM types are concerned.
+      new Blob([bytesFromBase64(res.pdfBase64).slice().buffer], { type: "application/pdf" }),
     );
+    setViewing({ url, name: res.fileName });
+  };
+
+  /**
+   * 26.12 — the three states, in the order an invoice passes through them.
+   *
+   * The protocol has one message per *edge*, so moving two steps is two calls. Walking the ladder
+   * rather than naming every pair keeps that arithmetic in one place: draft → paid is issue then
+   * mark-paid, and paid → draft is the reverse in reverse.
+   */
+  const setState = async (to: Status) => {
+    const order: Status[] = ["draft", "issued", "paid"];
+    let at = order.indexOf(invoice.status);
+    const want = order.indexOf(to);
+    while (at < want) {
+      await call({ t: at === 0 ? "invoice-issue" : "invoice-mark-paid", id: invoice.id });
+      at++;
+    }
+    while (at > want) {
+      await call({ t: at === 2 ? "invoice-unmark-paid" : "invoice-revert-issue", id: invoice.id });
+      at--;
+    }
   };
 
   return (
@@ -218,75 +245,49 @@ function InvoiceRow(
       </div>
 
       <div className="acts wrap">
-        <StatusPill status={invoice.status} />
+        {
+          /*
+          26.12 — one control that sets the state, rather than one button per transition.
+          Issue / Mark paid / Revert / Unmark paid were four buttons for three states, appearing
+          and disappearing as the state changed, and between them they described the *edges* of a
+          graph nobody was thinking about. A state has a name; setting it is choosing the name.
+        */
+        }
+        {canWrite
+          ? (
+            <label className="field statepick">
+              <span className="visually-hidden">Status of {shown.number}</span>
+              <select
+                value={invoice.status}
+                disabled={busy}
+                onChange={(e) => void act(() => setState(e.target.value as Status))}
+              >
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="paid">Paid</option>
+              </select>
+            </label>
+          )
+          : <StatusPill status={invoice.status} />}
 
-        {/* 25.13 — what the button does is download; that it is a PDF is what it downloads. */}
+        {/* 26.11 — reading it is the common case; saving it is the browser's job. */}
         <button
           className="btn"
           type="button"
           disabled={busy}
-          onClick={() => void act(generate)}
+          onClick={() => void act(view)}
         >
-          Download
+          View
         </button>
-        {saved && (
-          <span className="faint">
-            {saved.path ? `Saved to ${saved.path}` : `Downloaded ${saved.fileName}`}
-          </span>
-        )}
 
+        {canWrite && invoice.status === "draft" && (
+          /* 25.11 — the draft's own rows, not the work's. */
+          <button className="btn" type="button" onClick={() => setEditing(true)}>
+            Edit lines
+          </button>
+        )}
         {canWrite && (
           <>
-            {invoice.status === "draft" && (
-              <>
-                {/* 25.11 — the draft's own rows, not the work's. */}
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setEditing(true)}
-                >
-                  Edit lines
-                </button>
-                <button
-                  className="btn primary"
-                  type="button"
-                  onClick={() => setConfirm("issue")}
-                >
-                  Issue
-                </button>
-              </>
-            )}
-            {invoice.status === "issued" && (
-              <>
-                <button
-                  className="btn good"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act(() => call({ t: "invoice-mark-paid", id: invoice.id }))}
-                >
-                  Mark paid
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void act(() => call({ t: "invoice-revert-issue", id: invoice.id }))}
-                >
-                  Revert
-                </button>
-              </>
-            )}
-            {invoice.status === "paid" && (
-              <button
-                className="btn"
-                type="button"
-                disabled={busy}
-                onClick={() => void act(() => call({ t: "invoice-unmark-paid", id: invoice.id }))}
-              >
-                Unmark paid
-              </button>
-            )}
             <button
               className="link danger"
               type="button"
@@ -321,22 +322,17 @@ function InvoiceRow(
         />
       )}
 
-      {/* 24.29 — a dialog, rather than a paragraph wedged into the row. */}
-      {confirm === "issue" && (
-        <Dialog
-          title={`Issue ${shown.number}?`}
-          body={`Issuing freezes this invoice exactly as it reads now, and freezes its PDF. Editing the work afterwards will not change it, and ${
-            monthName(invoice.period)
-          } cannot be invoiced again unless you revert or delete this one.`}
-          confirmLabel="Issue it"
-          busy={busy}
-          onConfirm={async () => {
-            setConfirm(undefined);
-            await act(() => call({ t: "invoice-issue", id: invoice.id }));
-          }}
-          onCancel={() => setConfirm(undefined)}
-        />
-      )}
+      {
+        /*
+        26.13 — there is no confirmation for issuing. It used to warn that issuing freezes the
+        invoice and its PDF. That is the sensible behaviour and the reason the feature exists;
+        warning about it reads as an apology for working correctly. A dialog is for the reverse —
+        something that would *not* be frozen when you expected it to be.
+
+        Written bare, it was not a comment at all: `/* ... *\/` between JSX tags is text, and the
+        whole paragraph rendered under every invoice row.
+      */
+      }
       {confirm === "delete" && (
         <Dialog
           title={`Delete ${shown.number}?`}
@@ -354,6 +350,42 @@ function InvoiceRow(
           }}
           onCancel={() => setConfirm(undefined)}
         />
+      )}
+
+      {
+        /*
+        26.11 — the document, at a size you can read it at.
+        An iframe over the blob URL, so it is the browser's own PDF viewer: it already has page
+        controls, search, print and save, all of which this app would otherwise be reimplementing
+        worse. The URL is revoked on close, because a blob URL outlives the element that used it.
+      */
+      }
+      {viewing && (
+        <Sheet
+          label={viewing.name}
+          dismissOnBackdrop
+          onDismiss={() => {
+            URL.revokeObjectURL(viewing.url);
+            setViewing(undefined);
+          }}
+        >
+          <div className="card stack viewer" style={{ gap: 10 }}>
+            <div className="row between wrap">
+              <h2 style={{ margin: 0 }}>{viewing.name}</h2>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  URL.revokeObjectURL(viewing.url);
+                  setViewing(undefined);
+                }}
+              >
+                Close
+              </button>
+            </div>
+            <iframe className="viewer-frame" src={viewing.url} title={viewing.name} />
+          </div>
+        </Sheet>
       )}
     </div>
   );

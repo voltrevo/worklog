@@ -1585,3 +1585,24 @@ button.maskfield:disabled {
     left: var(--s-4);
   }
 }
+
+/*
+ * 26.11 — the invoice, read in place.
+ *
+ * Nearly the whole window: a PDF page is portrait and A4, and a viewer smaller than that is a
+ * scroll bar with a document behind it.
+ */
+.sheet > .card.viewer {
+  width: min(920px, 100%);
+  max-height: 92vh;
+  height: 92vh;
+}
+
+.viewer-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+}
