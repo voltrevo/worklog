@@ -481,3 +481,24 @@ Deno.test("and issuing freezes it, so a lost PDF still pays into the right place
   assertEquals(frozenConfigFor(db, a.id)?.payBank, "Bank of Nowhere");
   db.close();
 });
+
+Deno.test("a period has to be a calendar month", () => {
+  // `createDraft({ period: "banana" })` produced a draft with no lines and the number
+  // `INV-banana`, which then sat in the list forever: it covers no month, so no work can ever
+  // belong to it, and nothing reported it as wrong. The frontend only offers real months from a
+  // `<select>`, which is exactly why nothing had noticed.
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  for (const period of ["banana", "2026-13", "2026-0", "2026", "26-09", "2026-09-01"]) {
+    assertThrows(
+      () => createDraft(db, { period, preparedOn: "2026-10-01" }, T0),
+      Refused,
+      "not a calendar month",
+    );
+  }
+  assertEquals(
+    createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0).period,
+    "2026-09",
+  );
+  db.close();
+});

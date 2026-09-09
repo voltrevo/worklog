@@ -11,6 +11,7 @@
 import type { Instant, PacingConfig } from "@worklog/shared/types";
 import { defaultSchedule } from "@worklog/shared/schedule";
 import type { Db } from "./db.ts";
+import { Refused } from "./work.ts";
 
 /** 9.1–9.3 — everything the invoice needs that is not derived from the work. */
 export interface InvoiceConfig {
@@ -171,6 +172,8 @@ export function setConfig<K extends keyof Config>(
    * `DEFAULTS` is the list of what a section has, and it has to be complete for the section to
    * work at all, so it cannot silently fall behind the way a second list would.
    */
+  validateSection(key, value);
+
   const known = DEFAULTS[key] as unknown as Record<string, unknown>;
   const accepted = Object.fromEntries(
     Object.entries(value).filter(([k]) => k in known),
@@ -182,6 +185,79 @@ export function setConfig<K extends keyof Config>(
                                      updated_at = excluded.updated_at`,
   ).run(key, JSON.stringify(merged), now);
   return merged;
+}
+
+/**
+ * What a configuration value has to be.
+ *
+ * **All of this was accepted and stored**: an hourly rate of -50.00, a tax rate of 12 — which is
+ * 1200% and would treble an invoice — a monthly target of a billion hours, a prompt interval of
+ * minus one, and a Monday that ends before it starts. Every one is reachable from the settings
+ * screen with a keyboard, and the frontend's own checks were the only thing between them and the
+ * database.
+ *
+ * The money ones matter most: a negative rate produces a negative invoice, and a tax rate above 1
+ * is a percentage somebody typed into a fraction. `updateDraft` already refused the second for a
+ * *per-invoice* rate (25.12) and the global one had no such check, which is the shape of thing
+ * that happens when a rule is written at the second call site rather than the first.
+ *
+ * Ranges rather than plausibility: 2.17's lesson from `work.ts` applies here too. A target of 500
+ * hours is odd and allowed; a target of -50 cannot be meant.
+ */
+function validateSection<K extends keyof Config>(key: K, value: Partial<Config[K]>): void {
+  const v = value as Record<string, unknown>;
+  const refuse = (why: string) => {
+    throw new Refused("bad-config", why);
+  };
+  const num = (name: string, min: number, max: number) => {
+    const x = v[name];
+    if (x === undefined) return;
+    if (typeof x !== "number" || !Number.isFinite(x) || x < min || x > max) {
+      refuse(`${name} must be a number between ${min} and ${max}`);
+    }
+  };
+
+  if (key === "pacing") {
+    // 744 is the longest month. A target above it is not an ambition, it is a typo.
+    num("monthlyTargetHours", 0, 744);
+    const schedule = v.schedule as Record<string, unknown> | undefined;
+    for (const [day, interval] of Object.entries(schedule ?? {})) {
+      if (interval === null || interval === undefined) continue;
+      const { start, end } = interval as { start?: unknown; end?: unknown };
+      const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
+      if (
+        typeof start !== "string" || typeof end !== "string" ||
+        !clock.test(start) || !clock.test(end)
+      ) {
+        refuse(`${day} needs two times as HH:MM`);
+      }
+      // Not wrapped past midnight: 6.21's schedule is one interval within one day, and an end
+      // before a start would make that day's capacity negative and every total below it wrong.
+      if (String(end) <= String(start)) refuse(`${day} ends before it starts`);
+    }
+  }
+
+  if (key === "prompt") {
+    /*
+     * Positive, and not longer than a day.
+     *
+     * I set the floor at a minute first, on the grounds that anything shorter is absurd — and the
+     * journey went red, because it seeds a very short interval on purpose so a prompt fires while
+     * the harness is watching. It is a legitimate value and refusing it was the same mistake as
+     * the 24-hour cap in `work.ts`: a plausibility judgement dressed as a coherence check.
+     *
+     * The actual fault was `-1`, which `probabilityFor` reads as "never fire" — prompts silently
+     * off, with a number in the box that looks like a setting.
+     */
+    num("meanIntervalMs", 1, 24 * 3_600_000);
+  }
+
+  if (key === "invoice") {
+    num("rateMinor", 0, 100_000_000);
+    num("bonusMinor", 0, 100_000_000);
+    // A fraction. `0.1` is ten percent; `12` is twelve hundred.
+    num("taxRate", 0, 0.9999);
+  }
 }
 
 export function allConfig(db: Db): Config {

@@ -6,7 +6,8 @@
  * write path holds because a field is skipped. Neither has a line anybody would think to call.
  */
 
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
+import { Refused } from "./work.ts";
 import { open } from "./db.ts";
 import { getConfig, type InvoiceConfig, publicInvoiceConfig, setConfig } from "./config.ts";
 
@@ -57,5 +58,46 @@ Deno.test("setConfig keeps only the fields the section has", () => {
   assertEquals("paymentDetailsSet" in stored, false);
   assertEquals("addressSet" in stored, false);
   assertEquals("somethingElse" in stored, false);
+  db.close();
+});
+
+Deno.test("25.3 -- a configuration value that cannot be meant is refused", () => {
+  /*
+   * Every one of these was accepted and stored, reachable from the settings screen with a
+   * keyboard, with the frontend's own checks the only thing in the way.
+   *
+   * The money ones matter most. A negative rate produces a negative invoice. A tax rate of 12 is
+   * a percentage typed into a fraction and would treble the total — and `updateDraft` already
+   * refused exactly that for a *per-invoice* rate, which is what a rule written at the second
+   * call site instead of the first looks like.
+   */
+  const db = open({ path: ":memory:" });
+  const bad = (why: string, section: "pacing" | "prompt" | "invoice", value: object) =>
+    assertThrows(() => setConfig(db, section, value as never), Refused, why);
+
+  bad("rateMinor", "invoice", { rateMinor: -5000 });
+  bad("taxRate", "invoice", { taxRate: 12 });
+  bad("taxRate", "invoice", { taxRate: -0.1 });
+  bad("bonusMinor", "invoice", { bonusMinor: -1 });
+  bad("monthlyTargetHours", "pacing", { monthlyTargetHours: -50 });
+  bad("monthlyTargetHours", "pacing", { monthlyTargetHours: 1e9 });
+  bad("meanIntervalMs", "prompt", { meanIntervalMs: -1 });
+  bad("meanIntervalMs", "prompt", { meanIntervalMs: 0 });
+  // ...but a very short one is allowed: the journey seeds one so a prompt fires while it watches,
+  // and refusing it was a plausibility judgement, not a coherence check.
+  setConfig(db, "prompt", { meanIntervalMs: 800 });
+  bad("ends before it starts", "pacing", { schedule: { mon: { start: "17:00", end: "09:00" } } });
+  bad("two times as HH:MM", "pacing", { schedule: { mon: { start: "noon", end: "later" } } });
+  bad("two times as HH:MM", "pacing", { schedule: { mon: { start: "25:00", end: "26:00" } } });
+
+  // And the ordinary values still go in, or the above is just a wall.
+  setConfig(db, "invoice", { rateMinor: 12_000, taxRate: 0.1 });
+  setConfig(db, "pacing", {
+    monthlyTargetHours: 160,
+    schedule: { mon: { start: "09:00", end: "17:00" } } as never,
+  });
+  setConfig(db, "prompt", { meanIntervalMs: 45 * 60_000 });
+  assertEquals(getConfig(db, "invoice").rateMinor, 12_000);
+  assertEquals(getConfig(db, "pacing").monthlyTargetHours, 160);
   db.close();
 });

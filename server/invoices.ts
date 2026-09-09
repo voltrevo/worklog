@@ -164,6 +164,17 @@ export interface DraftInput {
  * issuance, which is where the accounting meaning attaches.
  */
 export function createDraft(db: Db, input: DraftInput, now: Instant = Date.now()): StoredInvoice {
+  /*
+   * A period is a calendar month.
+   *
+   * `createDraft({ period: "banana" })` used to produce a draft with no lines and the number
+   * `INV-banana`, which then sat in the list forever: it covers no month, so no work can ever
+   * belong to it, and nothing anywhere reports it as wrong. The frontend only offers real months
+   * from a `<select>`, which is exactly why nothing had noticed.
+   */
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.period)) {
+    throw new Refused("bad-period", `${JSON.stringify(input.period)} is not a calendar month`);
+  }
   return transact(db, () => {
     const cfg = getConfig(db, "invoice");
     const all = listInvoices(db);
