@@ -381,93 +381,182 @@ function InvoiceCard(
         </div>
       )}
 
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          marginTop: 12,
-        }}
-      >
-        <Text
-          label="Your name"
-          value={draft.fromName}
-          set={(v) => set("fromName", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Your ABN"
-          value={draft.fromAbn}
-          set={(v) => set("fromAbn", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Your email"
-          value={draft.fromEmail}
-          set={(v) => set("fromEmail", v)}
-          can={canWrite}
-        />
-        <Masked
-          label="Your address"
-          value={draft.fromAddress ?? ""}
-          set={(v) => set("fromAddress", v)}
-          can={canWrite}
-          hidden={cfg.addressSet && !cleared.address}
-          onUnlock={() => setUnlocking("address")}
-        />
-        <Text
-          label="Client name"
-          value={draft.clientName}
-          set={(v) => set("clientName", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Client address"
-          value={draft.clientAddress}
-          set={(v) => set("clientAddress", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Currency"
-          value={draft.currency}
-          set={(v) => set("currency", v)}
-          can={canWrite}
-        />
-        <Num
-          label="Hourly rate"
-          value={(draft.rateMinor / 100).toFixed(2)}
-          set={(n) => num("the hourly rate", n, (v) => set("rateMinor", Math.round(v * 100)))}
-          can={canWrite}
-        />
-        <Text
-          label="Tax label"
-          value={draft.taxLabel}
-          set={(v) => set("taxLabel", v)}
-          can={canWrite}
-        />
-        <Num
-          label="Tax rate (%)"
-          value={String(Math.round(draft.taxRate * 1000) / 10)}
-          set={(n) => num("the tax rate", n, (v) => set("taxRate", v / 100))}
-          can={canWrite}
-        />
-        <Text
-          label="Work approver"
-          value={draft.approver}
-          set={(v) => set("approver", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Default Team / Project"
-          value={draft.teamProject}
-          set={(v) => set("teamProject", v)}
-          can={canWrite}
-        />
-        <Text
-          label="Team / Project for the bonus row"
-          value={draft.bonusTeamProject}
-          set={(v) => set("bonusTeamProject", v)}
-          can={canWrite}
-        />
+      {
+        /*
+        25.15 — laid out as the document it configures.
+
+        This was one `auto-fit` grid of sixteen boxes in declaration order: "Your ABN" beside "Your
+        email" beside "Your address", then the client, then the currency next to the rate, and the
+        tax label wherever it landed. Every one of them is a value that appears in a specific place
+        on a page somebody is going to look at, and none of that was recoverable from the form —
+        checking a printed invoice against these settings meant reading both and matching by name.
+
+        Now each field is roughly where its value comes out. Not to scale and not pretty: the
+        per-invoice content is abbreviated to a label, because a settings screen cannot show you
+        August's line items and pretending otherwise would be worse than the grid was.
+      */
+      }
+      <div className="invform" style={{ marginTop: 14 }}>
+        <div className="invform-head">
+          <div className="stack" style={{ gap: 8 }}>
+            <Text
+              label="Name (or name of company)"
+              value={draft.fromName}
+              set={(v) => set("fromName", v)}
+              can={canWrite}
+            />
+            <Masked
+              label="Postal address"
+              value={draft.fromAddress ?? ""}
+              set={(v) => set("fromAddress", v)}
+              can={canWrite}
+              hidden={cfg.addressSet && !cleared.address}
+              onUnlock={() => setUnlocking("address")}
+            />
+            <Text
+              label="Telephone No."
+              value={draft.fromPhone}
+              set={(v) => set("fromPhone", v)}
+              can={canWrite}
+            />
+            <Text
+              label="E-mail address"
+              value={draft.fromEmail}
+              set={(v) => set("fromEmail", v)}
+              can={canWrite}
+            />
+            <Text
+              label="ABN"
+              value={draft.fromAbn}
+              set={(v) => set("fromAbn", v)}
+              can={canWrite}
+            />
+          </div>
+          {/* Top right on the document, and derived rather than configured. */}
+          <div className="invform-identity">
+            <span className="invform-slot">Inv. number</span>
+            <span className="faint">from the period — INV-2026-08</span>
+            <span className="invform-slot">Date</span>
+            <span className="faint">the day it is issued</span>
+          </div>
+        </div>
+
+        <h4 className="invform-rule">BILL TO</h4>
+        <div className="invform-billto">
+          <Text
+            label="Client name"
+            value={draft.clientName}
+            set={(v) => set("clientName", v)}
+            can={canWrite}
+          />
+          <Text
+            label="Client address"
+            value={draft.clientAddress}
+            set={(v) => set("clientAddress", v)}
+            can={canWrite}
+          />
+        </div>
+
+        <div className="invform-period faint">Time period — the month being invoiced</div>
+
+        <h4 className="invform-rule">DESCRIPTION OF WORK PERFORMED</h4>
+        {
+          /*
+          The table's five columns, with a field under the two that are configured and a note under
+          the three that come from the work. Positioned rather than described, which is the point:
+          "Default Team / Project" means nothing until you see it sitting under Team/Project.
+        */
+        }
+        {
+          /*
+          Each column is one element holding its heading and its cell.
+          Five spans then five cells, laid out by a five-column grid, is the same picture on a wide
+          screen and falls apart on a narrow one: the grid collapses to one column and you get all
+          five headings in a row followed by all five values, which is not a table and not a form.
+        */
+        }
+        <div className="invform-table">
+          <div className="invform-cell">
+            <span className="invform-col">Date</span>
+            <span className="faint">each day</span>
+          </div>
+          <div className="invform-cell">
+            <span className="invform-col">Description of work</span>
+            <span className="faint">the billing tag</span>
+          </div>
+          <div className="invform-cell">
+            <span className="invform-col">Team/Project</span>
+            <Text
+              label=""
+              aria="Default Team / Project"
+              value={draft.teamProject}
+              set={(v) => set("teamProject", v)}
+              can={canWrite}
+            />
+          </div>
+          <div className="invform-cell num">
+            <span className="invform-col">Hours</span>
+            <span className="faint">from the entries</span>
+          </div>
+          <div className="invform-cell num">
+            <span className="invform-col">Rate</span>
+            <Num
+              label=""
+              aria="Hourly rate"
+              value={(draft.rateMinor / 100).toFixed(2)}
+              set={(n) => num("the hourly rate", n, (v) => set("rateMinor", Math.round(v * 100)))}
+              can={canWrite}
+            />
+          </div>
+        </div>
+
+        <div className="invform-bonus">
+          <Text
+            label="Team / Project for the bonus row"
+            value={draft.bonusTeamProject}
+            set={(v) => set("bonusTeamProject", v)}
+            can={canWrite}
+          />
+        </div>
+
+        <div className="invform-foot">
+          {/* Bottom left on the document. */}
+          <div className="stack" style={{ gap: 8 }}>
+            <Text
+              label="Hourly rate in"
+              value={draft.currency}
+              set={(v) => set("currency", v)}
+              can={canWrite}
+            />
+            <Text
+              label="Work Approver"
+              value={draft.approver}
+              set={(v) => set("approver", v)}
+              can={canWrite}
+            />
+          </div>
+          {/* Bottom right: the totals stack, of which only the tax row is configurable. */}
+          <div className="stack" style={{ gap: 8 }}>
+            <div className="invform-total faint">Sub-total — from the lines</div>
+            <div className="row wrap" style={{ gap: 8, alignItems: "flex-end" }}>
+              <Text
+                label="Tax label"
+                value={draft.taxLabel}
+                set={(v) => set("taxLabel", v)}
+                can={canWrite}
+              />
+              <Num
+                label="Rate (%)"
+                value={String(Math.round(draft.taxRate * 1000) / 10)}
+                set={(n) => num("the tax rate", n, (v) => set("taxRate", v / 100))}
+                can={canWrite}
+                width={90}
+              />
+            </div>
+            <div className="invform-total faint">TOTAL — sub-total plus tax</div>
+          </div>
+        </div>
+
         <Text
           label="Note under the totals"
           value={draft.note}
@@ -663,7 +752,7 @@ function PromptCard(
  * what somebody typed is the other half of the same fault.
  */
 function Num(
-  { label, value, set, can, width, unit }: {
+  { label, value, set, can, width, unit, aria }: {
     label: string;
     /** The stored number as text — shown whenever the field is not being edited. */
     value: string;
@@ -672,6 +761,8 @@ function Num(
     can: boolean;
     width?: number;
     unit?: string;
+    /** As `Text`: the name, when the visible label belongs to a column instead. */
+    aria?: string;
   },
 ) {
   const [typed, setTyped] = useState<string | undefined>(undefined);
@@ -688,6 +779,7 @@ function Num(
         value={shown}
         disabled={!can}
         inputMode="decimal"
+        aria-label={aria}
         aria-invalid={bad || undefined}
         className={bad ? "invalid" : undefined}
         style={width ? { width } : undefined}
@@ -761,11 +853,19 @@ function Masked(
 }
 
 function Text(
-  { label, value, set, can }: {
+  { label, value, set, can, aria }: {
     label: string;
     value: string;
     set: (v: string) => void;
     can: boolean;
+    /**
+     * The accessible name, when the visible one is somewhere else.
+     *
+     * 25.15 puts two of these under a column heading rather than beside their own label, and an
+     * input whose `<label>` is empty has no name at all — invisible to a screen reader and to
+     * anything that finds a control by what it is called.
+     */
+    aria?: string;
   },
 ) {
   return (
@@ -774,6 +874,7 @@ function Text(
       <input
         value={value}
         disabled={!can}
+        aria-label={aria}
         onChange={(e) => set(e.target.value)}
       />
     </label>

@@ -1237,3 +1237,131 @@ button.maskfield:hover:not(:disabled) {
 button.maskfield:disabled {
   cursor: not-allowed;
 }
+
+/*
+ * 25.15 — the invoice settings, shaped like the invoice.
+ *
+ * Not a preview and not to scale: the point is only that a field sits where its value comes out,
+ * so that checking a printed invoice against these settings is a matter of looking at the same
+ * place on both. Per-invoice content is a grey note in the slot it will occupy.
+ */
+.invform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.invform-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.invform-identity {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px var(--s-2);
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.invform-slot {
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
+/* The document's section headings are rules with small caps over them; so are these. */
+.invform-rule {
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
+.invform-billto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--accent-wash);
+}
+
+.invform-period,
+.invform-total {
+  font-size: 13px;
+}
+
+.invform-table {
+  display: grid;
+  /* The document's five columns, in the document's proportions. */
+  grid-template-columns:
+    minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 0.6fr)
+    minmax(0, 0.8fr);
+  gap: var(--s-2) var(--s-3);
+  /*
+   * Stretched, with the cell doing the alignment. `align-items: end` bottom-aligned five cells of
+   * unequal height, so every column heading sat at a different y — a header row that is not a row.
+   */
+  align-items: stretch;
+  overflow-x: auto;
+}
+
+.invform-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.invform-col {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.invform-cell.num,
+.invform-cell.num input {
+  text-align: right;
+}
+
+.invform-bonus {
+  max-width: 24rem;
+}
+
+.invform-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  /* Two columns of the document's shape do not survive a phone; the *order* still does. */
+  .invform-head,
+  .invform-foot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invform-table {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invform-table .invform-col {
+    /* A column heading with one cell under it is a label, so let it read as one. */
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  /* And a column that is now a stacked row has no column to be aligned to the right of. */
+  .invform-cell.num,
+  .invform-cell.num input {
+    text-align: left;
+  }
+}

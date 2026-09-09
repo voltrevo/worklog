@@ -294,7 +294,7 @@ async function main() {
 
   // 25.42, 25.43 — a stored-but-hidden value says so in the field, and clearing is per group.
   const maskedAddress = desktop.page.getByRole("button", {
-    name: /Your address — stored and hidden/,
+    name: /Postal address — stored and hidden/,
   });
   check("25.42 — the address is a mask, not an empty box", (await maskedAddress.count()) === 1);
   check(
@@ -317,7 +317,7 @@ async function main() {
     await until(
       "address typeable",
       desktop.page,
-      (p) => p.getByLabel("Your address").isEditable(),
+      (p) => p.getByLabel("Postal address").isEditable(),
     ),
   );
   check(
@@ -329,7 +329,7 @@ async function main() {
   // address *saved* is a cleared address. The first version of this block stopped at the check
   // above, and everything downstream then failed on an invoice configuration missing its address,
   // which is the correct behaviour reached by a route nobody intended.
-  await desktop.page.getByLabel("Your address").fill("12 Fictional Way, Nowhere NSW 2000");
+  await desktop.page.getByLabel("Postal address").fill("12 Fictional Way, Nowhere NSW 2000");
 
   // 24.31 — an invoice cannot be produced from an incomplete configuration, and the refusal names
   // what is missing rather than rendering a document with holes in it.
@@ -857,7 +857,10 @@ async function main() {
   // against the old code, because the round trip only shows up between keystrokes.
   console.log("\nnumber fields:");
   await nav(desktop.page, "Settings");
-  const rate = desktop.page.getByLabel("Hourly rate");
+  // `exact`, because 25.15 put "Hourly rate in" — the currency — on the same screen, and
+  // `getByLabel` matches substrings: the ambiguity reads as "not visible", which sent me looking
+  // at the element that was in fact perfectly fine.
+  const rate = desktop.page.getByLabel("Hourly rate", { exact: true });
   await rate.waitFor({ timeout: 15_000 });
   await rate.fill("");
   await rate.pressSequentially("125");
@@ -867,7 +870,8 @@ async function main() {
     await rate.inputValue(),
   );
 
-  await desktop.page.getByLabel("Currency").click();
+  // 25.15 renamed this to what the document calls it, which is the whole point of that change.
+  await desktop.page.getByLabel("Hourly rate in").click();
   check(
     "and leaving it is when the formatting arrives",
     await rate.inputValue() === "125.00",
