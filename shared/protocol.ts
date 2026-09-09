@@ -22,7 +22,7 @@
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
 import type { DateString, Instant, PacingConfig, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
-import type { InvoiceDraft, InvoiceSnapshot, InvoiceWarning } from "./invoice.ts";
+import type { InvoiceDraft, InvoiceLine, InvoiceSnapshot, InvoiceWarning } from "./invoice.ts";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -136,13 +136,34 @@ export type Request =
   /** 24.6 — a note is deletable; the recording goes with it. */
   | { t: "note-delete"; id: string }
   | { t: "invoices" }
+  /**
+   * 25.10, 25.11 — a *new* draft, every time.
+   *
+   * This was `invoice-save`, which found the draft for the period and rebuilt it, so asking twice
+   * silently overwrote whatever editing had been done. Creating and editing are different acts and
+   * are two messages now.
+   */
   | {
-    t: "invoice-save";
+    t: "invoice-create";
     period: string;
     teamProject?: string;
     bonusMinor?: number;
     number?: string;
     clock: Clock;
+  }
+  /**
+   * 25.11 — edit a detached draft's rows.
+   *
+   * The rows, and only the rows: every total is derived on the server by `recomputeDraft`. A
+   * client that sent its own totals would be a second implementation of the arithmetic, and the
+   * two would disagree the first time either changed.
+   */
+  | {
+    t: "invoice-update";
+    id: string;
+    lines?: InvoiceLine[];
+    bonusLine?: InvoiceLine | null;
+    number?: string;
   }
   | { t: "invoice-issue"; id: string }
   | { t: "invoice-mark-paid"; id: string }
@@ -354,7 +375,8 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "entry-delete": "write",
   "note-add": "write",
   "note-delete": "write",
-  "invoice-save": "write",
+  "invoice-create": "write",
+  "invoice-update": "write",
   "invoice-issue": "write",
   "invoice-mark-paid": "write",
   "invoice-unmark-paid": "write",

@@ -75,14 +75,15 @@ import {
 import { renderInvoicePdf } from "./pdf.ts";
 import {
   attachPdf,
+  createDraft,
   deleteInvoice,
   getInvoice,
   issue,
   listInvoices,
   markPaid,
   revertIssue,
-  saveDraft,
   unmarkPaid,
+  updateDraft,
 } from "./invoices.ts";
 
 /** 2.16 — twelve hours is long enough that it is more likely forgotten than worked. */
@@ -495,14 +496,27 @@ export async function handle(
     }
 
     // ---------------------------------------------------------------- invoices
-    case "invoice-save": {
+    case "invoice-create": {
       requireInvoiceConfig(db);
-      const saved = saveDraft(db, {
+      const saved = createDraft(db, {
         period: req.period,
         ...(req.teamProject !== undefined ? { teamProject: req.teamProject } : {}),
         ...(req.bonusMinor !== undefined ? { bonusMinor: req.bonusMinor } : {}),
         ...(req.number !== undefined ? { number: req.number } : {}),
         preparedOn: req.clock.today,
+      }, now);
+      broadcast(ctx, { e: "changed", area: "invoices" });
+      return saved;
+    }
+
+    case "invoice-update": {
+      // No `requireInvoiceConfig` here: the draft already exists, so the configuration was
+      // complete when it was made, and refusing to let somebody fix a typo because an unrelated
+      // setting was blanked since would be a refusal with nothing behind it.
+      const saved = updateDraft(db, req.id, {
+        ...(req.lines !== undefined ? { lines: req.lines } : {}),
+        ...(req.bonusLine !== undefined ? { bonusLine: req.bonusLine } : {}),
+        ...(req.number !== undefined ? { number: req.number } : {}),
       }, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
       return saved;

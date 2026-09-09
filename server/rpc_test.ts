@@ -355,7 +355,7 @@ Deno.test("the whole invoice lifecycle over the protocol", async () => {
   });
 
   const draft = await call(ctx, a, {
-    t: "invoice-save",
+    t: "invoice-create",
     period: "2026-09",
     clock: { today: "2026-10-01", nowMinutes: 0 },
   }) as { id: string; number: string; draft: { totalMinor: number; dueDate: string } };
@@ -386,7 +386,7 @@ Deno.test("11.25 -- the snapshot carries the warning about work added after issu
     billingTag: "Product Development",
   });
   const draft = await call(ctx, a, {
-    t: "invoice-save",
+    t: "invoice-create",
     period: "2026-09",
     clock: { today: "2026-10-01", nowMinutes: 0 },
   }) as { id: string };
@@ -455,7 +455,8 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "note-audio",
     "notes",
     "invoices",
-    "invoice-save",
+    "invoice-create",
+    "invoice-update",
     "invoice-issue",
     "invoice-mark-paid",
     "invoice-unmark-paid",

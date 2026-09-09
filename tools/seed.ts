@@ -14,7 +14,7 @@
 import { open } from "../server/db.ts";
 import { setConfig } from "../server/config.ts";
 import { addEntry } from "../server/work.ts";
-import { saveDraft } from "../server/invoices.ts";
+import { createDraft } from "../server/invoices.ts";
 import { datesInMonth, monthOf, shiftMonth, today, weekdayOf } from "../shared/dates.ts";
 
 const dataDir = Deno.args[0] ?? "./data";
@@ -131,7 +131,7 @@ db.prepare(
 ).run(crypto.randomUUID(), now - 2 * HOUR, "Finished the cage-sum pruning and started on the UI.");
 
 // A draft for last month, so the Invoices screen has something on it.
-saveDraft(db, { period: lastMonth, preparedOn: today() }, now);
+createDraft(db, { period: lastMonth, preparedOn: today() }, now);
 
 console.log(
   `seeded ${dataDir}: ${filledLast} entries in ${lastMonth}, ${filledThis} in ${thisMonth}, ` +

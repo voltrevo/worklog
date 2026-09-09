@@ -14,7 +14,7 @@
 
 import type { DateString, Instant, InvoiceStatus, WorkEntry } from "./types.ts";
 import { monthOf, weeksThenMonday } from "./dates.ts";
-import { hoursOf } from "./rounding.ts";
+import { hoursOf, roundHours } from "./rounding.ts";
 
 const MS_PER_HOUR = 3_600_000;
 
@@ -178,6 +178,53 @@ export function totalsFor(lines: readonly InvoiceLine[], taxRate: number): Invoi
   const subtotalMinor = lines.reduce((t, l) => t + l.amountMinor, 0);
   const taxMinor = money(subtotalMinor * taxRate);
   return { subtotalMinor, taxMinor, totalMinor: subtotalMinor + taxMinor };
+}
+
+/**
+ * An edit to a draft's rows, made coherent again (25.11).
+ *
+ * **A detached draft is edited, and every edit invalidates the numbers below it.** Change one
+ * line's hours and the line amount, the work total, the sub-total, the tax and the grand total are
+ * all stale — five figures that have to move together or the document contradicts itself. That is
+ * the whole failure 25.7 is about, arriving by a different route.
+ *
+ * So no caller updates a total. Callers hand over rows; this derives everything else, and it is
+ * the only thing that does. The line amount comes from `hours × rate` where both are present and
+ * is taken as given where they are not, which is what makes a flat-fee row — an expense, a
+ * bonus — expressible without a fictional hourly rate to justify it.
+ *
+ * The hours are re-rounded on the way through. They arrive rounded from `buildLines` and from the
+ * client's own field, so this normally changes nothing; it is here so a value that reached the
+ * server by some other path cannot make the printed column disagree with the arithmetic.
+ */
+export function recomputeDraft(
+  draft: InvoiceDraft,
+  edit: { lines?: InvoiceLine[]; bonusLine?: InvoiceLine | null },
+): InvoiceDraft {
+  const lines = (edit.lines ?? draft.lines).map((l) => {
+    const hours = l.hours === null ? null : roundHours(l.hours);
+    return {
+      ...l,
+      hours,
+      amountMinor: hours !== null && l.rateMinor !== null
+        ? money(hours * l.rateMinor)
+        : Math.round(l.amountMinor),
+    };
+  });
+  const bonusLine = edit.bonusLine === undefined ? draft.bonusLine : edit.bonusLine;
+  const totals = totalsFor(bonusLine ? [bonusLine, ...lines] : lines, draft.taxRate);
+
+  return {
+    ...draft,
+    lines,
+    bonusLine,
+    // 8.22 — the work table's own total, which excludes the bonus. Summing the *rounded* line
+    // hours rather than re-rounding the sum, so the Total cell is what the column above it adds to.
+    workHours: Math.round(lines.reduce((t, l) => t + (l.hours ?? 0), 0) * 10) / 10,
+    workSubtotalMinor: lines.reduce((t, l) => t + l.amountMinor, 0),
+    bonusMinor: bonusLine?.amountMinor ?? 0,
+    ...totals,
+  };
 }
 
 export function buildDraft(opts: BuildOptions): InvoiceDraft {

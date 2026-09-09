@@ -23,12 +23,27 @@ import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, type Saved, saveFile } from "../download.ts";
 import type { InvoicePdfResult, StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { InvoiceWarning } from "@worklog/shared/invoice";
+import { InvoiceEditor } from "./InvoiceEditor.tsx";
+
+/**
+ * The months on offer: the last two years, newest first.
+ *
+ * A fixed list rather than `<input type="month">`, which the desktop shell's WebKitGTK renders as
+ * a bare text box — a control that works in one of the two places this app runs is worse than one
+ * that looks the same in both. Two years back is past the point where an uninvoiced month is a
+ * different problem from this one.
+ */
+function monthChoices(): string[] {
+  const now = monthOf(today());
+  return Array.from({ length: 24 }, (_, i) => shiftMonth(now, -i));
+}
 
 /** Unpaid first, and within that the most recent period. */
 function ordered(invoices: StoredInvoiceWire[]): StoredInvoiceWire[] {
   const rank = (i: StoredInvoiceWire) => (i.status === "paid" ? 1 : 0);
   return [...invoices].sort((a, b) =>
-    rank(a) - rank(b) || (a.period < b.period ? 1 : a.period > b.period ? -1 : 0)
+    rank(a) - rank(b) ||
+    (a.period < b.period ? 1 : a.period > b.period ? -1 : 0)
   );
 }
 
@@ -66,30 +81,47 @@ export function Invoices() {
     }
   };
 
-  const offerable = [shiftMonth(monthOf(today()), -1), monthOf(today())];
-  const periods = new Set((invoices ?? []).map((i) => i.period));
+  /**
+   * 25.9 — prefilled to last month, because that is the month you invoice.
+   *
+   * The month is only a *default* now. It used to be the whole vocabulary: two buttons, "Prepare
+   * August" and "Prepare September", each vanishing once that month had a draft — so the control
+   * was missing exactly when you had already used it once, and there was no way at all to invoice
+   * July.
+   */
+  const [period, setPeriod] = useState(shiftMonth(monthOf(today()), -1));
 
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
         <h1>Invoices</h1>
         {canWrite && (
-          <div className="row wrap">
-            {/* Last month and this one: those are the months anybody prepares. */}
-            {offerable.filter((m) => !periods.has(m)).map((m) => (
-              <button
-                key={m}
-                className="btn primary"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void act(() =>
-                    call({ t: "invoice-save", period: m, clock: { today: today(), nowMinutes: 0 } })
-                  )}
+          <div className="row wrap" style={{ alignItems: "flex-end" }}>
+            <label className="field">
+              Month
+              <select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
               >
-                Prepare {monthName(m)}
-              </button>
-            ))}
+                {monthChoices().map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+              </select>
+            </label>
+            {/* 25.8 — always here, whatever is already in the list. 25.10 is what allows it. */}
+            <button
+              className="btn primary"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void act(() =>
+                  call({
+                    t: "invoice-create",
+                    period,
+                    clock: { today: today(), nowMinutes: 0 },
+                  })
+                )}
+            >
+              New invoice
+            </button>
           </div>
         )}
       </div>
@@ -109,7 +141,13 @@ export function Invoices() {
           : (
             <div className="entries">
               {ordered(invoices).map((i) => (
-                <InvoiceRow key={i.id} invoice={i} canWrite={canWrite} busy={busy} act={act} />
+                <InvoiceRow
+                  key={i.id}
+                  invoice={i}
+                  canWrite={canWrite}
+                  busy={busy}
+                  act={act}
+                />
               ))}
             </div>
           )}
@@ -136,12 +174,22 @@ function InvoiceRow(
   const { call } = useStore();
   const [saved, setSaved] = useState<Saved>();
   const [confirm, setConfirm] = useState<"issue" | "delete">();
+  const [editing, setEditing] = useState(false);
   const shown = invoice.snapshot ?? invoice.draft;
 
   /** 8.33 — generate, then actually hand it over. */
   const generate = async () => {
-    const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
-    setSaved(await saveFile(res.fileName, bytesFromBase64(res.pdfBase64), "application/pdf"));
+    const res = await call<InvoicePdfResult>({
+      t: "invoice-pdf",
+      id: invoice.id,
+    });
+    setSaved(
+      await saveFile(
+        res.fileName,
+        bytesFromBase64(res.pdfBase64),
+        "application/pdf",
+      ),
+    );
   };
 
   return (
@@ -161,7 +209,12 @@ function InvoiceRow(
         <StatusPill status={invoice.status} />
 
         {/* 25.13 — what the button does is download; that it is a PDF is what it downloads. */}
-        <button className="btn" type="button" disabled={busy} onClick={() => void act(generate)}>
+        <button
+          className="btn"
+          type="button"
+          disabled={busy}
+          onClick={() => void act(generate)}
+        >
           Download
         </button>
         {saved && (
@@ -173,13 +226,23 @@ function InvoiceRow(
         {canWrite && (
           <>
             {invoice.status === "draft" && (
-              <button
-                className="btn primary"
-                type="button"
-                onClick={() => setConfirm("issue")}
-              >
-                Issue
-              </button>
+              <>
+                {/* 25.11 — the draft's own rows, not the work's. */}
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit lines
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => setConfirm("issue")}
+                >
+                  Issue
+                </button>
+              </>
             )}
             {invoice.status === "issued" && (
               <>
@@ -212,12 +275,28 @@ function InvoiceRow(
                 Unmark paid
               </button>
             )}
-            <button className="link danger" type="button" onClick={() => setConfirm("delete")}>
+            <button
+              className="link danger"
+              type="button"
+              onClick={() => setConfirm("delete")}
+            >
               Delete
             </button>
           </>
         )}
       </div>
+
+      {editing && (
+        <InvoiceEditor
+          invoice={invoice}
+          busy={busy}
+          onCancel={() => setEditing(false)}
+          onSave={async (lines, number) => {
+            await act(() => call({ t: "invoice-update", id: invoice.id, lines, number }));
+            setEditing(false);
+          }}
+        />
+      )}
 
       {/* 24.29 — a dialog, rather than a paragraph wedged into the row. */}
       {confirm === "issue" && (

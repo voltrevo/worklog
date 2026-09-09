@@ -1,17 +1,18 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { type Db, open } from "./db.ts";
 import { missingInvoiceConfig, setConfig } from "./config.ts";
-import { addEntry, Refused, updateEntry } from "./work.ts";
+import { addEntry, entriesInMonth, Refused, updateEntry } from "./work.ts";
 import {
   attachPdf,
+  createDraft,
   getInvoice,
   invoiceForPeriod,
   issue,
   listInvoices,
   markPaid,
   revertIssue,
-  saveDraft,
   unmarkPaid,
+  updateDraft,
 } from "./invoices.ts";
 
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
@@ -56,26 +57,121 @@ function work(db: Db, date: string, hours: number, tag = "Product Development") 
   return addEntry(db, { date, durationMs: hours * HOUR, billingTag: tag }, T0);
 }
 
-Deno.test("a draft is built from the work as it stands, and rebuilding keeps its identity", () => {
+Deno.test("a draft is seeded from the work as it stands", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const first = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const first = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(first.status, "draft");
   assertEquals(first.number, "INV-2026-09");
   assertEquals(first.draft.subtotalMinor, 60_000);
+  db.close();
+});
+
+Deno.test("25.10 -- asking again makes a second draft rather than overwriting the first", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const first = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
 
   work(db, "2026-09-02", 2);
-  const second = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0 + 1000);
-  assertEquals(second.id, first.id, "the same invoice, not a new one");
-  assertEquals(second.draft.subtotalMinor, 75_000);
-  assertEquals(listInvoices(db).length, 1);
+  const second = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0 + 1000);
+
+  // The old behaviour was `second.id === first.id` with the first one's contents replaced. Under
+  // 25.11 a draft can have been edited, so overwriting it silently destroys work; and 25.10 says
+  // overlapping drafts are allowed outright.
+  assertEquals(listInvoices(db).length, 2);
+  assertEquals(second.id === first.id, false);
+  assertEquals(getInvoice(db, first.id)?.draft.subtotalMinor, 60_000, "the first is untouched");
+  assertEquals(second.draft.subtotalMinor, 75_000, "the second sees the newer work");
+});
+
+Deno.test("and the second one is not called the same thing as the first", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  assertEquals(
+    createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0).number,
+    "INV-2026-09",
+  );
+  assertEquals(
+    createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0).number,
+    "INV-2026-09-2",
+  );
+  assertEquals(
+    createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0).number,
+    "INV-2026-09-3",
+  );
+  // Two rows reading `INV-2026-09` in a list with a Delete on each is a list you cannot act on.
+  db.close();
+});
+
+Deno.test("25.11 -- a draft is detached: editing it does not touch the work, and vice versa", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const created = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  assertEquals(created.draft.lines.length, 1);
+
+  // Edit the copy: correct the description, drop the hours to 6, and add a flat-fee row.
+  const edited = updateDraft(db, created.id, {
+    lines: [
+      { ...created.draft.lines[0]!, description: "Discovery workshop", hours: 6 },
+      {
+        date: "2026-09-30",
+        description: "Travel",
+        teamProject: "Protocol Research",
+        hours: null,
+        rateMinor: null,
+        amountMinor: 12_500,
+      },
+    ],
+  }, T0 + 1000);
+
+  assertEquals(edited.draft.lines.map((l) => l.description), ["Discovery workshop", "Travel"]);
+  // Derived, not accepted: 6h at 75.00 is 450.00, plus the flat 125.00.
+  assertEquals(edited.draft.lines.map((l) => l.amountMinor), [45_000, 12_500]);
+  assertEquals(edited.draft.workHours, 6);
+  assertEquals(edited.draft.subtotalMinor, 57_500);
+
+  // The work entry is exactly as it was -- this is the half of 25.11 that says History is untouched.
+  assertEquals(entriesInMonth(db, "2026-09").map((e) => e.durationMs), [8 * HOUR]);
+
+  // ...and new work does not reach back into the draft.
+  work(db, "2026-09-15", 4);
+  assertEquals(getInvoice(db, created.id)?.draft.subtotalMinor, 57_500);
+  db.close();
+});
+
+Deno.test("an edited draft is what gets frozen, not a rebuild of the work", () => {
+  // The worst version of this bug: issuing is the one action that cannot be undone, and it used to
+  // discard every edit at exactly that moment by rebuilding from the entries first.
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const created = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  updateDraft(db, created.id, {
+    lines: [{ ...created.draft.lines[0]!, hours: 6 }],
+  }, T0 + 1000);
+
+  const issued = issue(db, created.id, T0 + 2000);
+  assertEquals(issued.snapshot?.workHours, 6);
+  assertEquals(issued.snapshot?.subtotalMinor, 45_000);
+  db.close();
+});
+
+Deno.test("an issued invoice refuses to be edited", () => {
+  const db = fresh();
+  work(db, "2026-09-01", 8);
+  const created = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  issue(db, created.id, T0);
+  assertThrows(
+    () => updateDraft(db, created.id, { lines: [] }, T0),
+    Refused,
+    "issued",
+  );
   db.close();
 });
 
 Deno.test("9.8/9.10/9.13 -- Team/Project and bonus default from the previous period", () => {
   const db = fresh();
   work(db, "2026-08-03", 8);
-  saveDraft(db, {
+  createDraft(db, {
     period: "2026-08",
     teamProject: "Client Onboarding",
     bonusMinor: 25_000,
@@ -83,7 +179,7 @@ Deno.test("9.8/9.10/9.13 -- Team/Project and bonus default from the previous per
   }, T0);
 
   work(db, "2026-09-01", 8);
-  const sept = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const sept = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(sept.draft.teamProject, "Client Onboarding");
   assertEquals(sept.draft.bonusMinor, 25_000);
   assertEquals(sept.draft.bonusLine?.description, "Monthly bonus", "8.19 -- in its own table");
@@ -93,7 +189,7 @@ Deno.test("9.8/9.10/9.13 -- Team/Project and bonus default from the previous per
 Deno.test("the seed config is used when there is no previous invoice", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const first = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const first = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(first.draft.teamProject, "Protocol Research");
   assertEquals(first.draft.bonusMinor, 0);
   db.close();
@@ -102,7 +198,7 @@ Deno.test("the seed config is used when there is no previous invoice", () => {
 Deno.test("11.6 -- issuing freezes the work as it is at that moment", () => {
   const db = fresh();
   const entry = work(db, "2026-09-01", 8);
-  saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   const issued = issue(db, invoiceForPeriod(db, "2026-09")!.id, T0);
 
   assertEquals(issued.status, "issued");
@@ -116,36 +212,48 @@ Deno.test("11.6 -- issuing freezes the work as it is at that moment", () => {
   db.close();
 });
 
-Deno.test("issuing rebuilds first, so a preview from an hour ago is not what gets frozen", () => {
+Deno.test("25.11 -- work remembered after the draft was made does not join it", () => {
+  // The inverse of what this used to assert. Issuing rebuilt from the entries, so four hours
+  // remembered after the draft was drawn up appeared on it — convenient when the draft was only a
+  // view of the work, and destructive once the draft is a document somebody has edited. The four
+  // hours are not lost: 11.25 reports work that is on no invoice, which is where they surface.
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const draft = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const draft = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(draft.draft.subtotalMinor, 60_000);
 
-  work(db, "2026-09-02", 4); // remembered after the preview
+  work(db, "2026-09-02", 4);
   const issued = issue(db, draft.id, T0 + 5000);
-  assertEquals(issued.snapshot?.subtotalMinor, 90_000);
+  assertEquals(issued.snapshot?.subtotalMinor, 60_000);
   db.close();
 });
 
-Deno.test("11.19/11.20 -- a second invoice for the same month cannot be issued", () => {
+Deno.test("11.19/11.20/25.10 -- the second invoice for a month is refused at issuance, not before", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   issue(db, a.id, T0);
 
-  assertThrows(
-    () => saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0),
-    Refused,
-    "has been issued",
-  );
+  // Creating is fine now: preparing a replacement while the wrong one is still issued is the
+  // ordinary way to correct a mistake, and 25.10 says nothing earlier than issuance may refuse.
+  const b = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  assertEquals(b.status, "draft");
+  assertEquals(listInvoices(db).length, 2);
+
+  // 11.19 bites here.
+  assertThrows(() => issue(db, b.id, T0), Refused, "already covered by");
+
+  // And once the first is out of the way, the second goes through — which is 11.21's point about
+  // reverting freeing the period, reached from the other direction.
+  revertIssue(db, a.id, T0 + 1000);
+  assertEquals(issue(db, b.id, T0 + 2000).status, "issued");
   db.close();
 });
 
 Deno.test("11.21 -- reverting frees the period, and keeps the snapshot", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   issue(db, a.id, T0);
 
   const reverted = revertIssue(db, a.id, T0 + 1000);
@@ -158,7 +266,7 @@ Deno.test("11.21 -- reverting frees the period, and keeps the snapshot", () => {
   );
 
   // ...and the period is free, so a fresh draft can be made and issued.
-  const again = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0 + 2000);
+  const again = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0 + 2000);
   assertEquals(issue(db, again.id, T0 + 3000).status, "issued");
   db.close();
 });
@@ -166,7 +274,7 @@ Deno.test("11.21 -- reverting frees the period, and keeps the snapshot", () => {
 Deno.test("11.9-11.12 -- paid, then unpaid, and only from the right state", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
 
   assertThrows(() => markPaid(db, a.id, T0), Refused, "only an issued invoice");
   issue(db, a.id, T0);
@@ -188,7 +296,7 @@ Deno.test("a paid invoice says to unmark it before its issuance can be reverted"
   // action doing two things, and the second one invisible.
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   issue(db, a.id, T0);
   markPaid(db, a.id, T0 + 1000);
   assertThrows(() => revertIssue(db, a.id, T0 + 2000), Refused, "unmark");
@@ -198,7 +306,7 @@ Deno.test("a paid invoice says to unmark it before its issuance can be reverted"
 Deno.test("11.4 -- generating a PDF changes no accounting state", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   attachPdf(db, a.id, "invoices/INV-2026-09.pdf", T0 + 10);
   const after = getInvoice(db, a.id)!;
   assertEquals(after.status, "draft");
@@ -209,9 +317,9 @@ Deno.test("11.4 -- generating a PDF changes no accounting state", () => {
 Deno.test("a committed invoice is what invoiceForPeriod means, even beside a draft", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   issue(db, a.id, T0);
-  // 11.22 permits a draft alongside; it is inserted directly because saveDraft refuses.
+  // 11.22 permits a draft alongside; it is inserted directly because createDraft refuses.
   db.prepare(
     `INSERT INTO invoice (id, period, number, status, draft_json, created_at, updated_at)
      VALUES ('extra', '2026-09', 'INV-2026-09-B', 'draft', '{}', 0, 0)`,
@@ -231,7 +339,7 @@ Deno.test("acting on an invoice that does not exist is refused, not ignored", ()
 Deno.test("tax and totals reach the stored draft, not just the calculation", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
-  const a = saveDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   assertEquals(a.draft.subtotalMinor, 60_000);
   assertEquals(a.draft.taxMinor, 6_000);
   assertEquals(a.draft.totalMinor, 66_000);

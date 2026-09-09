@@ -143,7 +143,7 @@ Deno.test("20.2/20.10 -- nothing secret reaches the log, across a wide slice of 
     billingTag: "Feature development",
   });
   await call(ctx, s, {
-    t: "invoice-save",
+    t: "invoice-create",
     period: "2026-09",
     clock: { today: "2026-09-08", nowMinutes: 600 },
   });

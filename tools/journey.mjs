@@ -279,7 +279,7 @@ async function main() {
   await desktop.page.waitForTimeout(600);
 
   await nav(desktop.page, "Invoices");
-  await desktop.page.getByRole("button", { name: /^Prepare / }).first().click();
+  await desktop.page.getByRole("button", { name: "New invoice" }).click();
   check(
     "an incomplete invoice configuration is refused, naming the field",
     await until(
@@ -301,10 +301,21 @@ async function main() {
   console.log("\ninvoice:");
   await nav(desktop.page, "Invoices");
 
-  const prepare = desktop.page.getByRole("button", { name: /^Prepare / }).first();
-  await prepare.waitFor({ timeout: 15_000 });
-  const preparing = (await prepare.textContent())?.replace("Prepare ", "").trim() ?? "";
-  await prepare.click();
+  // 25.8 — one control, always here, with the month beside it. It used to be a per-month button
+  // that vanished once that month had a draft.
+  const newInvoice = desktop.page.getByRole("button", { name: "New invoice" });
+  const monthPicker = desktop.page.getByLabel("Month");
+  await newInvoice.waitFor({ timeout: 15_000 });
+  // 25.9 — prefilled to last month, which is the month you invoice.
+  const prefilled = await monthPicker.locator("option:checked").textContent() ?? "";
+  check("25.9 — the month is prefilled to last month", prefilled === "August 2026", prefilled);
+
+  // ...and then moved off it deliberately. The seed already ships an August draft, so every count
+  // below would be measuring two invoices and attributing it to one. September has work in it and
+  // no invoice, which is what makes "how many rows are there for this month" answerable.
+  const preparing = "September 2026";
+  await monthPicker.selectOption({ label: preparing });
+  await newInvoice.click();
   check(
     "a prepared invoice appears in the list as a draft",
     await until(
@@ -381,10 +392,62 @@ async function main() {
       Buffer.compare(frozenBytes, await readFile(await again.path())) === 0,
   );
 
-  // 11.5, 11.19 — the month is spoken for, so it is no longer offered.
+  // 25.10 — the reverse of what this used to assert. The month being spoken for used to remove
+  // the control; now a second draft for an issued month can be made freely, because preparing a
+  // replacement while the wrong one is still out is the ordinary way to correct one. 11.19 bites
+  // at issuance and nowhere earlier.
+  await newInvoice.click();
+  const secondDraft = await until(
+    "second draft",
+    desktop.page,
+    async (p) => (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 2,
+  );
+  check("25.10 — a second draft for an issued month is allowed", secondDraft);
+
+  const draftRow = desktop.page.locator(".stacked-row").filter({ hasText: "Draft" }).first();
+  await draftRow.getByRole("button", { name: "Issue", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Issue it" }).click();
   check(
-    "the issued month is not offered for preparing again",
-    (await desktop.page.getByRole("button", { name: `Prepare ${preparing}` }).count()) === 0,
+    "and 11.19 refuses it at issuance, saying what covers the month",
+    await until(
+      "issue refused",
+      desktop.page,
+      async (p) => (await p.getByText(/already covered by/).count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+
+  // 25.11 — and the draft's lines are its own. Edited here, and History is checked afterwards.
+  await draftRow.getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.getByRole("button", { name: "Add a line" }).waitFor({ timeout: 15_000 });
+  const lineCount = await desktop.page.locator(".linerow").count();
+  check(
+    "25.11 — the draft opens with the lines copied from the work",
+    lineCount > 0,
+    `${lineCount}`,
+  );
+
+  await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("1.5");
+  await desktop.page.getByLabel("Description on line 1", { exact: true }).fill("Revised scope");
+  await desktop.page.getByRole("button", { name: "Save the draft" }).click();
+  check(
+    "and an edit sticks without touching the entries",
+    await until(
+      "edit saved",
+      desktop.page,
+      async (p) => (await p.locator(".linerow").count()) === 0,
+    ),
+  );
+
+  // Scoped to the row this block created. `getByRole("button", {name: "Delete"}).first()` picks
+  // the first Delete *on the page*, and with two August rows in the list that is a coin flip
+  // between the draft and the issued invoice the checks below still need.
+  await draftRow.getByRole("button", { name: "Delete" }).click();
+  await desktop.page.getByRole("button", { name: "Delete it" }).click();
+  await until(
+    "second draft gone",
+    desktop.page,
+    async (p) => (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 1,
   );
 
   // 24.27 — paid, and back again, from the row.
@@ -416,15 +479,13 @@ async function main() {
     await until(
       "deleted",
       desktop.page,
-      async (p) =>
-        (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 0 &&
-        (await p.getByRole("button", { name: `Prepare ${preparing}` }).count()) > 0,
+      async (p) => (await p.locator(".stacked-row").filter({ hasText: preparing }).count()) === 0,
     ),
   );
 
   // Prepared again, because the checks further down watch an invoice reach the phone and the
   // delete above left the month empty. Re-preparing is also the proof that deleting freed it.
-  await desktop.page.getByRole("button", { name: `Prepare ${preparing}` }).click();
+  await newInvoice.click();
   await until(
     "re-prepared",
     desktop.page,
@@ -917,7 +978,7 @@ async function main() {
   await nav(spare.page, "Invoices");
   check(
     "and cannot prepare an invoice",
-    (await spare.page.getByRole("button", { name: /^Prepare / }).count()) === 0,
+    (await spare.page.getByRole("button", { name: "New invoice" }).count()) === 0,
   );
   check(
     "but can still read one",

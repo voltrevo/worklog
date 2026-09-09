@@ -956,3 +956,84 @@ input[aria-invalid="true"]:focus {
 .field-note.bad {
   color: var(--bad);
 }
+
+/*
+ * The draft line editor (25.11).
+ *
+ * Wider than the other sheets, because it holds a six-column table and the alternative is a table
+ * with a horizontal scrollbar inside a modal.
+ */
+.sheet > .card.editor {
+  width: min(1040px, 100%);
+}
+
+/*
+ * The table is the scroll region, not the card.
+ *
+ * `overflow-x: auto` makes this a scroll container on *both* axes — CSS will not let one axis
+ * scroll while the other stays visible — and the first version relied on that by accident: with no
+ * stated height it took whatever the flex layout left and quietly clipped five of eighteen rows,
+ * with the column headings scrolled away and no scrollbar drawn until you touched it.
+ *
+ * Deliberate now. The height is stated, the headings stay put, and "Add a line" and Save stay
+ * where they are instead of being pushed off the bottom by a long invoice.
+ */
+.linetable {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: min(52vh, 30rem);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.linehead,
+.linerow {
+  display: grid;
+  grid-template-columns:
+    9.5rem minmax(9rem, 1.6fr) minmax(8rem, 1fr) 5rem 6rem 7rem 5rem;
+  gap: var(--s-2);
+  align-items: center;
+  min-width: 44rem;
+}
+
+.linehead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.linerow {
+  padding: 5px 0;
+}
+
+.linerow + .linerow {
+  border-top: 1px solid var(--line);
+}
+
+.linehead .num,
+.linerow input.num {
+  text-align: right;
+}
+
+.linerow input {
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 13px;
+}
+
+/*
+ * 25.2 — a derived amount is disabled, not missing. It has to still look like a value, or the row
+ * reads as though it has no amount at all, which is a different and untrue claim.
+ */
+.linerow input:disabled {
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  cursor: not-allowed;
+}

@@ -10,7 +10,7 @@
 
 import { open } from "../server/db.ts";
 import { getConfig } from "../server/config.ts";
-import { invoiceForPeriod, saveDraft } from "../server/invoices.ts";
+import { createDraft, invoiceForPeriod } from "../server/invoices.ts";
 import { renderInvoicePdf } from "../server/pdf.ts";
 import { today } from "../shared/dates.ts";
 
@@ -21,7 +21,7 @@ if (!period) {
 }
 
 const db = open({ path: `${dataDir}/worklog.sqlite` });
-const invoice = invoiceForPeriod(db, period) ?? saveDraft(db, { period, preparedOn: today() });
+const invoice = invoiceForPeriod(db, period) ?? createDraft(db, { period, preparedOn: today() });
 // An issued invoice renders from its frozen snapshot, exactly as the server does (11.6, 11.8).
 const bytes = await renderInvoicePdf(invoice.snapshot ?? invoice.draft, getConfig(db, "invoice"));
 await Deno.writeFile(out, bytes);
