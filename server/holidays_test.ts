@@ -262,3 +262,42 @@ Deno.test("an unreachable source is not a rejection", async () => {
   assertEquals(verdict.ok, true);
   db.close();
 });
+
+/*
+ * A server nobody has configured yet.
+ *
+ * 24.33 forbids defaulting the region, so a fresh install has none — and this went and asked the
+ * holiday source for country "" anyway. The source answers 404, and the first thing the app says
+ * to somebody who has just claimed admin is that a holiday source is unreachable. It is not
+ * unreachable; it was asked a question with no answer.
+ */
+Deno.test("6.39 -- with no region set, nothing is fetched and the message says so", async () => {
+  const db = fresh();
+  let asked = 0;
+  const fetcher: Fetcher = () => {
+    asked++;
+    return Promise.resolve(SAMPLE);
+  };
+  const got = await loadHolidays({ db, region: "", year: 2026, now: NOW, fetcher });
+  assertEquals(asked, 0, "an unconfigured region is not a question worth asking");
+  assertEquals(got.holidays.length, 0);
+  assertEquals(got.origin, "none");
+  assertStringIncludes(got.warning ?? "", "region");
+  assertEquals(
+    (got.warning ?? "").includes("unreachable"),
+    false,
+    "nothing was unreachable",
+  );
+});
+
+Deno.test("and whitespace is not a region either", async () => {
+  const db = fresh();
+  let asked = 0;
+  const fetcher: Fetcher = () => {
+    asked++;
+    return Promise.resolve(SAMPLE);
+  };
+  const got = await loadHolidays({ db, region: "  ", year: 2026, now: NOW, fetcher });
+  assertEquals(asked, 0);
+  assertStringIncludes(got.warning ?? "", "region");
+});

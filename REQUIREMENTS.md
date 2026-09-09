@@ -174,6 +174,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.36. MUST log a warning when holiday data falls back to cache or to the shipped snapshot.
 6.37. ~~SHOULD show which holidays a month's pacing used, so a wrong or missing one is visible rather than only shifting the pace.~~ (superseded: 24.19)
 6.38. MUST interpret the schedule's times as local to the viewing device.
+6.39. MUST NOT ask the holiday source anything when no region is configured, and MUST say that no region is set rather than reporting the source as unreachable. 24.33 forbids defaulting the region, so this is the state every new server starts in.
 
 ## 7. Reports
 

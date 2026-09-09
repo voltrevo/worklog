@@ -149,7 +149,30 @@ async function main() {
 
   await rig.close();
 
-  const failures = rig.errors.length;
+  /*
+   * And the same walk on a server nobody has put anything into yet.
+   *
+   * Every picture above is of the seed, which has a month of work, an invoice, a note and a
+   * configured region — so the screens as a new arrival meets them had never been looked at. The
+   * first thing that walk found was the app telling somebody who had just claimed admin that a
+   * holiday source was unreachable: 24.33 forbids defaulting the region, so a fresh server has
+   * none, and it asked the source for country "" anyway (6.39).
+   *
+   * A second rig rather than a flag on the first, because "unseeded" is a property of the
+   * database and the database is made when the server starts.
+   */
+  console.log("\n  and the same screens on a server with nothing in it…");
+  const bare = await startRig({
+    dataDir: `${dataDir}-firstrun`,
+    port: PORT + 1,
+    httpPort: HTTP_PORT + 1,
+    seed: false,
+  });
+  const { desktop: fresh } = await claimAndApprove(bare);
+  await capture(fresh.page, "firstrun");
+  await bare.close();
+
+  const failures = rig.errors.length + bare.errors.length;
   console.log(
     failures === 0 ? "\nall screens captured, no page errors" : `\n${failures} page errors`,
   );

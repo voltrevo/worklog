@@ -138,6 +138,29 @@ export interface LoadOptions {
 export async function loadHolidays(opts: LoadOptions): Promise<HolidayResult> {
   const { db, region, year } = opts;
   const now = opts.now ?? Date.now();
+
+  /*
+   * 6.39 — no region, no question.
+   *
+   * 24.33 forbids defaulting the region, so a server nobody has configured yet has none, and this
+   * went and asked the source for country `""` regardless. It answers 404, and the first thing the
+   * app said to somebody who had just claimed admin was that a holiday source was unreachable.
+   * Nothing was unreachable: it was asked a question with no answer, on every snapshot, forever.
+   *
+   * An empty list is the right answer — there are no holidays to count — and the warning has to
+   * say why, because "no public holidays" is a claim about the month that is probably wrong and
+   * the reader is the only one who can fix it.
+   */
+  if (!region.trim()) {
+    return {
+      holidays: [],
+      raw: [],
+      origin: "none",
+      warning: "No holiday region is set, so no public holidays are counted. " +
+        "Set one in Settings.",
+    };
+  }
+
   const cached = readCache(db, region, year, now);
 
   if (cached && cached.age < CACHE_TTL_MS) {
