@@ -97,6 +97,24 @@
   box-sizing: border-box;
 }
 
+/*
+ * A word longer than its line breaks rather than widening what holds it.
+ *
+ * Everything this app displays is something somebody typed: a billing tag, a client name, a note.
+ * Given one long run of characters with no space in it — which is what a project name often is —
+ * the layout used to grow to fit rather than wrap, and on a phone that took the whole page
+ * sideways. A 62-character tag made a 492px row in a 390px viewport.
+ *
+ * `break-word` and not `anywhere`: it breaks a word only when that word would overflow on its own
+ * line, so ordinary text still wraps at spaces and nothing is hyphenated that did not need to be.
+ * It only works where the container is allowed to shrink, which is why `min-width: 0` appears on
+ * the flex and grid items throughout — a flex item defaults to `min-width: auto` and refuses to
+ * go below its content, so the wrap never gets a chance.
+ */
+body {
+  overflow-wrap: break-word;
+}
+
 html,
 body,
 #root {
@@ -145,7 +163,16 @@ a {
 }
 
 .app.desktop {
-  grid-template-columns: 220px 1fr;
+  /*
+   * `minmax(0, 1fr)`, not `1fr`.
+   *
+   * `1fr` is `minmax(auto, 1fr)`, so the track refuses to go below its content's min-content
+   * width — which means a `min-width: 0` on the *item* inside achieves nothing, because the
+   * constraint is the track. One long unbroken word anywhere in a screen then widens the whole
+   * app. Every track in this file that holds arbitrary text is written the long way for that
+   * reason.
+   */
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .app.mobile {
@@ -743,7 +770,8 @@ i.swatch.off {
 
 .entry {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* A billing tag is whatever somebody typed; see `.app.desktop`. */
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 2px var(--s-3);
   align-items: baseline;
   padding: var(--s-3) 0;
@@ -911,7 +939,7 @@ input[type="range"] {
 }
 
 .app.mobile .tagrow {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .app.mobile .tagrow .track,
@@ -1013,7 +1041,7 @@ input[type="range"] {
 @media (max-width: 900px) {
   /* The hint is the first thing to go: the label, the bar and the figure carry the meaning. */
   .barline {
-    grid-template-columns: 6rem 1fr auto;
+    grid-template-columns: 6rem minmax(0, 1fr) auto;
   }
 
   .barline .days {

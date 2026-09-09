@@ -1227,6 +1227,34 @@ async function main() {
   //
   // Neither was visible in a screenshot — one was inside a dialog, the other below the fold.
   console.log("\nnothing clipped on a phone:");
+
+  /*
+   * Given something hostile to lay out first, because the default fixture is polite.
+   *
+   * Every value this app shows is something somebody typed, and the shape that breaks a layout is
+   * a long run with no space in it — which is what a project name often is. A 62-character tag
+   * made a 492px row in a 390px viewport, and the note body reached 900px. Both were invisible to
+   * this scan until the scan had something to find.
+   */
+  await nav(desktop.page, "History");
+  await desktop.page.getByRole("button", { name: "Add past time" }).click();
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  await desktop.page.getByLabel("How long").fill("2h");
+  await desktop.page.getByLabel("Billing tag").fill(
+    "ReconciliationOfQuarterlySubcontractorInvoicingAndDisbursements",
+  );
+  await desktop.page.getByRole("button", { name: "Add", exact: true }).click();
+  // On the phone, and waited for there: the scan below must have the awkward value in front of it
+  // or it passes by having nothing to find, which is the failure mode of every check like this.
+  await nav(mobile.page, "History");
+  check(
+    "the awkward entry reached the phone, so the scan has something to fail on",
+    await until(
+      "the awkward entry",
+      mobile.page,
+      async (p) => (await p.getByText(/ReconciliationOfQuarterly/).count()) > 0,
+    ),
+  );
   const hiddenOn = async (where) =>
     await mobile.page.evaluate((where) => {
       const out = [];
