@@ -264,12 +264,45 @@ export function deny(db: Db, publicKey: Uint8Array): boolean {
 }
 
 /** 13.36 */
+/**
+ * 26.15 — the server cannot be left with nobody who can administer it.
+ *
+ * Revoking the last admin, or demoting it, leaves a server where no device can approve another
+ * one: 13.7's claim path is only offered while there are *no* authorised devices at all, so a
+ * server with two `write` phones and no admin is not recoverable from any screen. The only way
+ * back is editing the database by hand, which is not a thing this app should ever require.
+ *
+ * Checked here rather than in the UI because it is a property of the server's state, and because
+ * the two devices involved may be different people looking at different screens.
+ */
+function lastAdmin(db: Db, publicKey: Uint8Array): boolean {
+  const device = findDevice(db, publicKey);
+  if (device?.role !== "admin") return false;
+  const admins = db.prepare("SELECT count(*) AS n FROM device WHERE role = 'admin'")
+    .get() as { n: number };
+  return Number(admins.n) <= 1;
+}
+
 export function revoke(db: Db, publicKey: Uint8Array): boolean {
+  if (lastAdmin(db, publicKey)) {
+    throw new Refused(
+      "last-admin",
+      "that is the only administrator; make another device an admin first, or nothing will be " +
+        "able to approve anything.",
+    );
+  }
   return db.prepare("DELETE FROM device WHERE public_key = ?").run(publicKey).changes > 0;
 }
 
 /** 13.37 */
 export function setRole(db: Db, publicKey: Uint8Array, role: AccessRole): Device {
+  if (role !== "admin" && lastAdmin(db, publicKey)) {
+    throw new Refused(
+      "last-admin",
+      "that is the only administrator; make another device an admin first, or nothing will be " +
+        "able to approve anything.",
+    );
+  }
   const changed = db.prepare("UPDATE device SET role = ? WHERE public_key = ?")
     .run(role, publicKey).changes;
   if (!changed) throw new Refused("no-such-device", "no authorized device with that key");

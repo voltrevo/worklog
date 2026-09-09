@@ -90,19 +90,32 @@ function PendingActions(
  * which anything said so.
  */
 function DeviceActions(
-  { device, busy, act }: {
+  { device, lastAdmin, busy, act }: {
     device: DeviceWire;
+    /**
+     * 26.15 — this is the only admin, so revoking or demoting it would leave the server with
+     * nobody who can approve anything.
+     *
+     * The server refuses either outright, which is what actually protects it. This is so the
+     * refusal can be seen coming: 25.2's rule, and a control that explains itself beats one that
+     * waits for you to press it.
+     */
+    lastAdmin: boolean;
     busy: boolean;
     act: (body: () => Promise<unknown>) => Promise<void>;
   },
 ) {
+  const locked = lastAdmin
+    ? "This is the only administrator. Make another device an admin first."
+    : undefined;
   const { call } = useStore();
   const [confirm, setConfirm] = useState<{ kind: "revoke" } | { kind: "role"; to: AccessRole }>();
   return (
     <>
       <select
         value={device.role}
-        disabled={busy}
+        disabled={busy || lastAdmin}
+        title={locked}
         aria-label={`Role for ${device.name}`}
         onChange={(e) => setConfirm({ kind: "role", to: e.target.value as AccessRole })}
       >
@@ -113,11 +126,13 @@ function DeviceActions(
       <button
         className="btn danger"
         type="button"
-        disabled={busy}
+        disabled={busy || lastAdmin}
+        title={locked}
         onClick={() => setConfirm({ kind: "revoke" })}
       >
         Revoke
       </button>
+      {lastAdmin && <span className="faint">{locked}</span>}
 
       {confirm?.kind === "revoke" && (
         <Dialog
@@ -196,6 +211,15 @@ function Access() {
   const [pending, setPending] = useState<PendingWire[]>();
   const [devices, setDevices] = useState<DeviceWire[]>();
   const [busy, setBusy] = useState(false);
+
+  /**
+   * 26.15 — the key of the only admin, when there is only one.
+   *
+   * `undefined` whenever there are none or several, which are both fine: the rule is specifically
+   * about removing the last one.
+   */
+  const admins = (devices ?? []).filter((d) => d.role === "admin");
+  const onlyAdmin = admins.length === 1 ? admins[0]!.publicKey : undefined;
 
   const load = async () => {
     setPending(await call<PendingWire[]>({ t: "access-pending" }));
@@ -313,7 +337,12 @@ function Access() {
                         </span>
                       </div>
                       <div className="acts wrap">
-                        <DeviceActions device={d} busy={busy} act={act} />
+                        <DeviceActions
+                          device={d}
+                          lastAdmin={onlyAdmin === d.publicKey}
+                          busy={busy}
+                          act={act}
+                        />
                       </div>
                     </div>
                   ))}
@@ -339,7 +368,12 @@ function Access() {
                             {d.lastSeenAt ? dateTime(d.lastSeenAt) : "never"}
                           </td>
                           <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                            <DeviceActions device={d} busy={busy} act={act} />
+                            <DeviceActions
+                              device={d}
+                              lastAdmin={onlyAdmin === d.publicKey}
+                              busy={busy}
+                              act={act}
+                            />
                           </td>
                         </tr>
                       ))}

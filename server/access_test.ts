@@ -36,6 +36,15 @@ function fresh(): Db {
   return open({ path: ":memory:" });
 }
 
+/** An authorised device with a given role, straight into the table. */
+async function authorized(db: Db, name: string, role: "read" | "write" | "admin") {
+  const key = await exportPublicKey(await generateDeviceKey());
+  db.prepare(
+    "INSERT INTO device (public_key, name, role, authorized_at) VALUES (?, ?, ?, 1)",
+  ).run(key, name, role);
+  return key;
+}
+
 async function device() {
   const pair = await generateDeviceKey();
   return { pair, publicKey: await exportPublicKey(pair) };
@@ -353,4 +362,48 @@ Deno.test("13.32-13.34 -- the roles are ordered, so a handler asks for the least
   assertEquals(allows("read", "read"), true);
   assertEquals(allows("read", "write"), false);
   assertEquals(allows("read", "admin"), false);
+});
+
+Deno.test("26.15 -- the last admin cannot be revoked or demoted", async () => {
+  /*
+   * Both left a server nobody can administer. 13.7 only offers the claim path while there are *no*
+   * authorised devices, so a server with two `write` phones and no admin is unrecoverable from any
+   * screen in the app — the way back is editing the database by hand.
+   */
+  const db = fresh();
+  const solo = await authorized(db, "Studio Desktop", "admin");
+
+  assertThrows(() => revoke(db, solo), Refused, "only administrator");
+  assertThrows(() => setRole(db, solo, "write"), Refused, "only administrator");
+  assertThrows(() => setRole(db, solo, "read"), Refused, "only administrator");
+  assertEquals(findDevice(db, solo)?.role, "admin", "one of those went through anyway");
+
+  // With a second admin, both become ordinary operations again.
+  const second = await authorized(db, "Studio Laptop", "admin");
+  assertEquals(setRole(db, solo, "write").role, "write");
+
+  // ...and the rule follows the role rather than the device: `second` is now the only admin, so
+  // it is protected in its turn. My first version of this test revoked it here and was refused,
+  // correctly — the sequence was wrong, not the guard.
+  assertThrows(() => revoke(db, second), Refused, "only administrator");
+
+  // Promote the first one back and the second becomes revocable again.
+  assertEquals(setRole(db, solo, "admin").role, "admin");
+  assertEquals(revoke(db, second), true);
+  assertEquals(deviceCount(db), 1);
+  db.close();
+});
+
+Deno.test("and a device that is not an admin is not protected by the rule", () => {
+  // The guard is about the *role*, not about being the only device. A lone `write` device can be
+  // revoked: that leaves a server with nothing authorised, which 13.7 recovers from by offering
+  // the claim again.
+  const db = fresh();
+  const key = new Uint8Array(32).fill(9);
+  db.prepare(
+    "INSERT INTO device (public_key, name, role, authorized_at) VALUES (?, ?, 'write', 1)",
+  ).run(key, "A Phone");
+  assertEquals(revoke(db, key), true);
+  assertEquals(deviceCount(db), 0);
+  db.close();
 });
