@@ -382,7 +382,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 14.22. MUST map zero volume to true silence.
 14.23. SHOULD provide a broad attenuation range, roughly 60 dB or more before mute.
 14.24. MUST NOT apply automatic normalization or compression merely to make low-volume control easier.
-14.25. MUST hide the looping-audio feature in the mobile presentation, where autoplay restrictions and background suspension make 14.12 unhonourable.
+14.25. ~~MUST hide the looping-audio feature in the mobile presentation, where autoplay restrictions and background suspension make 14.12 unhonourable.~~ (superseded: 25.20)
 
 ## 15. Deno Desktop local window behavior
 
@@ -585,3 +585,91 @@ through. That is a worse thing to read than the projection it was meant to repla
 24.40. MUST keep the ahead/behind figure as it is: projected month total against the monthly target.
 24.41. MUST show the same comparison as two bars instead of as a second number — one for progress through the month's available scheduled hours, one for hours worked against the target — so being ahead or behind is the offset between them and no negative quantity has to be explained.
 24.42. MUST validate the holiday region by asking the holiday source whether it yields any holidays, and MUST reject a region that yields none; 24.32's picker is declined — the field stays free text, because the country list needs the network and the subdivision codes are only discoverable by fetching a year of a country's holidays anyway.
+
+## 25. Review feedback, second pass
+
+From driving `c739357`. Where an item here contradicts an earlier one, the earlier one is struck and
+names this.
+
+### Principles
+
+25.1. MUST distinguish "not loaded yet" from "empty" everywhere; a list that says "nothing yet" while it is still fetching is telling the user something untrue.
+25.2. MUST render an unavailable or unsupported control as disabled, with a reason, rather than omitting it.
+25.3. MUST NOT accept an invalid value into a field and silently keep or ignore it; either reject it visibly or make the field not editable.
+25.4. MUST confirm destructive or hard-to-reverse actions in a dialog rather than inline in the row.
+25.5. MUST look at the rendered screen before treating a change as finished; a screenshot run that does not throw is not evidence that the screen is right.
+
+### Durations
+
+25.6. MUST render durations as hours to one decimal place, using banker's rounding, everywhere except the live running-session clock, which stays `hh:mm:ss`.
+25.7. MUST freeze the banker's-rounded hours as the official value on an invoice, and compute its totals from those, so the document adds up to the numbers printed on it. A rounding error of up to three minutes per line is accepted.
+
+### Invoices
+
+25.8. MUST keep the invoice list permanently on screen, with an explicit control for adding to it rather than a per-month button that appears and disappears.
+25.9. MUST offer a month to invoice when adding, prefilled sensibly, and MUST NOT refuse or hide the option because a draft already exists for that month.
+25.10. MUST allow any number of overlapping drafts; 11.19's refusal applies at issuance and nowhere earlier.
+25.11. MUST detach a draft from the work entries when it is created: its lines are copied once and are then editable, addable and removable on the draft alone, leaving History untouched.
+25.12. MUST allow a draft to carry its own configuration, overriding the global invoice settings for that draft only.
+25.13. MUST label the download control "Download" rather than "PDF"; the invoice is a PDF.
+25.14. MUST give the invoice list a consistent row height and put separating rules only between rows, never above the first.
+25.15. MUST show the invoice configuration as an approximation of the rendered invoice, with each field positioned where its value appears on the document. Per-invoice content may be abbreviated.
+
+### The invoice document
+
+25.16. MUST increase the vertical gap between "BILL TO" and the block beneath it.
+25.17. MUST reduce the horizontal gap between a label and its value for "Time period", "Hourly rate in" and "Work Approver".
+25.18. MUST print the configured payment method verbatim, not as "{currency} ({value})".
+
+### Audio
+
+25.19. MUST detect that playback was blocked — `play()` rejecting under an autoplay policy — and offer an explicit control to start it, rather than discarding the rejection.
+25.20. MUST make the looping-audio feature available in the mobile presentation, superseding 14.25.
+25.21. MUST apply a volume change to audio that is already playing.
+25.22. MUST apply removing the file, or disabling the feature, to audio that is already playing.
+25.23. MUST provide a preview play/pause in settings, so the loop can be heard without starting a timer.
+
+### Pacing and the timer
+
+25.24. MUST default to Monday–Friday being workdays when no holiday region is configured, rather than treating a weekday as unscheduled.
+25.25. MUST align the pacing bars with each other, so their fills can be compared; differing label widths must not change where a bar starts or ends.
+25.26. MUST draw today's progress bar as one segment per entry, each with its own rounded ends, so the total reads as something assembled from parts.
+25.27. MUST allow the start time of a running timer to be edited.
+
+### Entries
+
+25.28. MUST NOT allow the duration of a timed entry to be edited directly; it is the interval. A control converts the entry to duration-only, after which the duration is editable.
+25.29. MUST recompute and show a timed entry's duration as its start and end are edited, before saving.
+25.30. MUST use one editor for adding a past entry and for editing an existing one, reached from a control within the list rather than a separate panel above it.
+
+### Access
+
+25.31. MUST offer the requested role as a dropdown with a single request button, not one button per role.
+25.32. MUST reduce the pending-request actions to approve and deny; approving grants the role that was asked for, and a wrong request is denied and resubmitted.
+25.33. MUST show a device whose request was approved that it has been, with a primary control to continue into the app.
+25.34. MUST indicate which of the admin screen's tabs is active.
+25.35. MUST confirm revoking access, and changing a device's role, in a dialog.
+
+### Notes
+
+25.36. MUST update the recording waveform continuously; a trace that is mostly flat with occasional static is not showing the input.
+25.37. MUST present one control for playing a voice note, which shows that it is loading and then plays, rather than a button that becomes a player which must be pressed again.
+25.38. SHOULD stream a voice note into the player rather than downloading it whole before anything can start.
+
+### Prompts
+
+25.39. MUST play a simple tune, repeating for up to a minute, until the prompt is answered or dismissed, rather than a single short sound.
+25.40. MUST NOT depend on the window having focus to deliver a prompt; its purpose is to reach somebody who is looking at something else.
+25.41. MUST confirm a settings save inline, without moving the content already on screen.
+
+### Settings
+
+25.42. MUST show a saved-but-hidden value as a disabled field containing a mask, rather than a chip elsewhere on the screen saying it is set.
+25.43. MUST explain, when such a field is clicked, that the value is stored and hidden, and offer to clear the group for re-entry. The payment block and the address are separate groups.
+25.44. MUST NOT reformat a numeric field while it is being typed into; entering "5" must not become "5.00" with the cursor moved.
+
+### Presentation
+
+25.45. MUST give buttons a hover state that works in dark mode.
+25.46. MUST keep the month label a fixed width, so neither arrow moves as the month changes.
+25.47. MUST set `user-select: none` on buttons.
