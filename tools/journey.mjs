@@ -2159,6 +2159,23 @@ async function main() {
   await nav(desktop.page, "Timer");
   await clearSheets(desktop.page);
   const addressBefore = rig.server.address;
+
+  /*
+   * 2.2, 17.x — with a timer running, because that is the state a restart can lose.
+   *
+   * The authoritative timer is a row, so it ought to survive; nothing had ever checked, and the
+   * failure would be a person's afternoon. Started here rather than earlier so that the only thing
+   * between the start and the restart is the restart.
+   */
+  await desktop.page.getByLabel("Billing tag").fill("Survives a restart");
+  await desktop.page.getByRole("button", { name: /Start/ }).click();
+  await until(
+    "timer running",
+    desktop.page,
+    (p) => p.getByText("Working on Survives a restart").isVisible(),
+  );
+  const startedAt = await desktop.page.locator(".muted button.link").first().textContent();
+
   await rig.stopServer();
 
   // While it is down. The claim is not that a loss is invisible — it is that the interface is
@@ -2193,6 +2210,20 @@ async function main() {
     ),
     await visibleText(desktop.page),
   );
+  check(
+    "the timer that was running is still running, from the same start",
+    await until(
+      "timer survived",
+      desktop.page,
+      async (p) =>
+        (await p.getByText("Working on Survives a restart").count()) > 0 &&
+        (await p.locator(".muted button.link").first().textContent())?.trim() ===
+          startedAt?.trim(),
+      25_000,
+    ),
+    `was ${startedAt?.trim()}`,
+  );
+
   check(
     "and it can be used again once it is back",
     await until(
