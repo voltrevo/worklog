@@ -151,6 +151,19 @@ async function js(code: string): Promise<unknown> {
   return raw.value;
 }
 
+/**
+ * Poll until `read` produces something.
+ *
+ * **`false` counts as something**, and that is a trap this file fell into. The reader below was
+ * `async () => await js("typeof globalThis.__run") === "function"` — a boolean — so on the first
+ * poll, before the page had run its script, it returned `false`, which is neither `undefined` nor
+ * `null`, and the wait returned straight away. Everything then proceeded against a page that was
+ * not ready, and `globalThis.__run()` failed as "not a function" roughly one run in five.
+ *
+ * The signature is right and the caller was wrong: a reader says "not yet" with `undefined`. Said
+ * here as well as fixed there, because the next boolean predicate will be written by somebody who
+ * has not read this.
+ */
 async function waitFor<T>(what: string, read: () => Promise<T | undefined>, ms = 20_000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
@@ -182,7 +195,11 @@ const MESSAGE = new TextEncoder().encode("worklog selftest message");
 const FILE = new TextEncoder().encode("%PDF-1.7 selftest\n");
 
 try {
-  await waitFor("the page", async () => await js("typeof globalThis.__run") === "function");
+  await waitFor(
+    "the page",
+    // `|| undefined`, not a bare boolean: see `waitFor`. A `false` here used to end the wait.
+    async () => (await js("typeof globalThis.__run") === "function") || undefined,
+  );
 
   await js(`globalThis.__message = ${JSON.stringify(toBase64(MESSAGE))};`);
   await js(`globalThis.__fileB64 = ${JSON.stringify(toBase64(FILE))};`);
