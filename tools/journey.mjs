@@ -1402,6 +1402,80 @@ async function main() {
     `expected ${beforeDelete === undefined ? "?" : beforeDelete - 2.5}h`,
   );
 
+  /*
+   * ------------------------------------------------- saving something that is no longer there
+   *
+   * 27.38. Two devices, one entry: the desktop has the editor open on it and the phone deletes it.
+   * The save then fails, which is correct, and what it *says* is the point — a person is entitled
+   * to know that the thing went away rather than to read an identifier at.
+   *
+   * Reachable without malice: an entry corrected on a phone while a laptop sits on the history
+   * screen with the editor open is an ordinary Tuesday.
+   */
+  console.log("\ntwo devices, one entry:");
+  const VANISHING = "Entry that goes away";
+  await nav(mobile.page, "History");
+  await mobile.page.getByRole("button", { name: "Add past time" }).click();
+  await mobile.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  await mobile.page.getByLabel("How long").fill("1h");
+  await mobile.page.getByLabel("Billing tag").fill(VANISHING);
+  await mobile.page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await nav(desktop.page, "History");
+  const vanishing = desktop.page.getByRole("row").filter({ hasText: VANISHING }).first();
+  await vanishing.waitFor({ timeout: 20_000 });
+  await vanishing.getByRole("button", { name: "Edit" }).click();
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+
+  /*
+   * Gone, from the other device, while this editor is open on it.
+   *
+   * `.entry`, not `getByRole("row")`: the phone draws history as stacked cards and only the
+   * desktop draws a table (23.2), so the row locator that works three lines above finds nothing
+   * here. Two presentations, two locators, and the shared component is the *editor* rather than
+   * the list.
+   */
+  const onPhone = mobile.page.locator(".entry").filter({ hasText: VANISHING }).first();
+  await onPhone.getByRole("button", { name: "Delete" }).click();
+  await mobile.page.getByRole("button", { name: "Yes, delete" }).click();
+  await mobile.page.waitForTimeout(800);
+
+  await desktop.page.getByLabel("Billing tag").fill("Edited after it was deleted");
+
+  /*
+   * The editor is still open, on nothing. What it must not do is quietly become an Add form: it
+   * did, because `snapshot.entries.find(...)` returns `undefined` for a deleted entry and no entry
+   * meant "adding one", so the button that said Save said Add and would have made a second entry
+   * out of the values of the one just removed.
+   */
+  const gone = await until(
+      "the editor says the entry has gone",
+      desktop.page,
+      async (p) => (await p.locator(".notice.warn:visible").count()) > 0,
+      20_000,
+    )
+    ? (await desktop.page.locator(".notice.warn:visible").first().innerText()).trim()
+    : `(nothing said; the dialog shows ${await visibleText(desktop.page)})`;
+  check(
+    "27.38 — an editor whose entry was deleted elsewhere says so",
+    /deleted/i.test(gone) && !/[0-9a-f]{8}-[0-9a-f]{4}/i.test(gone),
+    gone,
+  );
+  check(
+    "27.38 — and offers adding it back as a choice, rather than making it one",
+    (await desktop.page.getByRole("button", { name: "Add it back as a new entry" }).count()) ===
+        1 &&
+      (await desktop.page.getByRole("button", { name: "Save", exact: true }).count()) === 0,
+    await visibleText(desktop.page),
+  );
+  await desktop.page.getByRole("button", { name: "Cancel" }).click();
+  await desktop.page.getByRole("button", { name: "Throw it away" }).click().catch(() => {});
+  check(
+    "27.38 — and nothing was added by the entry going away",
+    (await desktop.page.getByRole("row").filter({ hasText: VANISHING }).count()) === 0,
+    await visibleText(desktop.page),
+  );
+
   // ---------------------------------------------------------------- a work note
   console.log("\nwork note:");
   await nav(desktop.page, "Notes");

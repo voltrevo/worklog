@@ -831,3 +831,8 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### What an unauthenticated caller can grow
 
 27.37. State that an unauthenticated request adds to MUST be bounded in size as well as in lifetime. The four open requests of `OPEN` exist so a device can get far enough to prove who it is; anything they accumulate is accumulated on behalf of whoever can reach the server, which is not yet anybody in particular.
+
+### When the thing you are editing goes away
+
+27.38. An editor whose subject has been deleted elsewhere MUST say so and MUST NOT silently become an editor for something else. Absence of a record is not the same fact as a request to create one, and a screen that conflates them turns a correction into a duplicate. Adding the typed values back MAY be offered, as a stated choice.
+27.39. A refusal a person reads MUST describe the situation rather than name a record. "no work entry 3f8a2b91-…" is true and useless; the identifier belongs in the log, which already has it.

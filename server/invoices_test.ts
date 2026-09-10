@@ -333,7 +333,7 @@ Deno.test("a committed invoice is what invoiceForPeriod means, even beside a dra
 Deno.test("acting on an invoice that does not exist is refused, not ignored", () => {
   const db = fresh();
   for (const act of [issue, markPaid, unmarkPaid, revertIssue]) {
-    assertThrows(() => act(db, "ghost", T0), Refused, "no invoice");
+    assertThrows(() => act(db, "ghost", T0), Refused, "no longer exists");
   }
   db.close();
 });

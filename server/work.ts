@@ -187,7 +187,21 @@ export function updateEntry(
 ): WorkEntry {
   return transact(db, () => {
     const current = getEntry(db, id);
-    if (!current) throw new Refused("no-such-entry", `no work entry ${id}`);
+    /*
+     * 27.39 — a sentence, not an identifier.
+     *
+     * This read `no work entry ${id}`, and that message goes straight to the person: the editor
+     * shows a failed save's message verbatim. "no work entry 3f8a2b91-…" tells them nothing they
+     * can act on, and the *situation* it describes is one they would recognise at once — the entry
+     * was deleted, almost always on another device. The id belongs in the log, which has it from
+     * the request already.
+     */
+    if (!current) {
+      throw new Refused(
+        "no-such-entry",
+        "that work entry no longer exists; it was probably deleted on another device",
+      );
+    }
 
     const next: WorkEntry = {
       ...current,

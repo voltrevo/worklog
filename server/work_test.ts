@@ -91,7 +91,12 @@ Deno.test("omitting timing leaves it alone, which is why null has to mean someth
 
 Deno.test("editing a missing entry is refused rather than silently creating one", () => {
   const db = fresh();
-  assertThrows(() => updateEntry(db, "nope", { durationMs: 1 }), Refused, "no work entry");
+  // 27.39 — the message is read by a person, so it is asserted as one rather than as an id.
+  assertThrows(
+    () => updateEntry(db, "nope", { durationMs: 1 }),
+    Refused,
+    "no longer exists",
+  );
   assertEquals(deleteEntry(db, "nope"), false);
   db.close();
 });

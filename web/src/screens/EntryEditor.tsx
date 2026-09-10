@@ -35,9 +35,17 @@ import type { WorkEntry } from "@worklog/shared/types";
 type Shape = "duration" | "times";
 
 export function EntryEditor(
-  { entry, tags, onClose, onSaved }: {
-    /** Absent when adding. */
+  { entry, vanished, tags, onClose, onSaved }: {
+    /** Absent when adding, and also when the entry being edited has gone — see `vanished`. */
     entry?: WorkEntry;
+    /**
+     * 27.38 — set when this opened on an entry that has since been deleted elsewhere.
+     *
+     * Without it, "no entry" means "adding one", and an editor whose subject was deleted on
+     * another device turned into an Add form with the deleted values in it. The distinction cannot
+     * be made here: only the caller knows whether an id was asked for.
+     */
+    vanished?: boolean;
     tags: string[];
     onClose: () => void;
     onSaved: () => Promise<void> | void;
@@ -134,7 +142,7 @@ export function EntryEditor(
     }
   };
 
-  const title = entry ? "Edit this entry" : "Add past time";
+  const title = vanished ? "This entry has gone" : entry ? "Edit this entry" : "Add past time";
 
   return (
     <Sheet label={title} onDismiss={leave}>
@@ -231,11 +239,27 @@ export function EntryEditor(
           </datalist>
         </div>
 
+        {
+          /*
+           * 27.38 — said, and then offered as a choice rather than made into one.
+           *
+           * Adding it back is exactly what the old behaviour did, and the fault was that it did it
+           * without saying so. The typing is still on screen and still worth something, so the way
+           * out is a button that says what it will do.
+           */
+        }
+        {vanished && (
+          <div className="notice warn">
+            This entry was deleted, probably on another device, so there is nothing here to save.
+            What is filled in can still be added as a new entry.
+          </div>
+        )}
+
         {problem && <div className="notice bad">{problem}</div>}
 
         <div className="row">
           <button className="btn primary" type="button" disabled={busy} onClick={() => void save()}>
-            {entry ? "Save" : "Add"}
+            {vanished ? "Add it back as a new entry" : entry ? "Save" : "Add"}
           </button>
           <button className="btn" type="button" onClick={onClose}>Cancel</button>
         </div>

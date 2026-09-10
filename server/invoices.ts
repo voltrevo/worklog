@@ -251,7 +251,12 @@ export function updateDraft(
 ): StoredInvoice {
   return transact(db, () => {
     const current = getInvoice(db, id);
-    if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+    if (!current) {
+      throw new Refused(
+        "no-such-invoice",
+        "that invoice no longer exists; it was probably deleted on another device",
+      );
+    }
     if (current.status !== "draft") {
       throw new Refused(
         "not-a-draft",
@@ -309,7 +314,12 @@ export function updateDraft(
 export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvoice {
   return transact(db, () => {
     const current = getInvoice(db, id);
-    if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+    if (!current) {
+      throw new Refused(
+        "no-such-invoice",
+        "that invoice no longer exists; it was probably deleted on another device",
+      );
+    }
     if (current.status !== "draft") {
       throw new Refused("not-a-draft", `invoice ${current.number} is already ${current.status}`);
     }
@@ -359,7 +369,12 @@ export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvo
 /** 11.9, 11.11 */
 export function markPaid(db: Db, id: string, now: Instant = Date.now()): StoredInvoice {
   const current = getInvoice(db, id);
-  if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+  if (!current) {
+    throw new Refused(
+      "no-such-invoice",
+      "that invoice no longer exists; it was probably deleted on another device",
+    );
+  }
   if (current.status !== "issued") {
     throw new Refused("not-issued", `only an issued invoice can be marked paid`);
   }
@@ -371,7 +386,12 @@ export function markPaid(db: Db, id: string, now: Instant = Date.now()): StoredI
 /** 11.12 — a correction, and explicit (11.14). The snapshot stays; only the payment is undone. */
 export function unmarkPaid(db: Db, id: string, now: Instant = Date.now()): StoredInvoice {
   const current = getInvoice(db, id);
-  if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+  if (!current) {
+    throw new Refused(
+      "no-such-invoice",
+      "that invoice no longer exists; it was probably deleted on another device",
+    );
+  }
   if (current.status !== "paid") {
     throw new Refused("not-paid", `invoice ${current.number} is not paid`);
   }
@@ -389,7 +409,12 @@ export function unmarkPaid(db: Db, id: string, now: Instant = Date.now()): Store
  */
 export function revertIssue(db: Db, id: string, now: Instant = Date.now()): StoredInvoice {
   const current = getInvoice(db, id);
-  if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+  if (!current) {
+    throw new Refused(
+      "no-such-invoice",
+      "that invoice no longer exists; it was probably deleted on another device",
+    );
+  }
   if (current.status !== "issued") {
     throw new Refused(
       "not-issued",
@@ -422,7 +447,12 @@ export function attachPdf(db: Db, id: string, path: string, now: Instant = Date.
 export function deleteInvoice(db: Db, id: string): { pdfPath?: string } {
   return transact(db, () => {
     const current = getInvoice(db, id);
-    if (!current) throw new Refused("no-such-invoice", `no invoice ${id}`);
+    if (!current) {
+      throw new Refused(
+        "no-such-invoice",
+        "that invoice no longer exists; it was probably deleted on another device",
+      );
+    }
     db.prepare("DELETE FROM invoice WHERE id = ?").run(id);
     return current.pdfPath ? { pdfPath: current.pdfPath } : {};
   });

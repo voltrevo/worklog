@@ -68,16 +68,32 @@ export function History() {
         </div>
       )}
 
-      {editing !== null && (
-        <EntryEditor
-          entry={editing === "new"
-            ? undefined
-            : snapshot.entries.find((e: WorkEntry) => e.id === editing)}
-          tags={snapshot.recentTags}
-          onClose={() => setEditing(null)}
-          onSaved={() => refresh()}
-        />
-      )}
+      {
+        /*
+         * 27.38 — and whether the thing being edited is still there.
+         *
+         * `find` returns `undefined` when the entry has been deleted since this editor opened, and
+         * `EntryEditor` reads no entry as *adding* one. So an entry corrected on a phone while a
+         * laptop had the editor open turned that editor into an Add form, silently, still holding
+         * the deleted entry's values — and the button that said Save now said Add and made a
+         * second entry. The two states have to be told apart here, because this is the only place
+         * that knows an id was asked for.
+         */
+      }
+      {editing !== null && (() => {
+        const found = editing === "new"
+          ? undefined
+          : snapshot.entries.find((e: WorkEntry) => e.id === editing);
+        return (
+          <EntryEditor
+            entry={found}
+            vanished={editing !== "new" && found === undefined}
+            tags={snapshot.recentTags}
+            onClose={() => setEditing(null)}
+            onSaved={() => refresh()}
+          />
+        );
+      })()}
 
       {days.length === 0
         ? (
