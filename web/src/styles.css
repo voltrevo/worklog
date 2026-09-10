@@ -1000,11 +1000,25 @@ input[type="range"] {
  * `align-items: flex-end` so bars grow upward from a baseline, which is what makes a run of them
  * read as a waveform rather than as a bar chart of unrelated values.
  */
+/*
+ * 27.8 — bars on whole pixels.
+ *
+ * The children were `flex: 1 1 0`, which divides the track evenly and hands every bar the same
+ * *fractional* width — 2.77px, at offsets 3.766px apart. Equal in layout and not on the screen: a
+ * fractional bar at a fractional offset paints across two device columns or three depending on
+ * where it lands, so the row came out visibly uneven, which reads as a fault in the drawing rather
+ * than in the sound.
+ *
+ * So the bar and the gap are whole numbers and the track is as wide as they need. The leftover is
+ * space to the right of the meter rather than a rounding error inside it.
+ */
 .trace {
   display: flex;
   align-items: flex-end;
   gap: 1px;
   height: 44px;
+  width: fit-content;
+  max-width: 100%;
   padding: 0 var(--s-2);
   background: var(--panel-2, rgba(127, 127, 127, 0.08));
   border: 1px solid var(--line);
@@ -1028,8 +1042,8 @@ input[type="range"] {
  * A scrolling waveform must not tween. Each frame is the animation.
  */
 .trace span {
-  flex: 1 1 0;
-  min-width: 1px;
+  flex: none;
+  width: 2px;
   /*
    * A visible baseline. The floor in the markup is 2% of a 44px box — under a pixel — so between
    * sounds the trace was not quiet, it was *absent*, which reads as a meter that has stopped
@@ -1924,5 +1938,16 @@ button.maskfield:disabled {
   .today-figure {
     /* Beside the pills rather than under them, which is what this narrow row has room for. */
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  /*
+   * 120 bars at three pixels each is 359 and a phone's card has about 330 to give, so the wider
+   * pitch would be shrunk back into fractions by `max-width`. Two pixels a bar fits, and stays
+   * whole.
+   */
+  .trace span {
+    width: 1px;
   }
 }

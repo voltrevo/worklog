@@ -126,22 +126,8 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
   };
 
   return (
-    <Sheet label="Work note" onDismiss={leave}>
-      {
-        /*
-        26.7 — touching the dialog silences the tune.
-
-        Not the sheet's own opening focus, which happens without anybody doing anything: an alarm
-        that stops because it appeared is not an alarm. A pointer or a key is somebody attending
-        to it, and from that moment the sound is noise over the thing it was summoning them to.
-      */
-      }
-      <div
-        className="card stack"
-        style={{ gap: 14 }}
-        onPointerDown={attend}
-        onKeyDown={attend}
-      >
+    <Sheet label="Work note" onDismiss={leave} onInteract={attend}>
+      <div className="card stack" style={{ gap: 14 }}>
         <div className="row between">
           <h2>{prompted ? "What are you working on?" : "Work note"}</h2>
           {/* 5.21 — always available, and it costs nothing. */}

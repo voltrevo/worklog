@@ -1313,6 +1313,39 @@ async function main() {
     // Three pixels of slack: the markup's own floor and sub-pixel rounding, nothing like 36.
     check("and the trace drawn is the trace measured", drawn < 3.5, `worst bar off by ${drawn}px`);
 
+    /*
+     * 27.8 — every bar the same width.
+     *
+     * `flex: 1 1 0` over 120 children divides the track into fractional widths, and each one is
+     * rounded for painting on its own, so the row came out as a mix of two-pixel and three-pixel
+     * bars — reported as looking odd, which it is: a meter whose bars vary reads as a fault in the
+     * drawing rather than in the sound.
+     */
+    const bars = await desktop.page.locator(".trace span").evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: +r.x.toFixed(3), w: +r.width.toFixed(3) };
+      })
+    );
+    /*
+     * Whole pixels, not merely equal ones.
+     *
+     * The first version of this compared widths and passed: `flex: 1 1 0` divides the track
+     * evenly, so every bar was the same *fractional* width. What varies is where each lands on
+     * the device's pixel grid — a 2.35px bar starting at x.4 paints across three columns and one
+     * starting at x.0 across two — and the DOM cannot see that at all. A bar an exact number of
+     * pixels wide at an exact offset has nothing to round.
+     */
+    const whole = bars.every((b) => Number.isInteger(b.w) && Number.isInteger(b.x));
+    const steps = new Set(bars.slice(1).map((b, i) => +(b.x - bars[i].x).toFixed(3)));
+    check(
+      "27.8 — every bar is a whole number of pixels wide, at a whole-pixel offset",
+      bars.length > 2 && whole && steps.size === 1,
+      `${bars.length} bars, widths ${[...new Set(bars.map((b) => b.w))].join("/")}, steps ${
+        [...steps].join("/")
+      }`,
+    );
+
     check(
       "and it moves with the input rather than sitting flat",
       new Set(heights).size > 3,

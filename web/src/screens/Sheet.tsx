@@ -23,10 +23,21 @@ const FOCUSABLE = "input:not([disabled]), select:not([disabled]), textarea:not([
   "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])";
 
 export function Sheet(
-  { label, onDismiss, dismissOnBackdrop, children }: {
+  { label, onDismiss, onInteract, dismissOnBackdrop, children }: {
     label: string;
     /** Escape, and the backdrop where that is allowed. Cancelling, not saving. */
     onDismiss: () => void;
+    /**
+     * 27.9 — somebody attending to this, anywhere on it.
+     *
+     * The prompt used to hang this on its own card, which is everything inside the sheet and not
+     * the sheet: a press on the margin around it was not attending to anything, and the tune went
+     * on playing. It belongs on the outermost element the dialog occupies, which is here.
+     *
+     * Capture, so a child that stops propagation cannot swallow it, and pointer-or-key rather
+     * than focus — an alarm that stops because it appeared is not an alarm.
+     */
+    onInteract?: () => void;
     dismissOnBackdrop?: boolean;
     children: ReactNode;
   },
@@ -131,6 +142,8 @@ export function Sheet(
       // yet can still hold focus. An element with `display: contents` cannot, which is how the
       // first version of this silently focused nothing.
       tabIndex={-1}
+      onPointerDownCapture={onInteract}
+      onKeyDownCapture={onInteract}
       onMouseDown={(e) => {
         // `currentTarget` only: a mousedown that began inside the card and ended out here is a
         // drag-select that overshot, not a click on the backdrop.
