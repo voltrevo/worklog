@@ -34,3 +34,8 @@ worklog-check/
 # Test scratch; the directory itself is tracked so a narrow write grant works.
 .tmp/*
 !.tmp/.gitkeep
+
+# The dev server's self-signed TLS cert, if one has been generated (27.27): it exists only so that
+# a LAN origin is a secure context and `crypto.subtle` is defined. A private key regardless of how
+# little it proves.
+web/.certs/

@@ -802,3 +802,8 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 27.25. MUST run the server and the desktop app with the narrowest Deno permissions that work, rather than with `-A`. Read and write MUST name the directories actually used, and every other permission MUST be justified by something the process does.
 27.26. MUST fail visibly rather than silently when a permission is missing: a process that cannot read its data directory should say which permission it needed, since a denied read surfaces as an unrelated error otherwise.
+
+### The dev server
+
+27.27. MUST let the development frontend be served over HTTPS when a certificate has been generated for it, and MUST leave a clone with none behaving exactly as it does now. 24.38 tells somebody on a LAN address to serve over HTTPS or open 127.0.0.1, and on a phone neither was available — so section 23's mobile presentation could only ever be exercised by a narrow viewport rather than by a phone.
+27.28. MUST NOT bind the development server to anything but the loopback address by default; exposing it on every interface is a decision for the run, made by forwarding vite's own `--host`.
