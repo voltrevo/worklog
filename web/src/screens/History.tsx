@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
 import { duration, hours, longDate, monthName, timeOfDay } from "../format.ts";
+import { addDays } from "@worklog/shared/dates";
 import { MonthNav } from "./MonthNav.tsx";
 import { EntryEditor } from "./EntryEditor.tsx";
 import { Dialog } from "./Dialog.tsx";
@@ -41,7 +42,16 @@ export function History() {
   const days = [...byDay.keys()].sort().reverse();
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    /*
+     * 27.17 — two spacings, and they mean something.
+     *
+     * One gap for everything put the month's totals, the control that adds to it, and every day
+     * of the month at the same distance from each other — so the page read as nine unrelated
+     * cards rather than a summary and a list. The smaller gap holds a group together; the larger
+     * one separates groups. The month card and "Add past time" are one group, and each run of
+     * consecutive days with work in it is another, so a day nobody worked shows up as space.
+     */
+    <div className="stack historystack">
       <div className="row between wrap">
         {presentation === "desktop" && <h1>History</h1>}
         <MonthNav month={month} setMonth={setMonth} />
@@ -75,11 +85,15 @@ export function History() {
             No work recorded in {monthName(month)}.
           </div>
         )
-        : days.map((date) => {
+        : days.map((date, i) => {
           const entries = byDay.get(date)!;
           const total = entries.reduce((t, e) => t + e.durationMs, 0);
+          // Newest first, so the previous card is the *next* day. A break is any day between the
+          // two with nothing recorded, and the first card always starts a group.
+          const previous = days[i - 1];
+          const consecutive = previous !== undefined && addDays(date, 1) === previous;
           return (
-            <div className="card" key={date}>
+            <div className={`card${consecutive ? "" : " groupstart"}`} key={date}>
               <div className="row between" style={{ marginBottom: 10 }}>
                 <h2>{longDate(date)}</h2>
                 <span className="pill accent tabular">{duration(total)}</span>

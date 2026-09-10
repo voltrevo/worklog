@@ -1951,3 +1951,41 @@ button.maskfield:disabled {
     width: 1px;
   }
 }
+
+/*
+ * 27.17 — the history screen's two spacings.
+ *
+ * Everything on it used to sit `--s-4` apart, so the month's totals, the control that adds to
+ * them and every day of the month were equally related to each other, which is to say not
+ * related at all. The stack's own gap now holds a *group* together and `.groupstart` separates
+ * one group from the next: the month card with "Add past time", and then each run of consecutive
+ * days. A day nobody worked is the space between two of them.
+ */
+.historystack {
+  gap: var(--s-2);
+}
+
+/*
+ * `.card + .card` adds its own `--s-4` on top of whatever stack a card is in, which is why every
+ * day on this screen sat the same distance from the next however the gap was set. Inside this
+ * stack the spacing is the stack's business.
+ */
+.historystack > .card + .card {
+  margin-top: 0;
+}
+
+/*
+ * Written to out-specify the rule above rather than to follow it.
+ *
+ * `.historystack > .card + .card` is three classes; `.historystack > .groupstart` is two, so
+ * source order never came into it and every gap stayed at zero. The only break that showed was
+ * the first day's, because the thing above it is not a card.
+ */
+.historystack > .card + .card.groupstart {
+  margin-top: var(--s-6);
+}
+
+/* The first day card, whose predecessor is the button row rather than a card. */
+.historystack > .groupstart {
+  margin-top: var(--s-6);
+}

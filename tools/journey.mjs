@@ -523,6 +523,40 @@ async function main() {
       async (p) => (await p.getByText(TAG).count()) > 0,
     ),
   );
+  /*
+   * 27.17 — the spacing on this screen says something.
+   *
+   * One gap for everything put the month's totals, the control that adds to it, and every day at
+   * the same distance apart, so the page read as a pile of cards rather than a summary and a list.
+   * The smaller gap holds a group together and the larger one separates them, and a day nobody
+   * worked is the space between two runs of days.
+   */
+  const dayGaps = await desktop.page.evaluate(() => {
+    const cards = [...document.querySelectorAll(".historystack > .card")]
+      .map((el) => ({
+        date: el.querySelector("h2")?.textContent?.trim() ?? "",
+        top: el.getBoundingClientRect().top,
+        bottom: el.getBoundingClientRect().bottom,
+      }))
+      .filter((c) => c.date);
+    const day = (text) => Number(text.split(" ")[1]);
+    return cards.slice(1).map((c, i) => ({
+      after: cards[i].date,
+      before: c.date,
+      // Newest first, so consecutive means the day number falls by exactly one.
+      consecutive: day(cards[i].date) - day(c.date) === 1,
+      gap: +(c.top - cards[i].bottom).toFixed(1),
+    }));
+  });
+  const together = dayGaps.filter((g) => g.consecutive).map((g) => g.gap);
+  const apart = dayGaps.filter((g) => !g.consecutive).map((g) => g.gap);
+  check(
+    "27.17 — a run of consecutive days is one group, and a missing day breaks it",
+    together.length > 1 && apart.length > 0 &&
+      new Set(together).size === 1 && Math.min(...apart) > Math.max(...together),
+    JSON.stringify(dayGaps),
+  );
+
   await nav(desktop.page, "Timer");
   // Not "Not working": the phone said that before the timer ever started, so it could not
   // disagree. The entry carrying this run's tag is something that was not there a moment ago.
