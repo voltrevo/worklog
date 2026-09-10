@@ -1203,9 +1203,52 @@ async function main() {
   // 25.28 — the duration is the interval, and the field says so by being unavailable rather than
   // by accepting a number and discarding it, which is what it used to do.
   const howLong = desktop.page.getByLabel("How long");
+  const spanBefore = await howLong.inputValue();
   check("25.28 — a timed entry's duration cannot be typed into", await howLong.isDisabled());
 
-  const spanBefore = await howLong.inputValue();
+  /*
+   * 27.19 — From and To on one line.
+   *
+   * Their tops, not their order in the DOM: the editor's grid is `auto-fit`, so before the pair
+   * had a row of its own the two boxes were adjacent in the markup and on separate rows on screen
+   * at exactly the widths a phone uses.
+   */
+  const boxTop = async (name) =>
+    (await desktop.page.getByLabel(name, { exact: true }).boundingBox())?.y;
+  const [fromTop, toTop] = [await boxTop("From"), await boxTop("To")];
+  check(
+    "27.19 — start and end are on one line",
+    fromTop !== undefined && toTop !== undefined && Math.abs(fromTop - toTop) < 2,
+    `From at ${fromTop}, To at ${toTop}`,
+  );
+
+  /*
+   * 27.20 — one control for the shape, on an existing entry as on a new one, and it goes back.
+   *
+   * What this replaced was a dropdown when adding and a one-way "Convert to a duration only — this
+   * discards the start and end times" button when editing. Nothing is discarded until Save, so the
+   * times have to survive a round trip through the other shape.
+   */
+  const recordAs = desktop.page.getByLabel("Record as");
+  const [wasFrom, wasTo] = [
+    await desktop.page.getByLabel("From", { exact: true }).inputValue(),
+    await desktop.page.getByLabel("To", { exact: true }).inputValue(),
+  ];
+  await recordAs.selectOption({ label: "a duration" });
+  check(
+    "27.20 — an existing timed entry can be switched to a duration from the dropdown",
+    (await desktop.page.getByLabel("From", { exact: true }).count()) === 0 &&
+      !(await howLong.isDisabled()) && !["", "—"].includes(await howLong.inputValue()),
+    `how long: ${await howLong.inputValue()} (was ${spanBefore})`,
+  );
+  await recordAs.selectOption({ label: "start and end" });
+  check(
+    "27.20 — and switching back gives the times back",
+    (await desktop.page.getByLabel("From", { exact: true }).inputValue()) === wasFrom &&
+      (await desktop.page.getByLabel("To", { exact: true }).inputValue()) === wasTo,
+    `${wasFrom}–${wasTo}`,
+  );
+
   await desktop.page.getByLabel("From", { exact: true }).fill("09:00");
   await desktop.page.getByLabel("To", { exact: true }).fill("11:30");
   // 25.29 — before saving, not after.

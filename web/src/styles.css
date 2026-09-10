@@ -2009,3 +2009,22 @@ button.maskfield:disabled {
   border-top: 1px solid var(--line);
   font-size: 13px;
 }
+
+/*
+ * 27.19 — a start and an end are one fact, so they sit on one line.
+ *
+ * The editor's grid is `auto-fit, minmax(150px, 1fr)`, which at some widths puts From and To on
+ * separate rows and at others separates them with the date. Spanning the row keeps them together
+ * and keeps them adjacent. `min-width: 0` because a time input's intrinsic width is wider than
+ * half a narrow column, and without it the grid refuses to shrink and the card scrolls sideways.
+ */
+.timepair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+}
+
+.timepair input {
+  min-width: 0;
+}

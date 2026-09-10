@@ -14,8 +14,14 @@
  * **25.28 is the substantive change.** A timed entry's duration box used to be editable, and what
  * you typed into it was discarded: the save path computed the duration from the interval and never
  * looked. Silently. It is read-only now and recomputes as the times change (25.29), which is the
- * honest version of the same claim — the duration *is* the interval. Converting to duration-only
- * is a deliberate button, because it throws the times away.
+ * honest version of the same claim — the duration *is* the interval.
+ *
+ * **27.20 finished the job 25.30 started.** One component, but not yet one form: adding chose the
+ * shape from a dropdown, and editing hid the dropdown and offered a one-way button reading
+ * "Convert to a duration only — this discards the start and end times". Two controls for one
+ * choice, and the button's warning was about a loss that has not happened — nothing is saved until
+ * Save, and the times sit in state the whole time the duration box is showing. So it is the same
+ * dropdown in both, both ways, and switching back gives the times back.
  */
 
 import { useRef, useState } from "react";
@@ -144,25 +150,42 @@ export function EntryEditor(
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
 
-          {
-            /*
-            The shape is a choice only for a new entry. On an existing one it is a fact about what
-            was recorded, and changing it in either direction destroys or invents information — so
-            the one direction that is wanted (25.28) is a button that says what it does.
-          */
-          }
-          {!entry && (
-            <label className="field">
-              Record as
-              <select value={shape} onChange={(e) => setShape(e.target.value as Shape)}>
-                <option value="duration">a duration</option>
-                <option value="times">start and end</option>
-              </select>
-            </label>
-          )}
+          {/* 27.20 — the same control on an existing entry as on a new one, both directions. */}
+          <label className="field">
+            Record as
+            <select
+              value={shape}
+              onChange={(e) => {
+                const next = e.target.value as Shape;
+                /*
+                 * Seed the duration box from the interval, but only when nothing has been typed
+                 * into it. A duration you wrote is yours: switching to times and back has to give
+                 * that back rather than a number recomputed from the times you left behind.
+                 *
+                 * Falling back to the entry's own duration, because the boxes carry HH:MM and a
+                 * session shorter than a minute has a start and an end that are equal — no
+                 * interval, and an empty box would be the one reading of a real two-second entry
+                 * that is false.
+                 */
+                const known = spanMs ?? entry?.durationMs;
+                if (next === "duration" && !text.trim() && known !== undefined) {
+                  setText(duration(known));
+                }
+                setShape(next);
+              }}
+            >
+              <option value="duration">a duration</option>
+              <option value="times">start and end</option>
+            </select>
+          </label>
 
+          {
+            /* 27.19 — one line, because they are one thing. The pair takes a whole row of the
+               grid, so the two boxes sit side by side at every width instead of the auto-fit
+               deciding to stack them. */
+          }
           {shape === "times" && (
-            <>
+            <div className="timepair">
               <label className="field">
                 From
                 <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -171,7 +194,7 @@ export function EntryEditor(
                 To
                 <input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
               </label>
-            </>
+            </div>
           )}
 
           <label className="field">
@@ -207,22 +230,6 @@ export function EntryEditor(
             {tags.map((t) => <option key={t} value={t} />)}
           </datalist>
         </div>
-
-        {shape === "times" && entry && (
-          <button
-            className="link danger"
-            type="button"
-            style={{ alignSelf: "flex-start" }}
-            onClick={() => {
-              // Seeded with what the interval came to, so the conversion starts from the truth
-              // rather than from an empty box.
-              setText(duration(spanMs ?? entry.durationMs));
-              setShape("duration");
-            }}
-          >
-            Convert to a duration only — this discards the start and end times
-          </button>
-        )}
 
         {problem && <div className="notice bad">{problem}</div>}
 

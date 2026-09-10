@@ -78,6 +78,23 @@ async function main() {
   }
 
   /*
+   * 27.19 — the entry editor, on both presentations, in the shape with the most in it.
+   *
+   * The same reasoning as the viewer above: it is a dialog, `capture` walks navigation, so the
+   * form where a start and an end sit beside a date, a shape, a duration and a tag has never been
+   * photographed. It is also six fields in an `auto-fit` grid, which is precisely the kind of
+   * layout that is fine at the width you developed it at.
+   */
+  for (const [label, device] of [["desktop", desktop], ["mobile", mobile]]) {
+    await device.page.getByRole("button", { name: "History", exact: true }).click();
+    await device.page.getByRole("button", { name: "Add past time" }).click();
+    await device.page.getByRole("dialog").waitFor({ timeout: 20_000 });
+    await device.page.getByLabel("Record as").selectOption({ label: "start and end" });
+    await shot(device.page, `entry-editor-${label}`);
+    await device.page.getByRole("button", { name: "Cancel" }).click();
+  }
+
+  /*
    * 19.17 — and the other half of the CSS.
    *
    * The dark palette is a second set of every colour in this app and went unlooked-at for its
