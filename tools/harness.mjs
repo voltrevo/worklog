@@ -15,6 +15,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { serverFlags } from "./serverFlags.mjs";
 import { createServer } from "node:http";
 import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -79,10 +80,24 @@ export function run(cmd, args, opts = {}) {
 /** Start the server and wait for the address it prints, which is the only way in (22.1). */
 function startServer(dataDir, port) {
   return new Promise((resolve, reject) => {
+    /*
+     * 27.25 — the flags the shipped `serve` task uses, not `-A`.
+     *
+     * The journey is what proves the permission set is enough: 164 checks driving every path the
+     * server has, including the ones that write a PDF and read an audio file back. A harness
+     * running with more than the product does would pass on permissions the product lacks.
+     *
+     * `--allow-read`/`--allow-write` name `./data`, and this runs against a directory under
+     * `.tmp`, so the harness adds its own. That is the same adjustment anybody passing `--data`
+     * has to make, which is the honest cost of a scoped permission and is what 27.26 is about.
+     */
     const p = spawn("deno", [
       "run",
-      "-A",
-      "--node-modules-dir=manual",
+      ...serverFlags().map((flag) =>
+        flag.startsWith("--allow-read=") || flag.startsWith("--allow-write=")
+          ? `${flag},${dataDir}`
+          : flag
+      ),
       "server/main.ts",
       "--port",
       String(port),
@@ -126,7 +141,16 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
     console.log("seeding…");
     // Seeded in the timezone the browser runs in, or the fixture's nine-to-fives render as night
     // shifts -- the entry timings are instants, and only the *dates* are zone-free.
-    await run("deno", ["run", "-A", "--node-modules-dir=manual", "tools/seed.ts", dataDir], {
+    // 27.25 — what the shipped `seed` task uses, with this run's directory in place of ./data.
+    await run("deno", [
+      "run",
+      "--node-modules-dir=manual",
+      `--allow-read=${dataDir}`,
+      `--allow-write=${dataDir}`,
+      "--allow-env=WORKLOG_SEED_PROMPT_MS",
+      "tools/seed.ts",
+      dataDir,
+    ], {
       env: { ...process.env, TZ: "Australia/Sydney", ...seedEnv },
     });
   } else {

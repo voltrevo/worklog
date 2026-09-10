@@ -39,6 +39,11 @@
  * being careful. The grants it does take are `read`, `write` and `env`, for the device files and
  * for finding where they go.
  *
+ * 27.25 narrowed `env` to `HOME,USERPROFILE,XDG_CONFIG_HOME`, which is exactly what `dataDir()`
+ * below reads. `read` and `write` are still unscoped, and that is a limitation rather than a
+ * decision: the directory is computed at runtime from those three variables, and a flag baked into
+ * a build cannot name a path that does not exist until the build runs somewhere.
+ *
  * A packaged app has no terminal, so a permission *prompt* does not fail — it hangs. The first
  * build without those flags started, found its bundle, and stopped dead on the `Deno.env.get`
  * below with nowhere to ask.

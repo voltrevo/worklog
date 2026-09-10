@@ -220,3 +220,53 @@ Deno.test({
     assertEquals(numbers.length > 500, true, `only found ${numbers.length} requirements`);
   },
 });
+
+Deno.test({
+  name: "27.25 -- no task runs with -A",
+  permissions: { read: ["."] },
+  async fn() {
+    /*
+     * The easy thing to type, and the thing this whole requirement is against. It is also the easy
+     * thing to *reach for* when a task fails on a permission: the fix is to name the permission,
+     * and `-A` is always right there making that unnecessary.
+     *
+     * A guard rather than a review note, because a task string is read once when it is written and
+     * never again, and nothing else in the suite would notice.
+     */
+    const config = JSON.parse(await Deno.readTextFile(new URL("../deno.json", import.meta.url)));
+    const offenders = Object.entries(config.tasks as Record<string, string>)
+      .filter(([name]) => !name.startsWith("//"))
+      .filter(([, cmd]) => / -A\b/.test(cmd) || cmd.includes("--allow-all"))
+      .map(([name]) => name);
+    assertEquals(offenders, [], "a task grants every permission (27.25)");
+  },
+});
+
+Deno.test({
+  name: "27.25 -- the serve task is the shape the harness reads its flags from",
+  permissions: { read: ["."] },
+  async fn() {
+    /*
+     * `tools/serverFlags.mjs` lifts the permission flags out of the `serve` task so the journey
+     * runs the server the way the product does. It throws on an unexpected shape, but only when
+     * something runs it — and the thing that runs it is a five-minute browser suite, which is a
+     * long way to go to be told a task was reworded.
+     */
+    const config = JSON.parse(await Deno.readTextFile(new URL("../deno.json", import.meta.url)));
+    const found = /^deno run (.+) server\/main\.ts$/.exec(config.tasks.serve);
+    assertEquals(
+      found !== null,
+      true,
+      `the serve task must be "deno run <flags> server/main.ts", and is: ${config.tasks.serve}`,
+    );
+    // And the flags are the ones 27.25 argues for, so a quiet widening is a red test rather than a
+    // diff nobody reads.
+    assertEquals((found?.[1] ?? "").split(" ").filter((f) => f.startsWith("--allow-")).sort(), [
+      "--allow-ffi=./node_modules",
+      "--allow-net",
+      "--allow-read=./data,./node_modules",
+      "--allow-sys=networkInterfaces",
+      "--allow-write=./data",
+    ]);
+  },
+});

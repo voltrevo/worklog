@@ -279,8 +279,44 @@ function startPruneLoop(ctx: ServerContext): void {
   }, 3_600_000);
 }
 
+/**
+ * 27.26 — a missing permission says which one, and what to do about it.
+ *
+ * The scoped flags of 27.25 buy safety at the price of a new way to fail: run with `--data`
+ * somewhere the flags do not name and Deno raises `NotCapable` from whichever call happened to
+ * touch the disk first. What that printed was `Requires write access to ".tmp/x", run again with
+ * the --allow-write flag` — true, and it names neither the directory that was asked for nor the
+ * fact that a *read* flag is needed too, so the obvious next attempt fails again on the other one.
+ *
+ * The exit code is 2, as for an unknown argument: this is a problem with how the process was
+ * started, not a crash.
+ */
+function explainPermission(err: unknown, data: string): boolean {
+  if (!(err instanceof Deno.errors.NotCapable)) return false;
+  console.error(`worklog: not allowed to use the data directory ${data}.`);
+  console.error("");
+  console.error("  The server runs with permissions scoped to ./data. For another directory:");
+  console.error("");
+  console.error(
+    `    deno run --node-modules-dir=manual --allow-read=${data},./node_modules \\`,
+  );
+  console.error(
+    `      --allow-write=${data} --allow-net --allow-sys=networkInterfaces \\`,
+  );
+  console.error(
+    `      --allow-ffi=./node_modules server/main.ts --data ${data}`,
+  );
+  console.error("");
+  console.error(`  Deno said: ${(err as Error).message}`);
+  return true;
+}
+
 if (import.meta.main) {
+  // Parsed here as well as in `main`, because the message above needs the directory and the
+  // failure that produces it happens before `main` has anything to hand back.
+  const data = parseArgs(Deno.args).data;
   await main().catch((err) => {
+    if (explainPermission(err, data)) Deno.exit(2);
     console.error(`worklog: ${(err as Error).message}`);
     console.error(`  in ${dirname(new URL(import.meta.url).pathname)}`);
     Deno.exit(1);
