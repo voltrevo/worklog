@@ -80,9 +80,20 @@ export const HIDDEN_GROUPS = {
   address: ["fromAddress"],
 } as const satisfies Record<string, readonly typeof SENSITIVE_INVOICE_FIELDS[number][]>;
 
-/** 5.7 — how often a work-detail prompt should fire, on average. */
+/**
+ * 5.7 — how often a work-detail prompt should fire, on average.
+ *
+ * `null` until somebody sets it, and 27.30 is why it is not a number with a plausible value in it.
+ * It was `45 * 60_000`: a cadence nobody chose, shown in the settings box as though somebody had.
+ * The same fault as the `"AUD"` and `"Wire Transfer"` that 24.35–24.37 deleted, and it survived
+ * that sweep because a wrong interval does not print itself onto a document.
+ *
+ * A blank asks. There is no cadence that is right for everybody, and inventing one means the
+ * screen cannot tell "45 minutes, chosen" from "nothing here yet" — which is exactly what a lost
+ * update then wrote back to the server.
+ */
 export interface PromptConfig {
-  meanIntervalMs: number;
+  meanIntervalMs: number | null;
   enabled: boolean;
 }
 
@@ -128,7 +139,8 @@ export const DEFAULTS: Config = {
     payBank: "",
   },
   prompt: {
-    meanIntervalMs: 45 * 60_000,
+    // 27.30 — no default. See `PromptConfig`.
+    meanIntervalMs: null,
     enabled: false,
   },
 };
@@ -179,6 +191,26 @@ export function setConfig<K extends keyof Config>(
     Object.entries(value).filter(([k]) => k in known),
   ) as Partial<Config[K]>;
   const merged = { ...getConfig(db, key), ...accepted };
+
+  /*
+   * 27.30 — prompts cannot be on without a cadence to be on at.
+   *
+   * Removing the invented 45-minute default created a state that could not exist before: enabled,
+   * and no interval. `probabilityFor` would read it as "never", so the checkbox would say the
+   * prompts were on and no prompt would ever come — a lie told by a control that looks set.
+   *
+   * Checked on the *result* rather than on the request, because the request that reaches it does
+   * not mention the interval: it is `{enabled: true}` against a config that has none. A rule about
+   * a pair of values belongs where the pair exists. (The other way in is closed already — `null`
+   * is not a number, so an interval can be changed but never taken back out.)
+   */
+  if (key === "prompt") {
+    const p = merged as PromptConfig;
+    if (p.enabled && (p.meanIntervalMs === null || p.meanIntervalMs === undefined)) {
+      throw new Refused("bad-config", "Prompts need an interval before they can be switched on.");
+    }
+  }
+
   db.prepare(
     `INSERT INTO config (key, value_json, updated_at) VALUES (?, ?, ?)
      ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json,

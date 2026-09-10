@@ -23,7 +23,7 @@ const REPO = "https://github.com/voltrevo/worklog";
 interface ConfigWire {
   pacing: PacingConfig;
   invoice: PublicInvoiceConfig;
-  prompt: { meanIntervalMs: number; enabled: boolean };
+  prompt: { meanIntervalMs: number | null; enabled: boolean };
 }
 
 export function Settings() {
@@ -849,7 +849,7 @@ function InvoiceCard(
 
 function PromptCard(
   { cfg, canWrite, save, result }: {
-    cfg: { meanIntervalMs: number; enabled: boolean };
+    cfg: { meanIntervalMs: number | null; enabled: boolean };
     canWrite: boolean;
     save: (s: "prompt", v: Record<string, unknown>) => Promise<boolean>;
     result?: { problem?: string };
@@ -864,9 +864,19 @@ function PromptCard(
    * interval anywhere else and this screen went on showing, and on offering to save, the number it
    * had been opened with.
    */
-  const { value, edits, set, touched, clear } = useEdits({
-    minutes: Math.round(cfg.meanIntervalMs / 60_000),
+  /*
+   * 27.30 — `null` shows as an empty box, not as a number.
+   *
+   * The server has no default interval any more, and this is the other half of that: an unset
+   * cadence has to *look* unset. Anything else and the screen is back to being unable to say
+   * whether 45 was chosen or assumed.
+   */
+  const { value, edits, set, touched, clear } = useEdits<{ minutes: number | null | undefined }>({
+    minutes: cfg.meanIntervalMs === null ? null : Math.round(cfg.meanIntervalMs / 60_000),
   });
+  const minutes = value.minutes;
+  /** A number, or nothing yet. `undefined` is a box holding something that is not a number. */
+  const usable = typeof minutes === "number";
   return (
     <div className="card">
       <h3>Work-detail prompts</h3>
@@ -877,18 +887,23 @@ function PromptCard(
       </p>
       <div className="row wrap" style={{ alignItems: "flex-end" }}>
         <label className="checkfield">
+          {
+            /* 27.30 — the switch cannot be turned on without a cadence to turn on. The server
+               refuses that state; disabling it here is so the refusal is not the way anybody
+               finds out. */
+          }
           <input
             type="checkbox"
             checked={cfg.enabled}
-            disabled={!canWrite}
+            disabled={!canWrite || (!cfg.enabled && cfg.meanIntervalMs === null)}
             onChange={(e) => void save("prompt", { enabled: e.target.checked })}
           />
           Ask me sometimes
         </label>
         <Num
           label="About every (minutes)"
-          value={value.minutes === undefined ? "" : String(value.minutes)}
-          set={(n) => set("minutes", n as number)}
+          value={typeof minutes === "number" ? String(minutes) : ""}
+          set={(n) => set("minutes", n)}
           can={canWrite}
           width={110}
         />
@@ -899,14 +914,14 @@ function PromptCard(
             // It used to fall back to 45 when this did not parse, which is a number nobody chose
             // arriving on the server as though they had. Nothing changed is its own reason not to
             // write: an untouched card has nothing to say about a value it may not have seen.
-            disabled={!touched || value.minutes === undefined}
+            disabled={!touched || !usable}
             title={!touched
               ? "Nothing has changed."
-              : value.minutes === undefined
+              : !usable
               ? "The interval is not a number."
               : undefined}
             onClick={() =>
-              void save("prompt", { meanIntervalMs: edits.minutes! * 60_000 })
+              void save("prompt", { meanIntervalMs: (edits.minutes as number) * 60_000 })
                 .then((ok) => ok && clear())}
           >
             Save
@@ -915,6 +930,12 @@ function PromptCard(
         <SaveResult result={result} />
       </div>
       <SaveProblem result={result} />
+      {cfg.meanIntervalMs === null && (
+        <p className="faint" style={{ fontSize: 12, marginBottom: 0 }}>
+          No interval is set, so there is nothing to switch on yet. There is no sensible default for
+          how often to be interrupted.
+        </p>
+      )}
     </div>
   );
 }

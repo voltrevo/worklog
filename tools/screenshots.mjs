@@ -230,6 +230,25 @@ async function main() {
   });
   const { desktop: fresh } = await claimAndApprove(bare);
   await capture(fresh.page, "firstrun");
+
+  /*
+   * 27.30 — and the one first-run state that has a rule of its own.
+   *
+   * The prompt interval has no default any more, so on this server the box is empty and the switch
+   * cannot be turned on. That is the state the seed can never show, and the whole point of the
+   * change is what it looks like: a screen that says it has nothing rather than a screen with a
+   * number in it that nobody chose.
+   */
+  await fresh.page.getByRole("button", { name: "Settings", exact: true }).click();
+  await fresh.page.getByText("Work-detail prompts").waitFor({ timeout: 20_000 });
+  const freshInterval = await fresh.page.getByLabel("About every (minutes)").inputValue();
+  const freshSwitch = await fresh.page.getByLabel("Ask me sometimes").isDisabled();
+  if (freshInterval !== "" || !freshSwitch) {
+    throw new Error(
+      `a fresh server should offer no interval and no switch, and offered ` +
+        `"${freshInterval}" with the switch ${freshSwitch ? "off" : "available"}`,
+    );
+  }
   await bare.close();
 
   const failures = rig.errors.length + bare.errors.length;

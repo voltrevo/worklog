@@ -228,6 +228,9 @@ async function serveStream(ctx: ServerContext, session: Session, stream: KpsStre
  * handlers, so a timer started before this process did — the database outlives the process — is
  * picked up on the next tick rather than never.
  */
+/** 27.30 — one warning per run about prompts enabled with no interval; see the poll loop. */
+let warnedAboutInterval = false;
+
 function startPromptLoop(ctx: ServerContext): void {
   const scheduler = new PromptScheduler();
   setInterval(() => {
@@ -240,6 +243,26 @@ function startPromptLoop(ctx: ServerContext): void {
     }
     if (!scheduler.running) scheduler.onTimerStarted(timer.startedAt);
     if (!cfg.enabled) return;
+
+    /*
+     * 27.30 — on, with no cadence. `setConfig` refuses to write that state, but a database written
+     * before that rule can hold it, and `poll(null)` would read as "never fire": a switch that
+     * says prompts are on and no prompt ever arriving.
+     *
+     * Said once, at warning level, rather than every two seconds — this loop runs for as long as
+     * the server does, and a line per poll would bury the log it is trying to appear in.
+     */
+    if (cfg.meanIntervalMs === null) {
+      if (!warnedAboutInterval) {
+        warnedAboutInterval = true;
+        ctx.log(
+          "warn",
+          "prompts",
+          "prompts are switched on with no interval set, so none will fire; set one in Settings",
+        );
+      }
+      return;
+    }
 
     if (scheduler.poll(Date.now(), cfg.meanIntervalMs)) {
       // 5.15 -- one event per trigger. `fire` returns null when it was dropped (5.18).

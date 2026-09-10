@@ -101,3 +101,41 @@ Deno.test("25.3 -- a configuration value that cannot be meant is refused", () =>
   assertEquals(getConfig(db, "pacing").monthlyTargetHours, 160);
   db.close();
 });
+
+Deno.test("27.30 -- there is no default prompt interval, and none can be invented", () => {
+  const db = open({ path: ":memory:" });
+
+  /*
+   * A cadence nobody chose is not a cadence. This was `45 * 60_000`, and the settings box could
+   * not tell you whether 45 was your answer or the code's — which is how a screen that had never
+   * been used came to write 45 back over somebody's 60 (27.29).
+   */
+  assertEquals(getConfig(db, "prompt").meanIntervalMs, null);
+  assertEquals(getConfig(db, "prompt").enabled, false);
+
+  // And the state that removing it creates is refused rather than stored: prompts on, with no
+  // interval, would poll `null` for ever and never fire while the switch said they were on.
+  assertThrows(
+    () => setConfig(db, "prompt", { enabled: true }),
+    Refused,
+    "interval",
+  );
+  assertEquals(getConfig(db, "prompt").enabled, false);
+
+  // With one set, it goes on.
+  setConfig(db, "prompt", { meanIntervalMs: 30 * 60_000 });
+  setConfig(db, "prompt", { enabled: true });
+  assertEquals(getConfig(db, "prompt").enabled, true);
+
+  // And `null` is where an interval starts, not somewhere it can be put back to: the number check
+  // refuses it like any other non-number, so "unset" is reachable only by never having set one.
+  // Worth pinning, because it is what makes `enabled: true` the single way to reach the bad pair.
+  assertThrows(
+    () => setConfig(db, "prompt", { meanIntervalMs: null }),
+    Refused,
+    "meanIntervalMs must be a number",
+  );
+  assertEquals(getConfig(db, "prompt").meanIntervalMs, 30 * 60_000);
+
+  db.close();
+});
