@@ -450,14 +450,43 @@ export function invoiceWarnings(
     }
   }
 
+  /*
+   * The snapshots' entry ids, as sets, once (27.36).
+   *
+   * Both loops below ask "is this entry in that invoice", and both asked it with
+   * `entryIds.includes(...)` — a scan of one invoice's ids for every entry, inside a loop over
+   * every invoice. This whole function runs on *every* snapshot, which is every event the server
+   * pushes to every device, and it went quadratic: measured at 1.9ms for two years of work and
+   * 84ms for twenty, on a machine with nothing else to do.
+   *
+   * Built here rather than inside either loop, because the second loop would otherwise rebuild the
+   * same set for each invoice on each pass.
+   */
+  const idsOf = new Map(
+    committed.filter((i) => i.snapshot).map((i) => [i.id, new Set(i.snapshot!.entryIds)]),
+  );
+
   // 11.25 -- work inside an invoiced month that the invoice does not know about.
   for (const e of entries) {
     const inv = byMonth.get(monthOf(e.date));
     if (!inv) continue;
-    const ids = inv.snapshot?.entryIds;
-    if (ids && !ids.includes(e.id)) {
+    const ids = idsOf.get(inv.id);
+    if (ids && !ids.has(e.id)) {
       out.push({ kind: "missing-from-invoice", entry: e, invoice: inv });
     }
+  }
+
+  /*
+   * And the entries grouped by month, so the second loop looks at one month rather than at all of
+   * them. `printedHours` discards everything outside the period anyway, so this changes only how
+   * much work is done to arrive at the same number.
+   */
+  const byPeriod = new Map<string, WorkEntry[]>();
+  for (const e of entries) {
+    const month = monthOf(e.date);
+    const list = byPeriod.get(month);
+    if (list) list.push(e);
+    else byPeriod.set(month, [e]);
   }
 
   /*
@@ -479,7 +508,8 @@ export function invoiceWarnings(
   for (const inv of committed) {
     const snap = inv.snapshot;
     if (!snap) continue;
-    const kept = entries.filter((e) => snap.entryIds.includes(e.id));
+    const ids = idsOf.get(inv.id)!;
+    const kept = (byPeriod.get(inv.period) ?? []).filter((e) => ids.has(e.id));
     const nowHours = printedHours(kept, inv.period);
     // A tenth is the resolution the document prints at, so anything smaller is not a disagreement
     // the reader could see. Half of one, to stay clear of binary addition.

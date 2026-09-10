@@ -395,3 +395,65 @@ Deno.test("adding work to an invoiced month is reported once, as the addition it
   const warnings = invoiceWarnings([...original, entry("late", "2026-09-12", 2)], invoices);
   assertEquals(warnings.map((w) => w.kind), ["missing-from-invoice"]);
 });
+
+Deno.test("27.36 -- the warning pass stays linear in how much work there is", () => {
+  /*
+   * `invoiceWarnings` runs on every snapshot, which is every event the server pushes to every
+   * connected device. It used to ask `snapshot.entryIds.includes(id)` — a scan of one invoice's
+   * ids — once per entry, inside a loop over every invoice, so its cost grew with the *product* of
+   * the two. Measured against a database: 1.9ms at two years of recorded work, 85ms at twenty.
+   *
+   * A wall-clock bound would be a flake on a shared machine. The shape is the property worth
+   * defending, and it is robust to how fast the machine is: quadruple the input and linear work
+   * takes about four times as long, while quadratic work takes about sixteen. The threshold sits
+   * between those, nearer the wrong answer, so the test fails on a return to quadratic and not on
+   * a slow morning.
+   */
+  const build = (years: number) => {
+    const entries: WorkEntry[] = [];
+    const invoices: InvoiceRecord[] = [];
+    for (let y = 0; y < years; y++) {
+      for (let m = 1; m <= 12; m++) {
+        const period = `2016-${String(m).padStart(2, "0")}`.replace("2016", String(2016 + y));
+        const mine: WorkEntry[] = [];
+        for (let d = 1; d <= 22; d++) {
+          const e = entry(
+            `${period}-${d}`,
+            `${period}-${String(d).padStart(2, "0")}`,
+            8,
+          );
+          mine.push(e);
+          entries.push(e);
+        }
+        const draft = buildDraft({ ...BASE, period, entries: mine });
+        invoices.push({
+          id: period,
+          period,
+          number: `INV-${period}`,
+          status: "issued",
+          snapshot: { ...draft, issuedAt: 1_759_000_000_000 },
+        });
+      }
+    }
+    return { entries, invoices };
+  };
+
+  const time = (years: number) => {
+    const { entries, invoices } = build(years);
+    // Once to let the engine settle, then the measured pass.
+    invoiceWarnings(entries, invoices);
+    const started = performance.now();
+    invoiceWarnings(entries, invoices);
+    return performance.now() - started;
+  };
+
+  const small = Math.max(time(3), 0.05);
+  const large = time(12);
+  const ratio = large / small;
+  assertEquals(
+    ratio < 8,
+    true,
+    `four times the work took ${ratio.toFixed(1)}x the time ` +
+      `(${small.toFixed(1)}ms then ${large.toFixed(1)}ms); linear is about 4x, quadratic about 16x`,
+  );
+});

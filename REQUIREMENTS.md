@@ -823,3 +823,7 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### The document about the document
 
 27.35. A struck requirement MUST say what replaced it, an item claiming to supersede another MUST leave that other one struck, and an item announcing its own supersession MUST itself be struck. The strike-through convention is the only record of why the product does something an earlier line forbids, and it is maintained by hand.
+
+### Cost on the hot path
+
+27.36. Work done on every snapshot MUST NOT grow with the product of two things that both grow. A snapshot is rebuilt for every event the server pushes to every connected device, so a pass over the whole history is affordable and a pass over the history once per invoice is not.
