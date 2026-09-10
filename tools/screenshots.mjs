@@ -277,6 +277,25 @@ async function main() {
   await mobile.page.getByText("Spare Tablet").waitFor({ timeout: 20_000 });
   await shot(mobile.page, "pending-mobile");
 
+  /*
+   * 27.34 — and the screens when something is wrong, which are the least-looked-at in any product.
+   *
+   * Every picture above is of things going right. `input.invalid` and `.field-note.bad` were
+   * excused as states the walk does not enter, and they are a keystroke away — that is not a state
+   * nobody photographs, it is a state nobody had bothered to.
+   *
+   * Trying to add `.pill.warn` to this is what taught me the excuse beside it was wrong. A device
+   * that can write never sees a status *pill* at all: 24.26 replaced Issue/Mark paid/Revert with
+   * one `<select>`, and the pill is the read-only rendering of the same fact. So it needs an
+   * issued invoice *and* a read-only device, and issuing is not reversible from here while every
+   * other picture wants the draft.
+   */
+  await desktop.page.getByRole("button", { name: "Settings", exact: true }).click();
+  await desktop.page.getByLabel("Monthly target (hours)").fill("not a number");
+  await desktop.page.locator("input.invalid").first().waitFor({ timeout: 15_000 });
+  await shot(desktop.page, "settings-invalid-desktop");
+  await desktop.page.getByLabel("Monthly target (hours)").fill("160");
+
   await rig.close();
 
   /*
@@ -291,6 +310,7 @@ async function main() {
    * A second rig rather than a flag on the first, because "unseeded" is a property of the
    * database and the database is made when the server starts.
    */
+
   console.log("\n  and the same screens on a server with nothing in it…");
   const bare = await startRig({
     dataDir: `${dataDir}-firstrun`,
@@ -441,15 +461,12 @@ const UNPHOTOGRAPHED = new Map([
   [".brand .dot.warn", "the connection dot while reconnecting"],
   [".day.missed", "a past workday with nothing recorded; the seed fills every one"],
   [".dropzone.over", "a file being dragged over the audio drop target"],
-  [".field-note", "the note under a settings field that is not a number"],
-  [".field-note.bad", "the same, in its bad state"],
   [".notice.bad", "a failed save; every save in this walk succeeds"],
-  [".pill.warn", "an issued invoice's status pill; the seeded one is a draft"],
+  [
+    ".pill.warn",
+    "an issued invoice seen by a read-only device — a writable one gets a <select>, not a pill",
+  ],
   ["i.swatch.missed", "the legend entry for .day.missed, and 27.32 shows only present states"],
-  ["input.invalid", "a settings field holding something that is not a number"],
-  ["input.invalid:focus", "the same, focused"],
-  ['input[aria-invalid="true"]', "the same, by its attribute"],
-  ['input[aria-invalid="true"]:focus', "the same again"],
 ]);
 
 const seenSelectors = new Set();
