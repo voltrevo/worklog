@@ -167,22 +167,7 @@ export type Request =
    * client that sent its own totals would be a second implementation of the arithmetic, and the
    * two would disagree the first time either changed.
    */
-  | {
-    t: "invoice-update";
-    id: string;
-    lines?: InvoiceLine[];
-    bonusLine?: InvoiceLine | null;
-    number?: string;
-    /** 25.12 — this draft's exceptions to the settings. Sent whole; `{}` clears them. */
-    config?: InvoiceConfigOverride;
-    /**
-     * 25.12's payment half. Write-only, like the settings screen's: the server never sends these
-     * back, so a blank means "leave what is stored" rather than "clear it".
-     */
-    paymentOverride?: PaymentOverride;
-    currency?: string;
-    taxRate?: number;
-  }
+  | ({ t: "invoice-update"; id: string } & InvoiceEdit)
   | { t: "invoice-issue"; id: string }
   | { t: "invoice-mark-paid"; id: string }
   | { t: "invoice-unmark-paid"; id: string }
@@ -316,6 +301,39 @@ export interface WorkNoteWire {
  * It lived in `Settings.tsx` until the invoice editor needed it too (25.12), to show what a blank
  * override falls through to.
  */
+/**
+ * What may be changed about a draft (27.47).
+ *
+ * Declared once. This shape existed three times: here as part of the request, again as
+ * `updateDraft`'s parameter on the server, and a third time as the list of fields the handler
+ * forwarded one by one. Adding a field to the first two and forgetting the third would accept it
+ * on the wire and drop it in silence, which is the worst of the three ways to be wrong — the
+ * device believes it saved.
+ *
+ * Every field is optional and absent means "leave it": JSON carries no `undefined`, so a key that
+ * is not there was not sent.
+ */
+export interface InvoiceEdit {
+  /**
+   * The rows, and only the rows: every total is derived on the server by `recomputeDraft`. A
+   * client that sent its own totals would be a second implementation of the arithmetic, and the
+   * two would disagree the first time either changed.
+   */
+  lines?: InvoiceLine[];
+  bonusLine?: InvoiceLine | null;
+  number?: string;
+  /** 25.12 — this draft's exceptions to the settings. Sent whole; `{}` clears them. */
+  config?: InvoiceConfigOverride;
+  /**
+   * 25.12's payment half, kept out of `draft_json` because that goes on the wire. Write-only like
+   * the settings screen's: the server never sends these back, so the device cannot send them
+   * unchanged, and they are merged rather than replaced — a blank means "leave what is stored".
+   */
+  paymentOverride?: PaymentOverride;
+  currency?: string;
+  taxRate?: number;
+}
+
 export interface PublicInvoiceConfig {
   fromName: string;
   fromEmail: string;

@@ -62,6 +62,7 @@ import { PromptHub } from "./prompts.ts";
 import {
   activeTimer,
   addEntry,
+  allEntries,
   deleteEntry,
   discardTimer,
   entriesInMonth,
@@ -628,15 +629,15 @@ export async function handle(
       // No `requireInvoiceConfig` here: the draft already exists, so the configuration was
       // complete when it was made, and refusing to let somebody fix a typo because an unrelated
       // setting was blanked since would be a refusal with nothing behind it.
-      const saved = updateDraft(db, req.id, {
-        ...(req.lines !== undefined ? { lines: req.lines } : {}),
-        ...(req.bonusLine !== undefined ? { bonusLine: req.bonusLine } : {}),
-        ...(req.number !== undefined ? { number: req.number } : {}),
-        ...(req.config !== undefined ? { config: req.config } : {}),
-        ...(req.currency !== undefined ? { currency: req.currency } : {}),
-        ...(req.taxRate !== undefined ? { taxRate: req.taxRate } : {}),
-        ...(req.paymentOverride !== undefined ? { paymentOverride: req.paymentOverride } : {}),
-      }, now);
+      /*
+       * 27.47 — forwarded whole, rather than field by field.
+       *
+       * This listed all seven, so adding one to the request meant remembering to add it here too;
+       * forgetting would accept the field and drop it, and the device would believe it had saved.
+       * `t` and `id` are what this handler is, and everything else is the edit by construction.
+       */
+      const { t: _t, id: _id, ...edit } = req;
+      const saved = updateDraft(db, req.id, edit, now);
       broadcast(ctx, { e: "changed", area: "invoices" });
       return onWire(saved);
     }
@@ -999,25 +1000,6 @@ function typeOf(path: string): string | undefined {
   if (path.endsWith(".m4a")) return "audio/mp4";
   if (path.endsWith(".webm")) return "audio/webm";
   return undefined;
-}
-
-function allEntries(db: Db) {
-  return db.prepare(
-    "SELECT id, date, duration_ms, billing_tag, started_at, ended_at FROM work_entry ORDER BY date",
-  ).all().map((r) => {
-    const row = r as unknown as {
-      id: string;
-      date: string;
-      duration_ms: number;
-      billing_tag: string;
-    };
-    return {
-      id: row.id,
-      date: row.date,
-      durationMs: Number(row.duration_ms),
-      billingTag: row.billing_tag,
-    };
-  });
 }
 
 export { transact };

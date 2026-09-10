@@ -48,6 +48,20 @@ function toEntry(row: EntryRow): WorkEntry {
 
 const SELECT = `SELECT id, date, duration_ms, billing_tag, started_at, ended_at FROM work_entry`;
 
+/**
+ * Every entry there has ever been, earliest first (27.47).
+ *
+ * `rpc.ts` had its own copy of this, and its own row-to-entry mapping that dropped `timing` while
+ * still selecting the two columns it comes from. Nothing read it, because the one caller counts
+ * hours — but `timing` is optional and its absence *means* duration-only, so a partial `WorkEntry`
+ * is not an incomplete value, it is a wrong one waiting for a second caller.
+ */
+export function allEntries(db: Db): WorkEntry[] {
+  return db.prepare(`${SELECT} ORDER BY date, started_at, id`)
+    .all()
+    .map((r) => toEntry(r as unknown as EntryRow));
+}
+
 /** Every entry in a calendar month, earliest first. The month is a string prefix (7.10). */
 export function entriesInMonth(db: Db, month: string): WorkEntry[] {
   return db.prepare(`${SELECT} WHERE substr(date, 1, 7) = ? ORDER BY date, started_at, id`)

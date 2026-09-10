@@ -11,6 +11,7 @@
  */
 
 import type { Instant, InvoiceStatus } from "@worklog/shared/types";
+import type { InvoiceEdit } from "@worklog/shared/protocol";
 import {
   appliedOverride,
   appliedPaymentOverride,
@@ -18,9 +19,7 @@ import {
   canIssue,
   defaultInvoiceNumber,
   dueDateFor,
-  type InvoiceConfigOverride,
   type InvoiceDraft,
-  type InvoiceLine,
   type InvoiceRecord,
   type InvoiceSnapshot,
   type PaymentOverride,
@@ -231,22 +230,9 @@ function unusedNumber(all: readonly StoredInvoice[], period: string): string {
 export function updateDraft(
   db: Db,
   id: string,
-  edit: {
-    lines?: InvoiceLine[];
-    bonusLine?: InvoiceLine | null;
-    number?: string;
-    /** 25.12. Replaces the draft's override wholesale; `{}` clears it. */
-    config?: InvoiceConfigOverride;
-    /**
-     * 25.12's other half, kept out of `draft_json` because that goes on the wire.
-     *
-     * Merged rather than replaced, and blanks ignored: the client cannot see what is stored, so
-     * it cannot send it back unchanged, and every save would otherwise wipe what it did not fill.
-     */
-    paymentOverride?: PaymentOverride;
-    currency?: string;
-    taxRate?: number;
-  },
+  // 27.47 — the wire's own shape. It was written out again here, and a third time in the
+  // handler's field-by-field forwarding.
+  edit: InvoiceEdit,
   now: Instant = Date.now(),
 ): StoredInvoice {
   return transact(db, () => {
