@@ -209,6 +209,19 @@ function fit(ctx: Ctx, value: string, width: number, size = 9, font?: PDFFont): 
   return `${cut}…`;
 }
 
+/**
+ * 27.12 — the line breaks somebody typed, kept, and long lines still wrapped.
+ *
+ * `wrap` splits on whitespace, so a newline was worth exactly as much as a space and an address
+ * typed on three lines came out re-broken wherever the column happened to run out. The client's
+ * address has always been split on newlines first (8.7); the sender's went through `wrap` instead
+ * and did not. Each typed line is wrapped on its own, so a line too long for the column still
+ * breaks — in addition to the person's breaks rather than instead of them.
+ */
+export function typedLines(font: PDFFont, value: string, width: number): string[] {
+  return value.split("\n").flatMap((segment) => wrap(font, segment, 9, width));
+}
+
 /** Wrap on width, because an address is a paragraph and a client name can be long. */
 function wrap(font: PDFFont, value: string, size: number, width: number): string[] {
   const out: string[] = [];
@@ -283,7 +296,8 @@ function header(ctx: Ctx, c: InvoiceContent): void {
   );
   const fromWidth = boxX - 12 - identityLabels - 12 - (M + 148);
   for (const pair of c.from) {
-    for (const [i, line] of wrap(ctx.regular, pair.value, 9, fromWidth).entries()) {
+    const lines = typedLines(ctx.regular, pair.value, fromWidth);
+    for (const [i, line] of lines.entries()) {
       if (i === 0) labelled(ctx, pair.label, line, ctx.y, 148);
       else text(ctx, line, M + 148, ctx.y);
       ctx.y -= 13;
@@ -438,7 +452,9 @@ function payment(ctx: Ctx, c: InvoiceContent): void {
   if (c.note) {
     const noteWidth = CONTENT / 2 - 12;
     let noteY = ctx.y;
-    for (const line of wrap(ctx.italic, `(${c.note})`, 8.5, noteWidth)) {
+    // 27.13 — exactly what was typed. The brackets were the renderer's, and a person who wanted
+    // them could type them; one who did not had no way to stop them.
+    for (const line of wrap(ctx.italic, c.note, 8.5, noteWidth)) {
       right(ctx, line, M + CONTENT, noteY, { font: ctx.italic, color: DIM, size: 8.5 });
       noteY -= 11;
     }

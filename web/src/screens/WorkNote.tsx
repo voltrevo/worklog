@@ -155,7 +155,8 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
             rows={4}
             value={body}
             autoFocus
-            placeholder="Finished the cage-sum pruning; started on the invoice layout."
+            /* 27.10 — no placeholder. An example of what somebody might write is a suggestion
+               about what they were doing, in a box for saying what they were doing. */
             onChange={(e) => setBody(e.target.value)}
           />
         </label>

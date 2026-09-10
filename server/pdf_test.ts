@@ -9,11 +9,11 @@
  */
 
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import { buildDraft } from "@worklog/shared/invoice";
 import { DEFAULTS, type InvoiceConfig } from "./config.ts";
 import { allText, formatDate, invoiceContent, money, periodRange } from "./invoiceContent.ts";
-import { renderInvoicePdf, renderInvoicePdfChecked } from "./pdf.ts";
+import { renderInvoicePdf, renderInvoicePdfChecked, typedLines } from "./pdf.ts";
 
 const HOUR = 3_600_000;
 
@@ -301,4 +301,27 @@ Deno.test("a very long month paginates rather than piling up at the bottom", asy
   // And nothing was drawn off the sides on any of them.
   const { outside } = await renderInvoicePdfChecked(draftWith(100, 25_000), CONFIG);
   assertEquals(outside, []);
+});
+
+/*
+ * 27.12 — an address keeps the breaks somebody typed into it.
+ *
+ * The sender's address went through `wrap`, which splits on whitespace, so a newline was worth
+ * exactly as much as a space: three typed lines came out re-broken wherever the column ran out.
+ * The client's address has always been split on newlines first, which is why one of them looked
+ * right and the other did not.
+ */
+Deno.test("27.12 -- the sender's address breaks where it was typed to", async () => {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+
+  assertEquals(
+    typedLines(font, "Level 9\n12 Fictional Way\nNowhere NSW 2000", 300),
+    ["Level 9", "12 Fictional Way", "Nowhere NSW 2000"],
+  );
+
+  // And a line too long for the column still wraps — in addition to the typed break, not instead.
+  const long = typedLines(font, "Level 9\nA street name long enough to need two lines of it", 90);
+  assertEquals(long[0], "Level 9");
+  assertEquals(long.length > 2, true, `only wrapped to ${long.length} lines: ${long.join(" | ")}`);
 });
