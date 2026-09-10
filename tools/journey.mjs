@@ -1321,6 +1321,47 @@ async function main() {
 
     await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();
 
+    /*
+     * 27.7 — the button that says "Record again" records again.
+     *
+     * It discarded the take and left a Record button to press separately, which is how it was
+     * reported as "there is no way to record another".
+     */
+    await desktop.page.getByRole("button", { name: "Record again" }).click();
+    check(
+      "27.7 — Record again starts another take",
+      await until(
+        "recording again",
+        desktop.page,
+        (p) => p.getByText(/● recording/).isVisible(),
+      ),
+      await visibleText(desktop.page),
+    );
+    await desktop.page.waitForTimeout(1_200);
+
+    /*
+     * 27.6 — and Save finishes it, rather than refusing because it is running.
+     *
+     * Left running deliberately: the previous take is gone, so if Save refuses there is nothing
+     * to fall back on and the checks below fail on an empty note.
+     */
+    await desktop.page.getByRole("button", { name: "Save note" }).click();
+    check(
+      "27.6 — Save stops a running recording and keeps it",
+      await until(
+        "note saved",
+        desktop.page,
+        async (p) => (await p.getByRole("button", { name: /▶ Play \d+s/ }).count()) > 0,
+      ),
+      await visibleText(desktop.page),
+    );
+
+    // And again, the ordinary way, for the checks below that read a stopped take back.
+    await desktop.page.getByRole("button", { name: "New work note" }).click();
+    await desktop.page.getByRole("button", { name: /Record$/ }).click();
+    await desktop.page.waitForTimeout(1_500);
+    await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();
+
     // 5.28 — playable before it is even saved.
     check(
       "and the recording can be heard back before saving",

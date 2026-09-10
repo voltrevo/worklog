@@ -89,7 +89,16 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
   };
 
   const save = async () => {
-    if (!body.trim() && !recorder.recording) {
+    /*
+     * 27.6 — saving finishes the recording rather than refusing because of it.
+     *
+     * Pressing Save while the microphone was still open was answered with "Type something, or
+     * record a few seconds", which was true of that instant and is not a reason to refuse: the
+     * person had just recorded several seconds and was asking for them to be kept. Stop stays,
+     * for anybody who wants to hear it back first.
+     */
+    const take = await recorder.finish();
+    if (!body.trim() && !take) {
       setProblem("Type something, or record a few seconds.");
       return;
     }
@@ -98,11 +107,11 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
       await call({
         t: "note-add",
         ...(body.trim() ? { body: body.trim() } : {}),
-        ...(recorder.recording
+        ...(take
           ? {
-            audioBase64: recorder.recording.base64,
-            audioMs: recorder.recording.ms,
-            audioType: recorder.recording.type,
+            audioBase64: take.base64,
+            audioMs: take.ms,
+            audioType: take.type,
           }
           : {}),
         ...(prompted ? { prompted: true } : {}),
@@ -199,12 +208,32 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
                   src={recorder.recording.url}
                   style={{ height: 34 }}
                 />
+                {
+                  /*
+                   * 27.7 — the button that says "Record again" records again.
+                   *
+                   * It discarded, and left you looking at a Record button to press separately —
+                   * reported as "it offers Record again and there is no way to record another",
+                   * which is what a control that does not do what it says produces. Throwing the
+                   * take away is a different intention and now has its own control.
+                   */
+                }
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    recorder.discard();
+                    void recorder.start();
+                  }}
+                >
+                  Record again
+                </button>
                 <button
                   className="link danger"
                   type="button"
                   onClick={recorder.discard}
                 >
-                  Record again
+                  Discard
                 </button>
               </div>
             )
@@ -291,6 +320,15 @@ function useRecorder() {
   /** 24.5 — the live trace, and the handle that stops it. */
   const [trace, setTrace] = useState<number[]>([]);
   const stopMeterRef = useRef<(() => void) | undefined>(undefined);
+  /**
+   * 27.6 — who to tell when the take is ready.
+   *
+   * `stop()` returns at once and the recording appears later: `onstop` fires, the chunks are
+   * concatenated and base64-encoded, and only then is there something to save. Save had no way to
+   * wait for that, so pressing it mid-recording was refused with "there is nothing here" — true of
+   * that instant, and not a reason to refuse.
+   */
+  const takeRef = useRef<((take: Recording | undefined) => void) | undefined>(undefined);
 
   const release = () => {
     stopMeterRef.current?.();
@@ -360,13 +398,16 @@ function useRecorder() {
       media.onstop = async () => {
         const blob = new Blob(chunks, { type: media.mimeType || "audio/webm" });
         release();
-        setRecording({
+        const take: Recording = {
           base64: await toBase64(blob),
           ms: Date.now() - startedRef.current,
           type: blob.type,
           url: URL.createObjectURL(blob),
-        });
+        };
+        setRecording(take);
         setState("idle");
+        takeRef.current?.(take);
+        takeRef.current = undefined;
       };
       startedRef.current = Date.now();
       setElapsed(0);
@@ -391,10 +432,25 @@ function useRecorder() {
     setRecording(undefined);
   };
 
+  /**
+   * 27.6 — stop if it is running, and hand back the take either way.
+   *
+   * What Save needs: the recording as it will be saved, whether it was already finished or is
+   * being finished by the act of saving.
+   */
+  const finish = (): Promise<Recording | undefined> => {
+    if (state !== "recording" || !mediaRef.current) return Promise.resolve(recording);
+    return new Promise((resolve) => {
+      takeRef.current = resolve;
+      mediaRef.current?.stop();
+    });
+  };
+
   return {
     // Not merely that the class exists: WebKitGTK has the class, supports no container, and
     // throws from the constructor. Offering a Record button there is offering an error message.
     supported: typeof MediaRecorder !== "undefined" && pickMimeType() !== undefined,
+    finish,
     trace,
     state,
     recording,
