@@ -330,7 +330,23 @@ function useRecorder() {
     streamRef.current = null;
   };
 
-  useEffect(() => () => release(), []);
+  /*
+   * 27.56 — the take's blob URL goes when this does.
+   *
+   * `discard()` revokes it, and `discard()` is the Discard button and "Record again" — not saving,
+   * and not closing. So every note saved with a recording left one behind for the life of the tab,
+   * and the audio it points at with it. `release()` deals with the microphone; this deals with
+   * what the microphone produced.
+   *
+   * Through a ref, because the cleanup runs once with empty deps and would otherwise close over
+   * the `recording` of the first render, which is `undefined`.
+   */
+  const heldTake = useRef<Recording>(undefined);
+  heldTake.current = recording;
+  useEffect(() => () => {
+    release();
+    if (heldTake.current) URL.revokeObjectURL(heldTake.current.url);
+  }, []);
 
   useEffect(() => {
     if (state !== "recording") return;

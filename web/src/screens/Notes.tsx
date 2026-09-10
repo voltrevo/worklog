@@ -96,6 +96,19 @@ function NoteRow(
 ) {
   const { call } = useStore();
   const [url, setUrl] = useState<string>();
+  /*
+   * And when the row goes. A note deleted, a reload of the list, a navigation away: the row
+   * unmounts holding the last URL it made, and nothing else will ever revoke it.
+   *
+   * The ref is what the cleanup reads, because a cleanup that closed over `url` would capture the
+   * value from the render it was created in — which for the last render before unmount is the
+   * right one, but only by accident and only while the deps stay empty.
+   */
+  const heldUrl = useRef<string>(undefined);
+  heldUrl.current = url;
+  useEffect(() => () => {
+    if (heldUrl.current) URL.revokeObjectURL(heldUrl.current);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -130,11 +143,21 @@ function NoteRow(
        * no type is the honest version and the more useful one — the browser sniffs the container,
        * which it is good at, and a wrong type is the one thing that stops it.
        */
-      setUrl(
-        URL.createObjectURL(
+      /*
+       * 27.56 — the previous one goes before this one arrives.
+       *
+       * A blob URL is a reference the document holds until it is revoked, and this made a fresh
+       * one on every press without ever letting go: play a note twice and the first copy of the
+       * audio is still pinned, on a screen whose whole point is a list of recordings. Five minutes
+       * of speech is most of a megabyte, and the tab this happens in is one somebody leaves open
+       * all week.
+       */
+      setUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return URL.createObjectURL(
           new Blob([bytes], ...(note.audioType ? [{ type: note.audioType }] : [])),
-        ),
-      );
+        );
+      });
       setShouldPlay(true);
     } catch (err) {
       // A fetch that fails silently leaves a button that looks like it did nothing.

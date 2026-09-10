@@ -266,6 +266,28 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
           if (!globalThis.localStorage) return;
           localStorage.setItem("worklog.serverAddress", address);
           localStorage.setItem("worklog.deviceName", name);
+
+          /*
+           * 27.56 — how many blob URLs the page is still holding.
+           *
+           * A blob URL keeps its bytes alive until it is revoked, and a leak of them is invisible:
+           * nothing renders wrong, nothing errors, the tab just grows for as long as it is open.
+           * Wrapping the two calls is the only way to see it from outside, and it delegates, so
+           * the app behaves exactly as it would have.
+           */
+          const live = new Set();
+          globalThis.__liveBlobs = live;
+          const make = URL.createObjectURL.bind(URL);
+          const drop = URL.revokeObjectURL.bind(URL);
+          URL.createObjectURL = (obj) => {
+            const url = make(obj);
+            live.add(url);
+            return url;
+          };
+          URL.revokeObjectURL = (url) => {
+            live.delete(url);
+            drop(url);
+          };
         },
         [opts.address ?? server.address, deviceName],
       );

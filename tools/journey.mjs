@@ -1886,6 +1886,34 @@ async function main() {
         async (p) => (await p.locator("audio[src^='blob:']").count()) > 0,
       ),
     );
+
+    /*
+     * 27.56 — the blob goes when the row does.
+     *
+     * A blob URL holds its bytes until it is revoked, and this screen revoked none: every note
+     * played left its audio pinned for the life of the tab. Nothing is visible when that happens —
+     * no error, nothing rendered wrong — the page simply grows, on the tab somebody leaves open
+     * all week, in megabyte steps.
+     *
+     * Navigating away is what unmounts the rows, and it is the ordinary thing to do after
+     * listening to a note. Counted through a wrapper the harness installs around
+     * `createObjectURL`, because the browser will not tell you.
+     *
+     * My first attempt clicked Play twice and expected the count to hold: it went 1 to 2, and it
+     * was right to. A played row shows the native player instead of the button, so the second
+     * click was a *different* note. Two notes, two blobs, no leak — the check was measuring
+     * something else.
+     */
+    const playing = await desktop.page.evaluate(() => globalThis.__liveBlobs.size);
+    await nav(desktop.page, "Timer");
+    await desktop.page.waitForTimeout(500);
+    const afterLeaving = await desktop.page.evaluate(() => globalThis.__liveBlobs.size);
+    check(
+      "27.56 — a note's audio is let go of when its row goes",
+      playing > 0 && afterLeaving < playing,
+      `${playing} live blob URLs while playing, ${afterLeaving} after leaving the screen`,
+    );
+    await nav(desktop.page, "Notes");
   }
 
   // ---------------------------------------------------------------- the local loop
