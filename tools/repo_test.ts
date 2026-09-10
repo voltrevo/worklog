@@ -270,3 +270,66 @@ Deno.test({
     ]);
   },
 });
+
+Deno.test({
+  name: "27.35 -- the requirements document's own bookkeeping holds together",
+  permissions: { read: ["."] },
+  async fn() {
+    /*
+     * The document is append-only: a decision that changes is struck through and a new item is
+     * added saying so. That convention is the only record of *why* the product does something
+     * other than what an earlier line says, and it is maintained by hand.
+     *
+     * What this catches is the half-done edit — adding "Supersedes 6.3" and forgetting to strike
+     * 6.3, or naming an item that does not exist. What it cannot catch is the edit nobody made at
+     * all: 6.32 required a default holiday region for months after 24.33 removed it, because
+     * nothing claimed to supersede it and nothing was struck. That one needed reading, and is the
+     * reason this exists — the mechanical half should at least be free.
+     */
+    const text = await Deno.readTextFile(new URL("../REQUIREMENTS.md", import.meta.url));
+    const items = new Map<string, string>();
+    for (const line of text.split("\n")) {
+      const found = /^(\d+\.\d+)\.\s+(.*)$/.exec(line);
+      if (found) items.set(found[1]!, found[2]!);
+    }
+    // A sanity floor: a regex that silently matched nothing would make every check below vacuous.
+    assertEquals(items.size > 400, true, `only ${items.size} requirements parsed`);
+
+    const struck = new Set([...items].filter(([, t]) => t.includes("~~")).map(([n]) => n));
+    const problems: string[] = [];
+
+    for (const [number, body] of items) {
+      for (const named of body.matchAll(/[Ss]upersed(?:es|ed by)\s+([\d.,\sand]+)/g)) {
+        for (const one of named[1]!.matchAll(/\d+\.\d+/g)) {
+          if (!items.has(one[0])) problems.push(`${number} names ${one[0]}, which does not exist`);
+        }
+      }
+      // "X supersedes Y" is a claim about Y as well, and Y has to show it.
+      // Both cases and both spellings: the convention is "Supersedes N", and an edit that writes
+      // "supersedes" or "superseding" is making the same claim and must meet the same rule.
+      for (const one of body.matchAll(/[Ss]upersed(?:es|ing)\s+(\d+\.\d+)/g)) {
+        if (items.has(one[1]!) && !struck.has(one[1]!)) {
+          problems.push(`${number} supersedes ${one[1]}, which is not struck through`);
+        }
+      }
+      /*
+       * And the passive form is a claim about *this* item: saying "Superseded by 27.32" while
+       * still standing as a live MUST is the half-done edit in its other direction. Found by
+       * mutation — the rules above all passed with 6.23 unstruck and still announcing what had
+       * replaced it, which is precisely the state that leaves the product contradicting the spec.
+       */
+      if (/[Ss]uperseded by\s+\d+\.\d+/.test(body) && !struck.has(number)) {
+        problems.push(`${number} says it is superseded and is not struck through`);
+      }
+    }
+    for (const number of struck) {
+      // Struck, and silent about why: the next reader has to guess whether it was superseded,
+      // declined, or deleted by accident.
+      if (!/[Ss]upersed|[Ww]ithdraw|[Rr]eplaced|declined/.test(items.get(number)!)) {
+        problems.push(`${number} is struck through and does not say by what`);
+      }
+    }
+
+    assertEquals(problems, [], "the requirements document contradicts itself");
+  },
+});

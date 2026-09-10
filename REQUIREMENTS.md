@@ -158,7 +158,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.20. ~~MUST keep pacing-day overrides separate from billable work records.~~ (superseded: 24.20)
 6.21. MUST allow configuration of a weekly work schedule as one time interval per weekday.
 6.22. MUST allow a weekday's interval to be empty, meaning that weekday is not a workday.
-6.23. MUST default the schedule to empty on Saturday and Sunday. Supersedes 6.3.
+6.23. ~~MUST default the schedule to empty on Saturday and Sunday. Supersedes 6.3.~~ Superseded by 27.32: the whole week defaults to empty, so this is satisfied by accident rather than by design, and the Mon–Fri it implied is gone.
 6.24. MUST treat a day with a non-empty interval as a workday, except where a public holiday or a pacing-day override says otherwise.
 6.25. MUST derive a workday's expected hours from the length of its scheduled interval. Supersedes 6.2 and 6.12.
 6.26. MUST calculate today's projected contribution as work already recorded today plus the part of today's scheduled interval that has not yet elapsed. Supersedes 6.10 and 6.11.
@@ -167,7 +167,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.29. MUST calculate projected hours as actual-before-today, plus today's projected contribution, plus the scheduled hours of each remaining workday. Supersedes 6.13.
 6.30. MUST calculate monthly nominal capacity as the sum of scheduled hours across the month's workdays. Supersedes 6.16.
 6.31. MUST obtain public holidays from a source keyed by a configurable region code rather than one specific to NSW. Supersedes 6.4 and 6.5.
-6.32. MUST default the configured region to New South Wales, Australia.
+6.32. ~~MUST default the configured region to New South Wales, Australia.~~ Superseded by 24.33. This was never struck when 24.33 removed the default, so the document went on requiring a default the product had deliberately dropped.
 6.33. MUST distinguish ordinary public holidays from bank holidays that are not general public holidays, using the source's own classification. Supersedes 6.7.
 6.34. MUST ship a checked-in holiday snapshot, used when the source is unreachable.
 6.35. MUST NOT let a failed holiday fetch silently change a month's workday count.
@@ -571,7 +571,7 @@ supersede the struck items they name.
 ### Settings
 
 24.32. MUST validate the holiday region before accepting it, and SHOULD offer a picker rather than a free-text field.
-24.33. MUST NOT default the holiday region; Mon–Fri 09:00–17:00 and a 160-hour monthly target are good defaults and stay.
+24.33. MUST NOT default the holiday region; ~~Mon–Fri 09:00–17:00 and a 160-hour monthly target are good defaults and stay~~ — the second half is superseded by 27.31 and 27.32. It was wrong in the way 27.33 names: those two are good defaults for somebody, which is not the same as being right for the person in front of you, and the pacing screen spent both of them on confident sentences.
 24.34. MUST treat the ABN as optional; the supplied invoice format does not carry one.
 24.35. MUST NOT default the tax label to "GST", or to anything else.
 24.36. MUST NOT invent any invoice identity, address, contact or tax detail as a default.
@@ -819,3 +819,7 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### Rules that match nothing
 
 27.34. Every rule in the stylesheet MUST match something on some screen of the screenshot walk, or MUST be named as a state that walk does not enter, with the reason written down. A rule that has stopped matching looks exactly like a rule for an unphotographed state, and only one of them is a bug: `.bar > span` matched nothing for several commits after 26.19 moved the segments inside `.bar-fill`, while a check measuring the bar's width stayed green.
+
+### The document about the document
+
+27.35. A struck requirement MUST say what replaced it, an item claiming to supersede another MUST leave that other one struck, and an item announcing its own supersession MUST itself be struck. The strike-through convention is the only record of why the product does something an earlier line forbids, and it is maintained by hand.
