@@ -114,6 +114,76 @@ async function main() {
   await desktop.page.getByRole("button", { name: "Throw it away" }).click().catch(() => {});
 
   /*
+   * 27.17, 27.34 — a month with a public holiday in it, which the current month has not got.
+   *
+   * `.day.holiday`, `.swatch.holiday` and `.holidaylist` exist for exactly one state and the walk
+   * never entered it: every picture is of the seeded month. October 2026 has Labour Day in AU-NSW,
+   * which is the region the seed configures.
+   */
+  await desktop.page.getByRole("button", { name: "Pacing", exact: true }).click();
+  await desktop.page.getByRole("button", { name: /Go to October 2026/ }).click();
+  await desktop.page.locator(".day.holiday").first().waitFor({ timeout: 20_000 });
+  await shot(desktop.page, "pacing-holiday-desktop");
+  await desktop.page.getByRole("button", { name: /Go to September 2026/ }).click();
+
+  /*
+   * 27.34 — the invoice editor, which nothing had ever photographed.
+   *
+   * Found by the selector walk below: `.linetable`, `.linerow`, `.linehead`, `.linecell` and
+   * `.sheet > .card.editor` matched nothing on any screen of any run, because the only way in is a
+   * button inside a row of a list and `capture` walks navigation. It is the densest table in the
+   * product and it is where invoice *lines* are edited — the numbers that go on the document.
+   */
+  await desktop.page.getByRole("button", { name: "Invoices", exact: true }).click();
+  const editLine = desktop.page.locator(".stacked-row").first()
+    .getByRole("button", { name: "Edit lines" });
+  /*
+   * Waited for, then counted. `count()` does not auto-wait — it answers about the moment it is
+   * asked — so asking it straight after a navigation reads zero from a screen that is still
+   * rendering, and the `else` branch below then reports the row as missing. It took a diagnostic
+   * printing the row's own buttons to see that "Edit lines" had been there the whole time.
+   */
+  await editLine.waitFor({ timeout: 20_000 }).catch(() => {});
+  if (await editLine.count()) {
+    await editLine.click();
+    await desktop.page.locator(".linetable").waitFor({ timeout: 20_000 });
+    await shot(desktop.page, "invoice-editor-desktop");
+    // 26.26 asks before throwing edits away, and nothing has been typed, so Escape is enough.
+    await desktop.page.keyboard.press("Escape");
+    await desktop.page.locator(".linetable").waitFor({ state: "detached", timeout: 15_000 });
+  } else {
+    // Says what it found, not just that it found nothing: "no draft" and "the screen had not
+    // rendered" look identical from a count, and only one of them is about the product.
+    throw new Error(
+      `no invoice to edit: row says "${
+        (await desktop.page.locator(".stacked-row").first().innerText().catch(() => "no rows"))
+          .replace(/\s+/g, " ")
+      }"`,
+    );
+  }
+
+  /*
+   * 27.34 — and the waveform, which only exists while a microphone is open.
+   *
+   * `.trace` and `.trace span` are 24.5's "something that moves when you speak", drawn from the
+   * same stream the recorder uses. The browser here has a synthetic microphone, so this is a
+   * picture of the real thing rather than of a mock.
+   */
+  await desktop.page.getByRole("button", { name: "Notes", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "New work note" }).click();
+  const recordHere = desktop.page.getByRole("button", { name: /Record$/ });
+  if (await recordHere.count()) {
+    await recordHere.click();
+    await desktop.page.locator(".trace span").first().waitFor({ timeout: 20_000 });
+    // Long enough for the trace to have more than its first bar in it.
+    await desktop.page.waitForTimeout(1_500);
+    await shot(desktop.page, "recording-desktop");
+    await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();
+  }
+  await desktop.page.keyboard.press("Escape");
+  await desktop.page.getByRole("button", { name: "Throw it away" }).click().catch(() => {});
+
+  /*
    * 19.17 — and the other half of the CSS.
    *
    * The dark palette is a second set of every colour in this app and went unlooked-at for its
@@ -261,9 +331,32 @@ async function main() {
   }
   await bare.close();
 
-  const failures = rig.errors.length + bare.errors.length;
+  const dead = [...seenSelectors]
+    .filter((selector) => !matchedSelectors.has(selector) && !UNPHOTOGRAPHED.has(selector))
+    .sort();
+  // The other direction too: an excuse for a selector that no longer exists, or that has started
+  // matching, is a line nobody will delete unless something says so.
+  const stale = [...UNPHOTOGRAPHED.keys()].filter((selector) =>
+    !seenSelectors.has(selector) || matchedSelectors.has(selector)
+  ).sort();
   console.log(
-    failures === 0 ? "\nall screens captured, no page errors" : `\n${failures} page errors`,
+    `\n${seenSelectors.size} selectors, ${matchedSelectors.size} matched something on some screen`,
+  );
+  for (const selector of dead) {
+    console.error(
+      `  ✗ nothing matched ${selector} — a dead rule, or a state to photograph, ` +
+        `or a line for UNPHOTOGRAPHED in tools/screenshots.mjs`,
+    );
+  }
+  for (const selector of stale) {
+    console.error(`  ✗ UNPHOTOGRAPHED names ${selector}, which no longer needs excusing`);
+  }
+
+  const failures = rig.errors.length + bare.errors.length + dead.length + stale.length;
+  console.log(
+    failures === 0
+      ? "\nall screens captured, no page errors, every rule matched something"
+      : `\n${failures} problems`,
   );
   process.exit(failures === 0 ? 0 : 1);
 }
@@ -313,6 +406,100 @@ function navLabel(screen) {
  */
 const MAX_SHOT_HEIGHT = 6_000;
 
+/**
+ * Every selector in the app's own stylesheet, and which of them matched something (27.34).
+ *
+ * **A rule that matches nothing is invisible.** `.bar > span` was one for several commits — 26.19
+ * moved the segments inside `.bar-fill`, the descendant combinator stopped applying, and the bar
+ * painted nothing while a check that measured its *width* stayed green. Nothing in the repo asks
+ * whether a rule still has a job.
+ *
+ * This walk is the cheapest place to ask it: `capture` already drives every screen in both shells,
+ * both themes, three roles and a server with nothing in it, and the dialogs are opened by hand
+ * alongside. A selector that matches on none of that is either dead or is a state nobody
+ * photographs, and the difference is worth having to write down.
+ *
+ * Pseudo-classes are stripped before testing. `:hover` and `:focus-visible` never hold during a
+ * screenshot, and a rule that only exists for them would otherwise read as dead for ever.
+ */
+/**
+ * Selectors that legitimately match nothing on a walk of the screens, and why.
+ *
+ * The point of the list is that it has to be *written*. A rule that stops matching — `.bar > span`
+ * did, for several commits, when 26.19 moved the segments inside `.bar-fill` — looks exactly like
+ * a rule for a state nobody photographs, and only one of the two is a bug. Adding a line here is
+ * cheap; the sentence beside it is the check.
+ *
+ * Two of these were photographable and are photographed now rather than excused: the invoice
+ * editor's line table, and a month with a public holiday in it.
+ */
+const UNPHOTOGRAPHED = new Map([
+  [".audio-blocked", "the banner for a loop the browser refused to autoplay (14.16)"],
+  [".bar span.over", "today's bar past its scheduled hours"],
+  [".barline .bar > span.bad", "a pacing bar behind its target; the seeded month is ahead"],
+  [".brand .dot.bad", "the connection dot when the server is gone"],
+  [".brand .dot.warn", "the connection dot while reconnecting"],
+  [".day.missed", "a past workday with nothing recorded; the seed fills every one"],
+  [".dropzone.over", "a file being dragged over the audio drop target"],
+  [".field-note", "the note under a settings field that is not a number"],
+  [".field-note.bad", "the same, in its bad state"],
+  [".notice.bad", "a failed save; every save in this walk succeeds"],
+  [".pill.warn", "an issued invoice's status pill; the seeded one is a draft"],
+  ["i.swatch.missed", "the legend entry for .day.missed, and 27.32 shows only present states"],
+  ["input.invalid", "a settings field holding something that is not a number"],
+  ["input.invalid:focus", "the same, focused"],
+  ['input[aria-invalid="true"]', "the same, by its attribute"],
+  ['input[aria-invalid="true"]:focus', "the same again"],
+]);
+
+const seenSelectors = new Set();
+const matchedSelectors = new Set();
+
+async function recordSelectors(page) {
+  const [all, matched] = await page.evaluate(() => {
+    const every = [];
+    const hit = [];
+    const visit = (rule) => {
+      // A grouping rule holds its own list; `cssRules` on a plain style rule is undefined, and an
+      // *empty* CSSRuleList is truthy, so the length is what decides.
+      if (rule.cssRules && rule.cssRules.length >= 0 && rule.selectorText === undefined) {
+        for (const inner of Array.from(rule.cssRules)) visit(inner);
+        return;
+      }
+      if (typeof rule.selectorText !== "string") return;
+      for (const one of rule.selectorText.split(",")) {
+        const selector = one.trim();
+        if (!selector) continue;
+        every.push(selector);
+        // `:hover`, `::before`, `:focus-visible` — states a still photograph cannot be in.
+        const testable = selector.replace(/::?[a-z-]+(\([^)]*\))?/g, "").trim();
+        if (!testable) {
+          hit.push(selector);
+          continue;
+        }
+        try {
+          if (document.querySelector(testable)) hit.push(selector);
+        } catch {
+          // Not a selector this browser can run; not evidence of anything.
+          hit.push(selector);
+        }
+      }
+    };
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try {
+        rules = Array.from(sheet.cssRules);
+      } catch {
+        continue; // A cross-origin sheet. There are none, but this must not throw the run.
+      }
+      for (const rule of rules) visit(rule);
+    }
+    return [every, hit];
+  }).catch(() => [[], []]);
+  for (const selector of all) seenSelectors.add(selector);
+  for (const selector of matched) matchedSelectors.add(selector);
+}
+
 async function shot(page, name) {
   const dir = COMMITTED.has(name) ? outDir : scratchDir;
   await mkdir(dir, { recursive: true });
@@ -335,6 +522,8 @@ async function shot(page, name) {
     await page.waitForTimeout(250);
   }
 
+  // Before the viewport is put back, so a rule that only applies at the grown height still counts.
+  await recordSelectors(page);
   await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
   if (grown) {
     await page.setViewportSize(viewport);
