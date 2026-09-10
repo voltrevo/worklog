@@ -2538,6 +2538,26 @@ async function main() {
     await askAgain.isVisible(),
     (await swapper.page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200),
   );
+
+  /*
+   * 27.57 — and the stored address is gone, which is the only way "left" means anything.
+   *
+   * `forget()` set the phase to `no-address` and never touched device storage, so the connect
+   * screen appeared while the address sat there — and the boot effect reads it. One reload and the
+   * app was back on the server somebody had just disconnected from. 22.6 says the stored address
+   * must be clearable; `clearAddress` was written for exactly that and was called by nothing,
+   * which is how this surfaced — an exported function with no callers is a question about the
+   * caller that should exist.
+   *
+   * Asserted against storage rather than by reloading, because this harness cannot show the
+   * symptom: `addInitScript` runs on every navigation and re-plants the address, so a reload here
+   * reconnects whatever the app did. The storage is the claim; the reload was the consequence.
+   */
+  check(
+    "27.57 — disconnecting clears the stored address, not just the screen",
+    await swapper.page.evaluate(() => localStorage.getItem("worklog.serverAddress")) === null,
+    await swapper.page.evaluate(() => localStorage.getItem("worklog.serverAddress")),
+  );
   await swapper.page.close();
 
   /*

@@ -43,6 +43,7 @@ import {
   type Sender,
 } from "./errorReporting.ts";
 import {
+  clearAddress,
   indexedDbKeyStore,
   loadAddress,
   loadDeviceName,
@@ -586,11 +587,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * Superseding the attempt is what makes the closure expected rather than a loss. `transportRef`
    * goes with it, so nothing is left pointing at a connection that is deliberately over.
    */
+  /**
+   * Stop using this server — 22.6, and 27.57 for the half that was missing.
+   *
+   * Every caller means the same thing: Settings' "Disconnect from this server", and the connect
+   * screen's "Use a different server" and "Cancel". So this cleared the *phase* and left the
+   * address in device storage, which meant the connect screen appeared and one reload put the app
+   * straight back on the server somebody had just left — the boot effect reads what is stored.
+   *
+   * `clearAddress` was written for this and called by nothing, which is how it surfaced: an
+   * exported function with no callers is a question about the caller that should exist.
+   */
   const forget = useCallback(() => {
     attemptRef.current++;
     transportRef.current = null;
     clientRef.current?.close();
     clientRef.current = null;
+    clearAddress();
     setReconnecting(false);
     setSnapshot(undefined);
     setPhase({ k: "no-address" });
