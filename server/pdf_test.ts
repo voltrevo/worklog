@@ -82,16 +82,17 @@ Deno.test("money is grouped, two-decimal and symbol-first, whatever the locale i
 
 Deno.test("a date is formatted from its parts, so no timezone can move it", () => {
   // `new Date("2026-08-01")` is UTC midnight, which prints as 31 July anywhere west of Greenwich.
-  assertEquals(formatDate("2026-08-01"), "1 Aug 2026");
+  // 27.21 — two digits for the day, so a column of dates is one width.
+  assertEquals(formatDate("2026-08-01"), "01 Aug 2026");
   assertEquals(formatDate("2026-12-31"), "31 Dec 2026");
-  assertEquals(formatDate("2026-01-01"), "1 Jan 2026");
+  assertEquals(formatDate("2026-01-01"), "01 Jan 2026");
 });
 
 Deno.test("the period range covers the whole month, leap years included", () => {
-  assertEquals(periodRange("2026-08"), "1 - 31 Aug 2026");
-  assertEquals(periodRange("2026-09"), "1 - 30 Sep 2026");
-  assertEquals(periodRange("2026-02"), "1 - 28 Feb 2026");
-  assertEquals(periodRange("2028-02"), "1 - 29 Feb 2028");
+  assertEquals(periodRange("2026-08"), "01 - 31 Aug 2026");
+  assertEquals(periodRange("2026-09"), "01 - 30 Sep 2026");
+  assertEquals(periodRange("2026-02"), "01 - 28 Feb 2026");
+  assertEquals(periodRange("2028-02"), "01 - 29 Feb 2028");
 });
 
 // ------------------------------------------------------------------ what the page says
@@ -103,7 +104,7 @@ Deno.test("8.6-8.14 -- every part the format requires is on the page", () => {
   assertStringIncludes(words, "Wren & Co"); // 8.6, 8.23
   assertStringIncludes(words, "Telephone No.:");
   assertStringIncludes(words, "Kestrel Labs Pty Ltd"); // 8.7
-  assertStringIncludes(words, "1 - 31 Aug 2026"); // 8.8
+  assertStringIncludes(words, "01 - 31 Aug 2026"); // 8.8
   assertStringIncludes(words, "DESCRIPTION OF WORK PERFORMED"); // 8.27
   assertStringIncludes(words, "Description of work / expense"); // 8.10
   assertStringIncludes(words, "Team/Project");
@@ -120,7 +121,7 @@ Deno.test("8.6-8.14 -- every part the format requires is on the page", () => {
 Deno.test("8.19-8.21 -- the bonus row covers the period and carries its own Team/Project", () => {
   const c = invoiceContent(draftWith(3, 25_000, { bonusTeamProject: "General" }), CONFIG);
   assertEquals(c.bonusRow, [
-    "1 - 31 Aug 2026",
+    "01 - 31 Aug 2026",
     "Monthly bonus",
     "General",
     "-",

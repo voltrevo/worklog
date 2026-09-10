@@ -15,6 +15,7 @@ import { appliedOverride, type InvoiceDraft } from "@worklog/shared/invoice";
 import type { DateString } from "@worklog/shared/types";
 import type { InvoiceConfig } from "./config.ts";
 import { INVOICE_LABELS as L } from "@worklog/shared/invoiceLook";
+import { formatDay, monthShortName } from "@worklog/shared/dates";
 
 export interface Pair {
   label: string;
@@ -62,21 +63,6 @@ export interface InvoiceContent {
   due: Pair;
 }
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
 /**
  * A date formatted from its parts, never through `new Date(iso)`.
  *
@@ -84,15 +70,21 @@ const MONTHS = [
  * print the day before on every line — the same trap the UI avoids in `format.ts` and the schema
  * avoids by storing a date rather than an instant.
  */
+/**
+ * 27.21 — the same spelling the app uses, from the same place.
+ *
+ * This wrote `8 Aug 2026` and the app wrote whatever the reader's locale did. One document, two
+ * dates, and neither matching the other: `formatDay` is now the only answer either of them gives.
+ */
 export function formatDate(date: DateString): string {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  return `${d} ${MONTHS[m - 1]} ${y}`;
+  return formatDay(date);
 }
 
 export function periodRange(period: string): string {
   const [y, m] = period.split("-").map(Number) as [number, number];
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `1 - ${last} ${MONTHS[m - 1]} ${y}`;
+  // Two digits either side, since 27.21 pads the dates this sits among.
+  return `01 - ${last} ${monthShortName(m)} ${y}`;
 }
 
 /**

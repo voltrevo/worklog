@@ -3,6 +3,8 @@ import {
   addDays,
   compare,
   datesInMonth,
+  formatDay,
+  formatMonth,
   inMonth,
   minutesOf,
   monthBefore,
@@ -89,4 +91,27 @@ Deno.test("the due date is always four weeks out or more, never less", () => {
     // ...and never more than six days more, or it has skipped a Monday.
     assertEquals(due <= addDays(bare, 6), true, `${d}: ${due} skipped a Monday`);
   }
+});
+
+/*
+ * 27.21 — one spelling of a date, everywhere.
+ *
+ * The app formatted through `Intl` in the *viewing device's* locale, so the same entry read
+ * `08/09/2026` on one machine and `Sep 8` on another, and the invoice had a third spelling of its
+ * own. A date two people are looking at should not depend on which of them is looking, and
+ * `08/09/2026` is ambiguous to half the world besides.
+ */
+Deno.test("27.21 -- a date is two digits, three letters and four digits", () => {
+  assertEquals(formatDay("2026-09-08"), "08 Sep 2026");
+  assertEquals(formatDay("2026-01-01"), "01 Jan 2026");
+  assertEquals(formatDay("2026-12-31"), "31 Dec 2026");
+  // September is the one the short forms disagree about: `Intl` says "Sept" in en-AU and en-GB.
+  assertEquals(formatDay("2026-09-30").includes("Sept"), false);
+});
+
+Deno.test("and it is the same date in every timezone the reader might be in", () => {
+  // `new Date("2026-08-01")` is UTC midnight, which prints as 31 July anywhere west of Greenwich.
+  // Nothing here becomes an instant, so there is nothing for a zone to move.
+  assertEquals(formatDay("2026-08-01"), "01 Aug 2026");
+  assertEquals(formatMonth("2026-08"), "Aug 2026");
 });

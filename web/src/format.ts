@@ -6,6 +6,7 @@
  */
 
 import type { DateString } from "@worklog/shared/types";
+import { formatDay } from "@worklog/shared/dates";
 import { hoursOf, roundHours } from "@worklog/shared/rounding";
 
 /**
@@ -62,16 +63,14 @@ export function money(minor: number, currency: string): string {
   }
 }
 
-const DAY_MONTH = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "short",
-});
-const DAY_MONTH_YEAR = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+/**
+ * 27.21 — the weekday, and then the one spelling of a date.
+ *
+ * The date itself comes from `shared/dates.ts` so that the app and the invoice write it the same
+ * way. Only the weekday is still asked of `Intl`: it is a word rather than a format, three
+ * letters in every locale that has one, and nothing about it is ambiguous.
+ */
+const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 
 /**
  * A plain date, rendered without ever becoming an instant.
@@ -86,13 +85,21 @@ function localDate(date: DateString): Date {
 }
 
 export function shortDate(date: DateString): string {
-  return DAY_MONTH.format(localDate(date));
+  return formatDay(date);
 }
 
+/** The same date with the weekday in front, for a heading somebody scans down. */
 export function longDate(date: DateString): string {
-  return DAY_MONTH_YEAR.format(localDate(date));
+  return `${WEEKDAY.format(localDate(date))}, ${formatDay(date)}`;
 }
 
+/**
+ * A month as a heading: `September 2026`.
+ *
+ * Still `Intl`, and deliberately: this is a heading rather than a date, the full name is not
+ * ambiguous the way `08/09` is, and a person reading their own screen in their own language is
+ * exactly who it is for. 27.21 is about dates.
+ */
 export function monthName(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" })
@@ -110,14 +117,11 @@ export function timeOfDay(instant: number): string {
 }
 
 export function dateTime(instant: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(instant));
+  const at = new Date(instant);
+  const date: DateString = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${
+    String(at.getDate()).padStart(2, "0")
+  }`;
+  return `${formatDay(date)}, ${timeOfDay(instant)}`;
 }
 
 /**

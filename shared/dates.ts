@@ -124,3 +124,46 @@ export function shiftMonth(month: string, by: number): string {
 export function monthBefore(a: string, b: string): boolean {
   return a < b;
 }
+
+/**
+ * 27.21 — the one way a date is written, everywhere: `08 Sep 2026`.
+ *
+ * The app formatted dates through `Intl` in the *viewing device's* locale, so the same entry read
+ * `08/09/2026` on one machine and `Sep 8` on another, and the invoice had a third spelling of its
+ * own. A date on a document two people are looking at should not depend on which of them is
+ * looking, and `08/09/2026` is ambiguous to half the world besides.
+ *
+ * Two digits for the day, because a column of dates that jumps between one and two characters is
+ * harder to scan than one that does not; three letters for the month, because "Sept" is four and
+ * the point is a fixed width.
+ */
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+export function formatDay(date: DateString): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return `${String(d).padStart(2, "0")} ${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** The month a period names, spelled the same way: `Sep 2026`. */
+export function formatMonth(period: string): string {
+  const [y, m] = period.split("-").map(Number) as [number, number];
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** Just the month's short name, for a caller assembling something else. */
+export function monthShortName(month1To12: number): string {
+  return MONTH_NAMES[month1To12 - 1] ?? "";
+}
