@@ -325,3 +325,26 @@ Deno.test("27.12 -- the sender's address breaks where it was typed to", async ()
   assertEquals(long[0], "Level 9");
   assertEquals(long.length > 2, true, `only wrapped to ${long.length} lines: ${long.join(" | ")}`);
 });
+
+/*
+ * The same invoice renders to the same bytes, whenever it is asked for.
+ *
+ * pdf-lib stamps creation and modification dates from the clock, so two renders of one frozen
+ * snapshot differed whenever they fell either side of a second. That surfaced as
+ * `24.30 -- and it re-renders as the document that was sent` failing once in a full suite run and
+ * passing on its own, which is the shape of a flake nobody chases. 24.30's byte comparison is the
+ * strongest claim available about a document and it was resting on the two renders being quick.
+ */
+Deno.test("a render is deterministic, a second apart", async () => {
+  const draft = draftWith(3);
+  const first = await renderInvoicePdf(draft, CONFIG);
+  // Long enough to cross the boundary the timestamps are written at.
+  await new Promise((r) => setTimeout(r, 1_100));
+  const second = await renderInvoicePdf(draft, CONFIG);
+  assertEquals(first.length, second.length);
+  assertEquals(
+    new TextDecoder("latin1").decode(first) === new TextDecoder("latin1").decode(second),
+    true,
+    "two renders of one draft differ",
+  );
+});

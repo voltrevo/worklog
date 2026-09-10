@@ -11,6 +11,7 @@ import {
   toWireClaim,
 } from "@worklog/shared/protocol";
 import type { AccessRole, AuthPurpose } from "@worklog/shared/auth";
+import { monthOf } from "@worklog/shared/dates";
 import { open } from "./db.ts";
 import { ChallengeStore } from "./access.ts";
 import { setConfig } from "./config.ts";
@@ -602,4 +603,46 @@ Deno.test({
     ctx.db.close();
     await Deno.remove(dir, { recursive: true });
   },
+});
+
+/*
+ * 27.16 — the session running right now counts towards the pace.
+ *
+ * The projection is built from work *entries*, and a timer that has not been stopped is not one —
+ * so "worked so far" sat at whatever the last stop left it while the person watching it worked.
+ * The timer screen has always added the running session to today's figure (3.4); pacing had no
+ * equivalent.
+ */
+Deno.test("27.16 -- a running timer is in the pacing figures", async () => {
+  const ctx = context();
+  const s: Session = { id: "x", authenticated: true, role: "admin" };
+
+  const before = await call(ctx, s, {
+    t: "snapshot",
+    month: monthOf(CLOCK.today),
+    clock: CLOCK,
+  }) as SnapshotResult;
+
+  await call(ctx, s, { t: "timer-start", billingTag: "Live", date: CLOCK.today });
+  // Two hours ago, so there is something to count rather than a few milliseconds of it.
+  const started = NOW - 2 * 3_600_000;
+  await call(ctx, s, { t: "timer-set-start", startedAt: started });
+
+  const during = await call(ctx, s, {
+    t: "snapshot",
+    month: monthOf(CLOCK.today),
+    clock: CLOCK,
+  }) as SnapshotResult;
+
+  const grew = during.pacing.workedHours - before.pacing.workedHours;
+  assertEquals(
+    Math.abs(grew - 2) < 0.05,
+    true,
+    `worked went from ${before.pacing.workedHours} to ${during.pacing.workedHours}`,
+  );
+
+  // And it is not an entry: History lists what was recorded, and 11.25 compares ids against an
+  // invoice's snapshot. A session still running belongs in neither.
+  assertEquals(during.entries.length, before.entries.length);
+  assertEquals(during.today.length, before.today.length);
 });

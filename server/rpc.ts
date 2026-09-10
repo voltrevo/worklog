@@ -28,7 +28,8 @@ import type { AccessRole } from "@worklog/shared/auth";
 import { project } from "@worklog/shared/pacing";
 import { shapeOf } from "@worklog/shared/schedule";
 import { appliedPaymentOverride, invoiceWarnings } from "@worklog/shared/invoice";
-import type { DayInterval, Holiday, PacingOverride } from "@worklog/shared/types";
+import type { DayInterval, Holiday, PacingOverride, WorkEntry } from "@worklog/shared/types";
+import { monthOf } from "@worklog/shared/dates";
 import { type Db, transact } from "./db.ts";
 import {
   allows,
@@ -399,8 +400,29 @@ export async function handle(
       const entries = entriesInMonth(db, req.month);
       const invoices = listInvoices(db);
       const overrides = overridesFrom(db);
+      /*
+       * 27.16 — the session running right now counts towards the pace.
+       *
+       * The projection is built from work *entries*, and a timer that has not been stopped is not
+       * one yet — so "worked so far" and everything derived from it sat at whatever the last stop
+       * left, while the person watching it was working. The timer screen has always added the
+       * running session to today's figure (3.4); pacing had no equivalent.
+       *
+       * Added to the projection's input only. It is not an entry: History must not list it, and
+       * 11.25's set difference must not see an id no invoice could ever name.
+       */
+      const running = timerState(ctx);
+      const inProgress: WorkEntry[] = running.active && monthOf(running.active.date) === req.month
+        ? [{
+          id: "running",
+          date: running.active.date,
+          durationMs: Math.max(0, nowOf(ctx) - running.active.startedAt),
+          billingTag: running.active.billingTag,
+        }]
+        : [];
+
       const result: SnapshotResult = {
-        timer: timerState(ctx),
+        timer: running,
         today: entriesOn(db, req.clock.today),
         month: req.month,
         entries,
@@ -412,7 +434,7 @@ export async function handle(
             overrides,
           },
           monthlyTargetHours: pacingConfig.monthlyTargetHours,
-          entries,
+          entries: [...entries, ...inProgress],
           today: req.clock.today,
           nowMinutes: req.clock.nowMinutes,
         }),

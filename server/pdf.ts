@@ -137,6 +137,24 @@ async function render(
   totals(ctx, content);
   payment(ctx, content);
 
+  /*
+   * The same invoice renders to the same bytes.
+   *
+   * pdf-lib stamps a creation and a modification date into the info dictionary from the clock, so
+   * two renders of one frozen snapshot differed whenever they landed either side of a second —
+   * which turned up as `24.30 -- and it re-renders as the document that was sent` failing once in
+   * a full suite run and passing on its own. A byte comparison is the strongest claim available
+   * about a document, and it was resting on the two renders being quick.
+   *
+   * Dated the day the invoice is dated, which is a fact about the document rather than about when
+   * somebody happened to ask for a copy of it. Midday, so that reading it back in any timezone
+   * lands on the right date.
+   */
+  const [y, m, d] = draft.invoiceDate.split("-").map(Number) as [number, number, number];
+  const dated = new Date(Date.UTC(y, m - 1, d, 12));
+  doc.setCreationDate(dated);
+  doc.setModificationDate(dated);
+
   return { bytes: await doc.save(), outside: ctx.outside };
 }
 
