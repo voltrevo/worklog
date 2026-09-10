@@ -2002,6 +2002,54 @@ async function main() {
   const leaks = [];
   const offLine = [];
   /*
+   * 27.1 — a stored address that will not answer, replaced while it is still trying.
+   *
+   * Reported as flakiness at startup: the app connects, and a moment later says the connection
+   * dropped — naming the *previous* server. `transportRef` already stops an old transport from
+   * declaring the live one dropped, and this is the moment before that, where an attempt has not
+   * produced a transport at all. Its failure arrived twelve seconds later, over the top of a
+   * session that had since connected somewhere else.
+   *
+   * An unroutable address rather than a wrong one: it has to be slow, so that the second attempt
+   * overtakes the first.
+   */
+  /*
+   * 27.1 — leaving a server, and staying left.
+   *
+   * "Disconnect from this server" closes the client, and closing a client resolves that
+   * transport's `closed` — which is the same signal a real drop gives. So the reconnect ladder
+   * started, four hundred milliseconds later it redialled the address just abandoned, and on a
+   * network where that server is still running it *succeeded*: the app reappeared on the
+   * connection somebody had deliberately left, or announced it as dropped over the address they
+   * were typing. That is the startup flakiness in the report, and the giveaway was that the
+   * message named the previous server.
+   */
+  const swapper = await rig.open("swapper", DESKTOP, "Address Swapper");
+  await swapper.page.getByLabel("Access needed").selectOption("write");
+  await swapper.page.getByRole("button", { name: "Ask for access" }).click();
+  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Device access" }).click();
+  await desktop.page.getByRole("row", { name: /Address Swapper/ })
+    .getByRole("button", { name: /^Approve as/ }).click();
+  const swapperIn = swapper.page.getByRole("button", { name: "Continue" });
+  await swapperIn.waitFor({ timeout: 30_000 });
+  await swapperIn.click();
+  await swapper.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
+
+  await nav(swapper.page, "Settings");
+  await swapper.page.getByRole("button", { name: "Disconnect from this server" }).click();
+  const askAgain = swapper.page.getByLabel("Server address");
+  await askAgain.waitFor({ timeout: 15_000 });
+  // Comfortably past the first rung of the ladder, which is 400ms.
+  await swapper.page.waitForTimeout(4_000);
+  check(
+    "27.1 — a server that was left stays left, rather than being redialled",
+    await askAgain.isVisible(),
+    (await swapper.page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200),
+  );
+  await swapper.page.close();
+
+  /*
    * A third device, in the other theme.
    *
    * The harness pins `colorScheme: "light"` so a run does not depend on the machine's preference,

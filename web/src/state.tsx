@@ -167,6 +167,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * once has to see what is true now rather than what was true when it was installed.
    */
   const phaseRef = useRef<Phase>(null);
+  /** 27.1 — the number of the connection attempt in progress. See `connectTo`. */
+  const attemptRef = useRef(0);
   monthRef.current = month;
 
   const refresh = useCallback(async () => {
@@ -236,6 +238,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const connectTo = useCallback(async (address: string, name: string, retry = 0) => {
+    /*
+     * 27.1 — which attempt this is, so a superseded one cannot report anything.
+     *
+     * `transportRef` already stops an old *transport* from declaring the live one dropped, and
+     * that is a different moment: an attempt which never produced a transport had nothing to
+     * check itself against. Boot against a stored address, have it be slow or wrong, type a new
+     * one — and the first attempt's failure arrives afterwards and puts "The connection to the
+     * server dropped" over a session that is connecting or connected somewhere else. Reported as
+     * flakiness at startup, and the giveaway was that it named the *previous* server.
+     *
+     * A counter rather than comparing addresses: connecting to the same server again is also a
+     * new attempt, and the answer for the abandoned one is the same either way.
+     */
+    const attempt = ++attemptRef.current;
+    const current = () => attemptRef.current === attempt;
+
     saveAddress(address);
     saveDeviceName(name);
     setNameState(name);
@@ -271,6 +289,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * every device having to be re-pointed by hand.
        */
       const transport = await connect(address, AbortSignal.timeout(CONNECT_TIMEOUT_MS));
+      // Somebody typed a different address while this was dialling. This one is nobody's
+      // connection now, and leaving it open would leave a second peer connection running.
+      if (!current()) {
+        transport.close();
+        return;
+      }
       transportRef.current = transport;
       const client = new WorklogClient({
         transport,
@@ -328,6 +352,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * screen.
        */
       const lost = () => {
+        if (!current()) return; // an attempt that has been superseded (27.1)
         if (transportRef.current !== transport) return; // a connection we have already replaced
         if (retry >= RECONNECT_DELAYS.length) {
           setPhase((p) =>
@@ -410,6 +435,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setReconnecting(false);
     } catch (err) {
+      // 27.1 — an abandoned attempt fails in silence. Whatever went wrong with it went wrong with
+      // a server nobody is waiting on any more.
+      if (!current()) return;
       /*
        * Only a *reconnection* keeps trying.
        *
@@ -517,9 +545,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [phase]);
 
+  /**
+   * 22.4, 27.1 — leave this server, and stop having anything to do with it.
+   *
+   * Closing the client resolves that transport's `closed`, which is the same signal a real drop
+   * gives — so the reconnect ladder started, four hundred milliseconds later it redialled the
+   * address that had just been abandoned, and on a LAN where that server is still running it
+   * *succeeded*: the app came back on the connection somebody had just left, or announced that
+   * connection as dropped over the top of the address they were typing. Reported as flakiness at
+   * startup, with the giveaway that the message named the previous server.
+   *
+   * Superseding the attempt is what makes the closure expected rather than a loss. `transportRef`
+   * goes with it, so nothing is left pointing at a connection that is deliberately over.
+   */
   const forget = useCallback(() => {
+    attemptRef.current++;
+    transportRef.current = null;
     clientRef.current?.close();
     clientRef.current = null;
+    setReconnecting(false);
     setSnapshot(undefined);
     setPhase({ k: "no-address" });
   }, []);
