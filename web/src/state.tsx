@@ -34,6 +34,7 @@ import { minutesSinceMidnight, monthOf, today } from "@worklog/shared/dates";
 import { connect } from "./kpsTransport.ts";
 import { playPromptTune } from "./promptTune.ts";
 import { desktopSigner, isDesktop, primeDeviceStorage } from "./desktop.ts";
+import { clearInvitation, invitedAddress } from "./invite.ts";
 import {
   describeError,
   flushQueue,
@@ -142,9 +143,19 @@ export function useStore(): Store {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<Phase>(() =>
-    loadAddress() ? { k: "connecting", address: loadAddress()! } : { k: "no-address" }
-  );
+  /*
+   * 27.23 — an invitation in the URL counts as an address, from the first render.
+   *
+   * Peeked rather than consumed here: reading `location.hash` has no side effects, and a render
+   * that stored things would run twice under StrictMode. The boot effect below saves it and takes
+   * it out of the URL. Doing it only there would show the "where is your server?" screen for a
+   * frame to somebody who has just scanned an invitation, which is the wrong first impression and
+   * an easy tap on the wrong thing.
+   */
+  const [phase, setPhase] = useState<Phase>(() => {
+    const address = invitedAddress() ?? loadAddress();
+    return address ? { k: "connecting", address } : { k: "no-address" };
+  });
   const [snapshot, setSnapshot] = useState<SnapshotResult>();
   const [month, setMonth] = useState(() => monthOf(today()));
   const [deviceName, setNameState] = useState(() => loadDeviceName());
@@ -577,7 +588,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // stored address — otherwise the first render decides there is none and shows the setup screen
     // to somebody who set it up last week.
     void primeDeviceStorage().then(() => {
-      const address = loadAddress();
+      /*
+       * 27.23 — an invitation wins over what was stored, and is then gone.
+       *
+       * Wins, because scanning one is a deliberate act aimed at a particular server; a device that
+       * was pointed somewhere else is being repointed on purpose. Gone, because the URL is not
+       * where this app keeps state (21.19) and a fragment that survives is one that gets shared,
+       * bookmarked, or re-applied by a reload after the address has been changed by hand.
+       *
+       * After `primeDeviceStorage`, because in the desktop window that call replaces the whole
+       * in-memory settings map with the file's contents — a write before it is a write discarded.
+       */
+      const invited = invitedAddress();
+      if (invited) {
+        saveAddress(invited);
+        clearInvitation();
+      }
+      const address = invited ?? loadAddress();
       setNameState(loadDeviceName());
       if (address) void connectTo(address, loadDeviceName());
       else setPhase({ k: "no-address" });

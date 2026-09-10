@@ -236,7 +236,7 @@ move the button that was pressed. A percentage in the DOM cannot tell you either
 screenshot can only tell you afterwards. They share `tools/harness.mjs` and run on different ports,
 so both can run at once.
 
-**An admin watching the Admin screen never saw a request arrive.** That screen fetched its pending
+**An admin watching the Users screen never saw a request arrive.** That screen fetched its pending
 and device lists once on mount, so `access-request` broadcast, the store refreshed, and the two
 lists carried on showing what they had. The request appeared if you navigated away and came back.
 "Show pending requests to admins" (13.25) is not much use when the showing happens before the

@@ -2211,7 +2211,7 @@ async function main() {
   const swapper = await rig.open("swapper", DESKTOP, "Address Swapper");
   await swapper.page.getByLabel("Access needed").selectOption("write");
   await swapper.page.getByRole("button", { name: "Ask for access" }).click();
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Users", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   await desktop.page.getByRole("row", { name: /Address Swapper/ })
     .getByRole("button", { name: /^Approve as/ }).click();
@@ -2254,7 +2254,7 @@ async function main() {
   await reader.page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
   await reader.page.getByLabel("Access needed").selectOption("read");
   await reader.page.getByRole("button", { name: "Ask for access" }).click();
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Users", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   await desktop.page.getByRole("row", { name: /Read Only Laptop/ })
     .getByRole("button", { name: /^Approve as/ }).click();
@@ -2272,16 +2272,86 @@ async function main() {
     "and it cannot start a timer",
     await reader.page.getByRole("button", { name: /Start/ }).isDisabled(),
   );
+  /*
+   * 27.22 — the Users screen is in its navigation, and says what this key may not see.
+   *
+   * This check used to assert the opposite: no tab at all, on the 19.12 reasoning that a screen
+   * you cannot use is better hidden. Reported back as a device that cannot tell "this app has no
+   * such thing" from "you may not see it" — and the one thing on that screen every role can do,
+   * inviting another device, was hidden with it.
+   */
+  await nav(reader.page, "Users");
+  const readerUsers = await visibleText(reader.page);
   check(
-    "and access administration is not in its navigation",
-    (await reader.page.getByRole("button", { name: "Admin", exact: true }).count()) === 0,
+    "27.22 — a read device is shown Users and told what it may not see",
+    /read-only key/.test(readerUsers) && /need an admin key/.test(readerUsers) &&
+      (await reader.page.getByRole("button", { name: "Device access" }).count()) === 0,
+    readerUsers,
+  );
+  check(
+    "27.23 — and it can still invite a device",
+    (await reader.page.getByRole("button", { name: "Invite a device" }).count()) === 1,
+  );
+  await nav(reader.page, "Timer");
+
+  /*
+   * 27.23 — an invitation is a URL, and a device opened at it is connected.
+   *
+   * The end-to-end version, because the parts are individually plausible and the join is where
+   * this fails: the dialog builds a URL from `location` and the stored address, a scanner opens it,
+   * and the app has to notice the fragment *before* it decides there is no address and shows the
+   * setup screen. A device with nothing stored (`noAddress`) can only get in through the hash.
+   */
+  await nav(desktop.page, "Users");
+  await desktop.page.getByRole("button", { name: "Invite a device" }).click();
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  const inviteUrl = await desktop.page.getByLabel("Or this link").inputValue();
+  check(
+    "27.23 — the invitation carries this app's address and the server's",
+    inviteUrl.startsWith("http://127.0.0.1:") && /#kps=[^&]+/.test(inviteUrl),
+    inviteUrl,
+  );
+  const qr = desktop.page.locator(".qr img");
+  check(
+    "27.23 — and it is drawn as a QR code",
+    await until(
+      "qr drawn",
+      desktop.page,
+      async () => ((await qr.getAttribute("src")) ?? "").startsWith("data:image/png;base64,"),
+    ),
+    ((await qr.getAttribute("src")) ?? "no image").slice(0, 40),
+  );
+  await desktop.page.getByRole("button", { name: "Done" }).click();
+
+  const scanned = await rig.open("scanned", DESKTOP, "Scanned Phone", {
+    noAddress: true,
+    hash: new URL(inviteUrl).hash,
+  });
+  check(
+    "27.23 — a device opened at the invitation is pointed at the server",
+    await until(
+      "asked for access",
+      scanned.page,
+      (p) => p.getByRole("button", { name: "Ask for access" }).isVisible(),
+      40_000,
+    ),
+    await visibleText(scanned.page),
+  );
+  check(
+    "27.23 — and the address is taken out of the URL",
+    await until(
+      "hash gone",
+      scanned.page,
+      async (p) => (await p.evaluate(() => globalThis.location.hash)) === "",
+    ),
+    await scanned.page.evaluate(() => globalThis.location.href),
   );
 
   const dark = await rig.open("dark", DESKTOP, "Night Desktop", { colorScheme: "dark" });
   await dark.page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
   await dark.page.getByLabel("Access needed").selectOption("admin");
   await dark.page.getByRole("button", { name: "Ask for access" }).click();
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Users", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   await desktop.page.getByRole("row", { name: /Night Desktop/ })
     .getByRole("button", { name: /^Approve as/ }).click();
@@ -2290,7 +2360,7 @@ async function main() {
   await continueIn.click();
   await dark.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 
-  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Users", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(300);
     dim.push(...await lowContrast(desktop.page, screen));
@@ -2487,7 +2557,7 @@ async function main() {
     }, where);
 
   const nameless = [];
-  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Users", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(300);
     nameless.push(...await unnamed(desktop.page, screen));
@@ -2517,7 +2587,7 @@ async function main() {
     }, where);
 
   const glyphs = [];
-  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Admin", "Settings"]) {
+  for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Users", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(250);
     glyphs.push(...await mute(desktop.page, screen));
@@ -2533,7 +2603,7 @@ async function main() {
   // 13.20, 13.21 — the phone is holding an open subscription. Revoking has to reach it there
   // rather than at its next reload, because "next reload" on a tab left open is never.
   console.log("\nrevocation:");
-  await nav(desktop.page, "Admin");
+  await nav(desktop.page, "Users");
   await desktop.page.getByRole("button", { name: "Device access" }).click();
 
   // 13.25, 1.12 — a request that arrives while an admin is already looking at this screen. It used
@@ -2577,7 +2647,7 @@ async function main() {
   await spare.page.bringToFront();
   await spare.page.waitForTimeout(20_000);
   await desktop.page.bringToFront();
-  await nav(desktop.page, "Admin");
+  await nav(desktop.page, "Users");
   await desktop.page.getByRole("button", { name: "Server logs" }).click();
   await desktop.page.getByRole("button", { name: "Refresh" }).click();
   await desktop.page.waitForTimeout(800);
@@ -2604,7 +2674,7 @@ async function main() {
     ),
   );
 
-  await nav(desktop.page, "Admin");
+  await nav(desktop.page, "Users");
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })
     .getByRole("button", { name: "Revoke" }).click();
@@ -2679,8 +2749,8 @@ async function main() {
     ),
   );
   check(
-    "and has no Admin tab at all",
-    (await spare.page.getByRole("button", { name: "Admin", exact: true }).count()) === 0,
+    "27.22 — and reaches Users, which names what its key cannot do",
+    (await spare.page.getByRole("button", { name: "Users", exact: true }).count()) === 1,
   );
 
   /*

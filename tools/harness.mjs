@@ -246,7 +246,9 @@ export async function startRig({ dataDir, port, httpPort, seed = true, seedEnv =
         [opts.address ?? server.address, deviceName],
       );
     }
-    await page.goto(`http://127.0.0.1:${httpPort}/`);
+    // `opts.hash` is 27.23's invitation: the page is opened at a URL carrying the server address
+    // in its fragment, which with `noAddress` is the only thing that can get this device connected.
+    await page.goto(`http://127.0.0.1:${httpPort}/${opts.hash ?? ""}`);
     contexts.push(context);
     return { context, page, label };
   };
@@ -321,7 +323,7 @@ export async function claimAndApprove(
   await mobile.page.getByText("Waiting for approval").waitFor({ timeout: 15_000 });
 
   console.log("  approving the phone from the desktop…");
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Users", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   // 25.32 — approve grants the role that was asked for; there is no button per role any more.
   await desktop.page.getByRole("row", { name: /Pixel Phone/ })

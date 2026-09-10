@@ -20,7 +20,7 @@ import { Notes } from "./screens/Notes.tsx";
 import { History } from "./screens/History.tsx";
 import { Pacing } from "./screens/Pacing.tsx";
 import { Invoices } from "./screens/Invoices.tsx";
-import { Admin } from "./screens/Admin.tsx";
+import { Users } from "./screens/Users.tsx";
 import { Settings } from "./screens/Settings.tsx";
 import { WorkNote } from "./screens/WorkNote.tsx";
 import { LoopPlayback } from "./screens/LocalAudio.tsx";
@@ -31,7 +31,7 @@ export type ScreenId =
   | "history"
   | "pacing"
   | "invoices"
-  | "admin"
+  | "users"
   | "settings";
 
 /**
@@ -52,8 +52,6 @@ interface NavItem {
   id: ScreenId;
   label: string;
   glyph: string;
-  /** Admin-only screens are hidden rather than shown broken (19.12, 19.13). */
-  adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -62,7 +60,7 @@ const NAV: NavItem[] = [
   { id: "history", label: "History", glyph: "☰" },
   { id: "pacing", label: "Pacing", glyph: "◑" },
   { id: "invoices", label: "Invoices", glyph: "▤" },
-  { id: "admin", label: "Admin", glyph: "⚿", adminOnly: true },
+  { id: "users", label: "Users", glyph: "⚿" },
   { id: "settings", label: "Settings", glyph: "⚙" },
 ];
 
@@ -106,8 +104,8 @@ function Screen({ id }: { id: ScreenId }) {
       return <Pacing />;
     case "invoices":
       return <Invoices />;
-    case "admin":
-      return <Admin />;
+    case "users":
+      return <Users />;
     case "settings":
       return <Settings />;
   }
@@ -170,7 +168,6 @@ function DesktopShell(
   { screen, setScreen }: { screen: ScreenId; setScreen: (s: ScreenId) => void },
 ) {
   const { phase, reconnecting } = useStore();
-  const isAdmin = phase.k === "ready" && phase.role === "admin";
   return (
     <div className="app desktop">
       <nav className="sidebar">
@@ -181,7 +178,8 @@ function DesktopShell(
         {/* One source for this sentence and the dot's: they were two copies of the same ladder. */}
         <div className="conn muted">{connectionLabel(phase, reconnecting)}</div>
         <div className="nav">
-          {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
+          {/* 27.22 — every screen, every role. What a key may not do is said on the screen. */}
+          {NAV.map((n) => (
             <button
               key={n.id}
               type="button"
@@ -204,10 +202,7 @@ function DesktopShell(
 function MobileShell(
   { screen, setScreen }: { screen: ScreenId; setScreen: (s: ScreenId) => void },
 ) {
-  const { phase } = useStore();
-  const isAdmin = phase.k === "ready" && phase.role === "admin";
-  const items = NAV.filter((n) => !n.adminOnly || isAdmin);
-  const current = items.find((n) => n.id === screen);
+  const current = NAV.find((n) => n.id === screen);
   return (
     <div className="app mobile">
       <header className="topbar">
@@ -220,7 +215,7 @@ function MobileShell(
         <Screen id={screen} />
       </main>
       <nav className="tabbar">
-        {items.map((n) => (
+        {NAV.map((n) => (
           <button
             key={n.id}
             type="button"

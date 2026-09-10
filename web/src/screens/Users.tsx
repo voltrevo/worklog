@@ -1,5 +1,12 @@
 /**
- * Device access and the server log (19.12, 19.13, sections 12 and 13).
+ * Who can use this server, and what the server has been doing (sections 12 and 13).
+ *
+ * **Called "Users" and shown to everybody** (27.22). It was "Admin" and it was missing from the
+ * navigation of any device without an admin key, on the 19.12/19.13 reasoning that a screen you
+ * cannot use is better hidden than shown broken. The cost of that is a device whose owner cannot
+ * tell the difference between "this app has no such thing" and "you may not see it" — and the one
+ * thing on here that every role *can* do, inviting another device, was hidden along with it. So it
+ * is on every device now, and it says what this key may not see.
  *
  * **The approve control asks for a role rather than accepting the one that was requested** (13.28).
  * A one-tap Approve next to "requested: admin" is a button that grants admin, and the request is
@@ -14,6 +21,7 @@ import type { AccessRole } from "@worklog/shared/auth";
 import type { LogEntry, LogLevel } from "@worklog/shared/protocol";
 import { Dialog } from "./Dialog.tsx";
 import { Listing } from "./Listing.tsx";
+import { Invite } from "./Invite.tsx";
 
 interface PendingWire {
   publicKey: string;
@@ -171,32 +179,65 @@ function DeviceActions(
   );
 }
 
-export function Admin() {
+export function Users() {
+  const { phase } = useStore();
+  const role = phase.k === "ready" ? phase.role : undefined;
+  const isAdmin = role === "admin";
   const [tab, setTab] = useState<"access" | "logs">("access");
+  const [inviting, setInviting] = useState(false);
+
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="row between wrap">
-        <h1>Admin</h1>
+        <h1>Users</h1>
         <div className="row">
-          <button
-            className="btn"
-            type="button"
-            aria-pressed={tab === "access"}
-            onClick={() => setTab("access")}
-          >
-            Device access
-          </button>
-          <button
-            className="btn"
-            type="button"
-            aria-pressed={tab === "logs"}
-            onClick={() => setTab("logs")}
-          >
-            Server logs
+          {isAdmin && (
+            <>
+              <button
+                className="btn"
+                type="button"
+                aria-pressed={tab === "access"}
+                onClick={() => setTab("access")}
+              >
+                Device access
+              </button>
+              <button
+                className="btn"
+                type="button"
+                aria-pressed={tab === "logs"}
+                onClick={() => setTab("logs")}
+              >
+                Server logs
+              </button>
+            </>
+          )}
+          {
+            /* 27.23 — offered to every role, because it grants nothing: it hands over the address
+               of a server that will still make an admin approve whoever turns up. */
+          }
+          <button className="btn primary" type="button" onClick={() => setInviting(true)}>
+            Invite a device
           </button>
         </div>
       </div>
-      {tab === "access" ? <Access /> : <Logs />}
+
+      {
+        /* 27.22 — named, rather than left as an absence.
+           "Stating what a device may not see" is the whole change: an empty screen and a screen
+           that is not there look identical from the outside, and both read as a broken app. */
+      }
+      {!isAdmin && (
+        <div className="notice">
+          This device has {role === "write" ? "a write" : role === "read" ? "a read-only" : "no"}
+          {" "}
+          key, so the list of devices, the buttons that approve and revoke them, and the server log
+          are not shown here — those need an admin key. Inviting a device works from any of them.
+        </div>
+      )}
+
+      {isAdmin && (tab === "access" ? <Access /> : <Logs />)}
+
+      {inviting && <Invite onClose={() => setInviting(false)} />}
     </div>
   );
 }

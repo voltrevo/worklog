@@ -146,7 +146,7 @@ async function main() {
   console.log("  promoting the phone to admin, for the one layout nothing else reaches…");
   // `capture` walked the desktop's whole navigation, so it is sitting on Settings. The device list
   // is two clicks away, and asking for a row that is not on screen just times out.
-  await desktop.page.getByRole("button", { name: "Admin", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "Users", exact: true }).click();
   await desktop.page.getByRole("button", { name: "Device access" }).click();
   // A *pending* device is promoted with buttons; an already-authorised one has a `<select>`. They
   // are different tables and the first attempt here used the wrong one, which times out silently.
@@ -166,19 +166,31 @@ async function main() {
   }
 
   await mobile.page.reload();
-  const adminTab = mobile.page.getByRole("button", { name: "Admin", exact: true });
+  const usersTab = mobile.page.getByRole("button", { name: "Users", exact: true });
   try {
-    await adminTab.waitFor({ timeout: 30_000 });
+    await usersTab.waitFor({ timeout: 30_000 });
   } catch (e) {
     throw new Error(
-      `the phone never grew an Admin tab after being promoted. Showing: ${await visibleText(
+      `the phone never grew the admin half of Users after being promoted. Showing: ${await visibleText(
         mobile.page,
       )} (${e.message})`,
     );
   }
-  await adminTab.click();
+  await usersTab.click();
   await mobile.page.waitForTimeout(400);
-  await shot(mobile.page, "admin-mobile");
+  await shot(mobile.page, "users-mobile");
+
+  /*
+   * 27.23 — the invitation, on a phone.
+   *
+   * The one dialog in the app with a fixed-size image in it, on the presentation where fixed sizes
+   * go wrong: a 320px QR inside a sheet inside a 390px screen, with a link that is a hundred
+   * characters long in a field beside it.
+   */
+  await mobile.page.getByRole("button", { name: "Invite a device" }).click();
+  await mobile.page.locator(".qr img").waitFor({ timeout: 20_000 });
+  await shot(mobile.page, "invite-mobile");
+  await mobile.page.getByRole("button", { name: "Done" }).click();
 
   // 13.27, 13.28, 23.5 — the pending-request layout on a phone, which nothing else reaches: the
   // only device that has ever been pending here *is* the phone, and it cannot photograph its own
@@ -232,7 +244,7 @@ async function approveFrom(admin, page, name, role = "admin") {
   await page.getByRole("button", { name: "Ask for access" }).waitFor({ timeout: 30_000 });
   await page.getByLabel("Access needed").selectOption(role);
   await page.getByRole("button", { name: "Ask for access" }).click();
-  await admin.getByRole("button", { name: "Admin", exact: true }).click();
+  await admin.getByRole("button", { name: "Users", exact: true }).click();
   await admin.getByRole("button", { name: "Device access" }).click();
   await admin.getByRole("row", { name: new RegExp(name) })
     .getByRole("button", { name: /^Approve as/ }).click();

@@ -2028,3 +2028,25 @@ button.maskfield:disabled {
 .timepair input {
   min-width: 0;
 }
+
+/*
+ * 27.23 — the invitation code, on white whatever the page is doing.
+ *
+ * A QR is read by a camera and cameras expect dark-on-light; inverting one for a dark theme makes
+ * it unreadable to a good half of the scanners in the world. So the square is white in both
+ * themes, with a border so it does not float on a light page.
+ */
+.qr {
+  align-self: center;
+  padding: var(--s-4);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  line-height: 0;
+}
+
+.qr img {
+  display: block;
+  width: min(320px, 60vw);
+  height: auto;
+}
