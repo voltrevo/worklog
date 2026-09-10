@@ -797,3 +797,8 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### Installing
 
 27.24. MUST carry the metadata a phone needs to install the frontend as an app.
+
+### Permissions
+
+27.25. MUST run the server and the desktop app with the narrowest Deno permissions that work, rather than with `-A`. Read and write MUST name the directories actually used, and every other permission MUST be justified by something the process does.
+27.26. MUST fail visibly rather than silently when a permission is missing: a process that cannot read its data directory should say which permission it needed, since a denied read surfaces as an unrelated error otherwise.

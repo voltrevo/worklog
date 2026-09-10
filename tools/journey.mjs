@@ -1484,6 +1484,87 @@ async function main() {
   );
   await desktop.page.getByRole("button", { name: "Not now" }).click();
 
+  /*
+   * 27.2 — off and on again, with a timer running the whole time.
+   *
+   * The reported sequence exactly: the loop plays when a timer starts, unchecking Enabled stops it
+   * — and checking it again did nothing at all, because the effect that starts playback was keyed
+   * on the timer, and the timer had not moved. Stopping and starting the timer recovered it, which
+   * is how it was diagnosed as "the path back is broken" rather than "audio is broken".
+   *
+   * Asserted against the media pipeline as well as the card: this is the fault where what the app
+   * believes and what the speakers are doing came apart.
+   */
+  /*
+   * Enabled, which nothing had ever switched on.
+   *
+   * Every audio check up to here went through Preview, which plays whatever the setting says — so
+   * the path the *timer* takes, which is the one every complaint has been about, had never been
+   * run. That is why "off and on again" could be broken without anything noticing.
+   */
+  const enabledBox = desktop.page.getByLabel("Enabled", { exact: true });
+  await enabledBox.check();
+
+  await nav(desktop.page, "Timer");
+  await clearSheets(desktop.page);
+  // Whatever the run left behind: this block needs a timer running and does not care which.
+  const stopIfRunning = desktop.page.getByRole("button", { name: /Stop/ });
+  if (await stopIfRunning.count()) {
+    await stopIfRunning.click();
+    await desktop.page.waitForTimeout(400);
+  }
+  await desktop.page.getByLabel("Billing tag").fill("Audio toggle");
+  await desktop.page.getByRole("button", { name: /Start/ }).click();
+  await nav(desktop.page, "Settings");
+  check(
+    "the loop plays while a timer runs",
+    await until(
+      "loop playing",
+      desktop.page,
+      async (p) => (await p.getByText("playing now").count()) > 0,
+    ),
+  );
+
+  await enabledBox.uncheck();
+  check(
+    "unchecking Enabled stops it",
+    await until(
+      "loop stopped",
+      desktop.page,
+      async (p) => (await p.getByText("playing now").count()) === 0,
+    ),
+  );
+
+  const playsBeforeToggle = played.filter((e) => e === "kPlay").length;
+  await enabledBox.check();
+  check(
+    "27.2 — and checking it again starts it, with the timer never having moved",
+    await until(
+      "loop playing again",
+      desktop.page,
+      async (p) => (await p.getByText("playing now").count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+  check(
+    "and the pipeline played again rather than the card merely saying so",
+    // Waited for, not read once: the card updates from a React state change and this arrives over
+    // the debugger protocol, so the two are not ordered against each other.
+    await until(
+      "pipeline played again",
+      desktop.page,
+      () => Promise.resolve(played.filter((e) => e === "kPlay").length > playsBeforeToggle),
+      10_000,
+    ),
+    JSON.stringify(played),
+  );
+
+  // Left as it was found, so what follows is not running a timer nobody started.
+  await nav(desktop.page, "Timer");
+  await desktop.page.getByRole("button", { name: /Stop/ }).click();
+  await desktop.page.waitForTimeout(400);
+  await nav(desktop.page, "Settings");
+
   // 14.3–14.5, 16.1, 16.3. The phone is authorised, connected, and looking at the same server.
   //
   // 25.20 reversed 14.25, and this check went with it. It used to assert the phone had no audio

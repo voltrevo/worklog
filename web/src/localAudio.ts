@@ -110,6 +110,21 @@ export class LoopPlayer {
   #loaded?: string;
   /** In-flight load, so a start that arrives first waits rather than doing nothing. */
   #loading?: Promise<void>;
+  /**
+   * 27.2, 27.3 — whether the loop *should* be playing, as against whether it is.
+   *
+   * Everything used to be edges: an effect keyed on the timer becoming active called `start`, and
+   * unchecking Enabled called `stop`. Two states then had no edge to arrive on. Re-checking
+   * Enabled while a timer ran changed neither the timer nor its start instant, so nothing fired
+   * and the loop stayed silent until the timer was stopped and started again. And on a reload,
+   * the effect reached `start` before IndexedDB had produced the file, so `start` found nothing
+   * to play and returned — after which the file arriving was, again, not an edge.
+   *
+   * Holding the intention instead means every path reconciles against it: a file arriving starts
+   * it, and a start that fails leaves it standing so the interface can say the loop is supposed
+   * to be playing and is not.
+   */
+  #wanted = false;
 
   /**
    * Swap in a file, or `undefined` to unload.
@@ -148,6 +163,34 @@ export class LoopPlayer {
     });
     this.#loading = work;
     await work;
+    // The file arriving is a reason to start, when something has already asked for the loop.
+    if (this.#wanted) await this.start();
+  }
+
+  /**
+   * 27.2 — what the app wants, which the player is then responsible for arriving at.
+   *
+   * The one call the rest of the app makes about playback. `start` and `stop` remain for Preview
+   * and for the control that unblocks a refused start, neither of which is about the timer.
+   */
+  async want(on: boolean): Promise<void> {
+    this.#wanted = on;
+    if (!on) {
+      this.stop();
+      return;
+    }
+    await this.start();
+  }
+
+  /**
+   * 27.3 — whether the loop is supposed to be playing.
+   *
+   * Read with `playing`: the pair of them is the only way to describe the state this app kept
+   * getting into, where the interface knew perfectly well that nothing was playing and had
+   * nothing to say about it.
+   */
+  get wanted(): boolean {
+    return this.#wanted;
   }
 
   setVolume(position: number): void {

@@ -52,18 +52,25 @@ export function LoopPlayback() {
     void loadLoop().then((loop) => player().load(loop)).catch(() => {});
   }, []);
 
+  /*
+   * 27.2 — the setting is part of what decides this, so it has to be watched.
+   *
+   * `loadEnabled()` was read inside the effect and was not among its dependencies, because it is
+   * device storage rather than React state. Unchecking Enabled stopped the loop by hand; checking
+   * it again changed nothing this effect could see, so it did not run, and the loop stayed silent
+   * until the timer itself was stopped and started. It comes through the same subscription the
+   * card notifies on.
+   */
+  const enabled = useSyncExternalStore(subscribeAudio, loadEnabled, () => false);
+
   useEffect(() => {
     const p = player();
     p.setVolume(loadVolume());
     // 14.15 — keyed on `startedAt`, so a *new* session restarts the loop rather than letting it
-    // run on from wherever the last one left it.
-    if (active && loadEnabled()) {
-      void p.start().finally(notifyAudioChanged);
-    } else {
-      p.stop();
-      notifyAudioChanged();
-    }
-  }, [active, startedAt]);
+    // run on from wherever the last one left it. What is asked for is the state, not the
+    // transition; the player reconciles, including when the file arrives after this runs.
+    void p.want(active && enabled).finally(notifyAudioChanged);
+  }, [active, startedAt, enabled]);
 
   /*
    * 26.2 — the offer to unblock has to be where the failure is noticed.
@@ -79,12 +86,24 @@ export function LoopPlayback() {
    */
   const state = useSyncExternalStore(
     subscribeAudio,
-    () => `${player().playing}:${player().blocked}:${player().silent ?? ""}`,
-    () => "false:false:",
+    () => `${player().playing}:${player().blocked}:${player().silent ?? ""}:${player().wanted}`,
+    () => "false:false::false",
   );
-  const [, refused, silent] = state.split(":");
+  const [isPlaying, refused, silent, want] = state.split(":");
   const blocked = refused === "true";
-  if (!active || (!blocked && silent !== "stalled")) return null;
+
+  /*
+   * 27.3, 27.4 — the condition is "should be playing and is not", and nothing narrower.
+   *
+   * This asked whether the last start had been *refused*, which is one of the ways a loop ends up
+   * silent and not the one that kept happening. The state reported twice over was: a timer
+   * running, the setting on, no error anywhere, no sound — and the interface knew, because it was
+   * offering Preview, which it only does when nothing is playing. Pressing Preview then started
+   * the loop and disabled itself, the app repairing a state it should not have been in.
+   *
+   * A file nobody has chosen is the one silence that is not a fault, and it says so elsewhere.
+   */
+  if (!active || want !== "true" || isPlaying === "true" || silent === "no-file") return null;
 
   /*
    * 26.1 — two different silences, and they want different sentences.
@@ -94,20 +113,23 @@ export function LoopPlayback() {
    * advanced a second later. Nothing the app can press fixes that, so it says the true thing and
    * stops there rather than offering a control that will do the same nothing again.
    */
-  if (!blocked) {
-    return (
-      <div className="notice warn audio-blocked">
-        <span>
-          The background loop was started and is not playing. This device may have no sound output
-          the app can reach.
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div className="notice warn audio-blocked">
-      <span>This browser will not start the background loop on its own.</span>
+      <span>
+        {blocked
+          ? "This browser will not start the background loop on its own."
+          : silent === "stalled"
+          ? "The background loop was started and is not playing. This device may have no sound " +
+            "output the app can reach."
+          : "The background loop is not playing."}
+      </span>
+      {
+        /*
+         * Offered whichever silence it is. A refusal is fixed by pressing something and a stall is
+         * not — but the person cannot tell those apart, the app has been wrong about which it was
+         * more than once, and pressing it costs a second either way.
+         */
+      }
       <button
         className="btn"
         type="button"

@@ -196,6 +196,16 @@ Deno.test("14.12 -- the file loops, and there is nothing to press", async () => 
       "silent",
       "start",
       "stop",
+      /*
+       * 27.2 — the intention, and the reconciling that goes with it.
+       *
+       * `want` is the only one of these the app calls about the timer; `start` and `stop` are for
+       * Preview and for the control that unblocks a refused start. `wanted` beside `playing` is
+       * what lets the interface say "this is supposed to be playing and is not", which is the
+       * sentence it had no way to form.
+       */
+      "want",
+      "wanted",
     ]);
     player.dispose();
   } finally {
@@ -449,6 +459,74 @@ Deno.test("and stopping cancels the check rather than reporting on a stopped loo
     player.stop();
     await new Promise((r) => setTimeout(r, 1_400));
     assertEquals(player.silent, undefined);
+  } finally {
+    restore();
+  }
+});
+
+/*
+ * 27.2 — the two states that had no edge to arrive on.
+ *
+ * Playback used to be driven by transitions: an effect keyed on the timer becoming active called
+ * `start`, and unchecking Enabled called `stop`. Re-checking Enabled while the timer ran changed
+ * neither the timer nor its start instant, so nothing fired. And on a reload the effect reached
+ * `start` before IndexedDB had produced the file, so `start` found nothing and returned — after
+ * which the file arriving was, again, not an edge. Both were reported as "it just doesn't play".
+ */
+Deno.test("27.2 -- asking for the loop before the file exists plays it when the file arrives", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    // What a reload does: the timer is already running, so this is asked for immediately, and the
+    // file is still coming out of the database.
+    await player.want(true);
+    assertEquals(player.playing, false, "there is nothing to play yet");
+    assertEquals(player.wanted, true, "and the asking stands");
+
+    await player.load(LOOP);
+    assertEquals(player.playing, true);
+    assertEquals(calls.play, 1);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("and turning it off and on again plays it, with no timer having changed", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    await player.want(true);
+    assertEquals(player.playing, true);
+
+    await player.want(false);
+    assertEquals(player.playing, false);
+    assertEquals(player.wanted, false);
+
+    await player.want(true);
+    assertEquals(player.playing, true, "re-enabling did not start it");
+    assertEquals(calls.play, 2);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("27.3 -- a refused start leaves the asking standing, so the interface can say so", async () => {
+  const { calls, restore } = stubBrowser();
+  try {
+    const player = new LoopPlayer();
+    await player.load(LOOP);
+    // What an autoplay policy does. The recorded element is typed by what the stub exposes, and
+    // `play` is not in that shape, so the refusal is installed through a cast.
+    (calls.created[0] as unknown as { play: () => Promise<void> }).play = () => {
+      const err = new Error("play() failed because the user didn't interact first");
+      err.name = "NotAllowedError";
+      return Promise.reject(err);
+    };
+    await player.want(true);
+    assertEquals(player.playing, false);
+    assertEquals(player.blocked, true);
+    assertEquals(player.wanted, true, "the loop is still supposed to be playing");
   } finally {
     restore();
   }
