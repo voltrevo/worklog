@@ -37,6 +37,11 @@ const BLANK = {
 
 const HOUR = 3_600_000;
 const T0 = 1_788_000_000_000;
+/*
+ * 27.51 — the day the issuing device is on. Fixed, so these tests stop inheriting the real
+ * `today()`: an invoice date that changes with the calendar is a test that asserts less each day.
+ */
+const ISSUED_ON = "2026-09-01";
 
 function fresh(): Db {
   const db = open({ path: ":memory:" });
@@ -151,7 +156,7 @@ Deno.test("an edited draft is what gets frozen, not a rebuild of the work", () =
     lines: [{ ...created.draft.lines[0]!, hours: 6 }],
   }, T0 + 1000);
 
-  const issued = issue(db, created.id, T0 + 2000);
+  const issued = issue(db, created.id, T0 + 2000, ISSUED_ON);
   assertEquals(issued.snapshot?.workHours, 6);
   assertEquals(issued.snapshot?.subtotalMinor, 45_000);
   db.close();
@@ -161,7 +166,7 @@ Deno.test("an issued invoice refuses to be edited", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
   const created = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  issue(db, created.id, T0);
+  issue(db, created.id, T0, ISSUED_ON);
   assertThrows(
     () => updateDraft(db, created.id, { lines: [] }, T0),
     Refused,
@@ -201,7 +206,7 @@ Deno.test("11.6 -- issuing freezes the work as it is at that moment", () => {
   const db = fresh();
   const entry = work(db, "2026-09-01", 8);
   createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  const issued = issue(db, invoiceForPeriod(db, "2026-09")!.id, T0);
+  const issued = issue(db, invoiceForPeriod(db, "2026-09")!.id, T0, ISSUED_ON);
 
   assertEquals(issued.status, "issued");
   assertEquals(issued.issuedAt, T0);
@@ -225,7 +230,7 @@ Deno.test("25.11 -- work remembered after the draft was made does not join it", 
   assertEquals(draft.draft.subtotalMinor, 60_000);
 
   work(db, "2026-09-02", 4);
-  const issued = issue(db, draft.id, T0 + 5000);
+  const issued = issue(db, draft.id, T0 + 5000, ISSUED_ON);
   assertEquals(issued.snapshot?.subtotalMinor, 60_000);
   db.close();
 });
@@ -234,7 +239,7 @@ Deno.test("11.19/11.20/25.10 -- the second invoice for a month is refused at iss
   const db = fresh();
   work(db, "2026-09-01", 8);
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
 
   // Creating is fine now: preparing a replacement while the wrong one is still issued is the
   // ordinary way to correct a mistake, and 25.10 says nothing earlier than issuance may refuse.
@@ -243,12 +248,12 @@ Deno.test("11.19/11.20/25.10 -- the second invoice for a month is refused at iss
   assertEquals(listInvoices(db).length, 2);
 
   // 11.19 bites here.
-  assertThrows(() => issue(db, b.id, T0), Refused, "already covered by");
+  assertThrows(() => issue(db, b.id, T0, ISSUED_ON), Refused, "already covered by");
 
   // And once the first is out of the way, the second goes through — which is 11.21's point about
   // reverting freeing the period, reached from the other direction.
   revertIssue(db, a.id, T0 + 1000);
-  assertEquals(issue(db, b.id, T0 + 2000).status, "issued");
+  assertEquals(issue(db, b.id, T0 + 2000, ISSUED_ON).status, "issued");
   db.close();
 });
 
@@ -256,7 +261,7 @@ Deno.test("11.21 -- reverting frees the period, and keeps the snapshot", () => {
   const db = fresh();
   work(db, "2026-09-01", 8);
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
 
   const reverted = revertIssue(db, a.id, T0 + 1000);
   assertEquals(reverted.status, "draft");
@@ -269,7 +274,7 @@ Deno.test("11.21 -- reverting frees the period, and keeps the snapshot", () => {
 
   // ...and the period is free, so a fresh draft can be made and issued.
   const again = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0 + 2000);
-  assertEquals(issue(db, again.id, T0 + 3000).status, "issued");
+  assertEquals(issue(db, again.id, T0 + 3000, ISSUED_ON).status, "issued");
   db.close();
 });
 
@@ -279,7 +284,7 @@ Deno.test("11.9-11.12 -- paid, then unpaid, and only from the right state", () =
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
 
   assertThrows(() => markPaid(db, a.id, T0), Refused, "only an issued invoice");
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
   const paid = markPaid(db, a.id, T0 + 1000);
   assertEquals(paid.status, "paid");
   assertEquals(paid.paidAt, T0 + 1000);
@@ -299,7 +304,7 @@ Deno.test("a paid invoice says to unmark it before its issuance can be reverted"
   const db = fresh();
   work(db, "2026-09-01", 8);
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
   markPaid(db, a.id, T0 + 1000);
   assertThrows(() => revertIssue(db, a.id, T0 + 2000), Refused, "unmark");
   db.close();
@@ -320,7 +325,7 @@ Deno.test("a committed invoice is what invoiceForPeriod means, even beside a dra
   const db = fresh();
   work(db, "2026-09-01", 8);
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
   // 11.22 permits a draft alongside; it is inserted directly because createDraft refuses.
   db.prepare(
     `INSERT INTO invoice (id, period, number, status, draft_json, created_at, updated_at)
@@ -332,7 +337,10 @@ Deno.test("a committed invoice is what invoiceForPeriod means, even beside a dra
 
 Deno.test("acting on an invoice that does not exist is refused, not ignored", () => {
   const db = fresh();
-  for (const act of [issue, markPaid, unmarkPaid, revertIssue]) {
+  // `issue` takes the issuing device's day as well (27.51), so it is called on its own rather
+  // than being made to fit a loop over functions that no longer share a signature.
+  assertThrows(() => issue(db, "ghost", T0, ISSUED_ON), Refused, "no longer exists");
+  for (const act of [markPaid, unmarkPaid, revertIssue]) {
     assertThrows(() => act(db, "ghost", T0), Refused, "no longer exists");
   }
   db.close();
@@ -473,7 +481,7 @@ Deno.test("and issuing freezes it, so a lost PDF still pays into the right place
   work(db, "2026-09-01", 8);
   const a = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
   updateDraft(db, a.id, { paymentOverride: { payAccountNumber: "11112222" } }, T0);
-  issue(db, a.id, T0);
+  issue(db, a.id, T0, ISSUED_ON);
 
   // 24.30 — what the renderer would be handed if the file went missing.
   assertEquals(frozenConfigFor(db, a.id)?.payAccountNumber, "11112222");
@@ -500,5 +508,29 @@ Deno.test("a period has to be a calendar month", () => {
     createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0).period,
     "2026-09",
   );
+  db.close();
+});
+
+Deno.test("27.51 -- an invoice is dated where the person is, not where the server is", () => {
+  /*
+   * `issue()` called `today()` — the *server's* calendar day — for `invoiceDate` and for the due
+   * date derived from it, and issuance is the moment those are frozen into the snapshot and the
+   * PDF (10.8, 11.6). Its sibling three cases away, `invoice-create`, already takes the device's
+   * `clock.today` for `preparedOn`, so the rule was settled and issuance did not follow it.
+   *
+   * A server in UTC and somebody in Sydney is not an exotic pairing — it is a container default
+   * and a working morning. Every invoice issued before ten o'clock would carry yesterday's date
+   * and a due date four weeks from yesterday.
+   */
+  const db = open({ path: ":memory:" });
+  setConfig(db, "invoice", COMPLETE_INVOICE_CONFIG, T0);
+
+  const draft = createDraft(db, { period: "2026-08", preparedOn: "2026-09-01" }, T0);
+  // A day the server's clock is certainly not on.
+  const issued = issue(db, draft.id, T0, "2027-03-04");
+
+  assertEquals(issued.snapshot?.invoiceDate, "2027-03-04");
+  // 10.2–10.4 — four weeks on, then forward to a Monday. 2027-04-01 is a Thursday.
+  assertEquals(issued.snapshot?.dueDate, "2027-04-05");
   db.close();
 });

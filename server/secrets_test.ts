@@ -402,7 +402,11 @@ Deno.test("20.1/20.3 -- nothing secret comes back in a response either, across t
     id: draft.id,
     paymentOverride: { payBsb: OVERRIDE_SECRET.payBsb, payBank: OVERRIDE_SECRET.payBank },
   });
-  await watch({ t: "invoice-issue", id: draft.id });
+  await watch({
+    t: "invoice-issue",
+    id: draft.id,
+    clock: { today: "2026-09-08", nowMinutes: 600 },
+  });
   await watch({ t: "invoice-mark-paid", id: draft.id });
   await watch({ t: "invoices" });
   await watch({ t: "entries", month: "2026-09" });

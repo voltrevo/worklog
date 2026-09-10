@@ -156,7 +156,11 @@ Deno.test({
       period: "2026-09",
       clock: { today: TODAY, nowMinutes: 0 },
     }) as StoredInvoiceWire;
-    await call(before, admin, { t: "invoice-issue", id: draft.id });
+    await call(before, admin, {
+      t: "invoice-issue",
+      id: draft.id,
+      clock: { today: TODAY, nowMinutes: 0 },
+    });
     const paid = await call(before, admin, {
       t: "invoice-mark-paid",
       id: draft.id,
@@ -271,7 +275,11 @@ Deno.test({
       period: "2026-09",
       clock: { today: TODAY, nowMinutes: 0 },
     }) as StoredInvoiceWire;
-    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+    await call(ctx, admin, {
+      t: "invoice-issue",
+      id: draft.id,
+      clock: { today: TODAY, nowMinutes: 0 },
+    });
 
     const first = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
       path: string;
@@ -342,7 +350,11 @@ Deno.test({
       period: "2026-09",
       clock: { today: TODAY, nowMinutes: 0 },
     }) as StoredInvoiceWire;
-    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+    await call(ctx, admin, {
+      t: "invoice-issue",
+      id: draft.id,
+      clock: { today: TODAY, nowMinutes: 0 },
+    });
     const sent = await call(ctx, admin, { t: "invoice-pdf", id: draft.id }) as {
       path: string;
       pdfBase64: string;
@@ -435,7 +447,11 @@ Deno.test({
       id: draft.id,
       paymentOverride: { payBank: "TheOverriddenBankOfNowhere" },
     });
-    await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+    await call(ctx, admin, {
+      t: "invoice-issue",
+      id: draft.id,
+      clock: { today: TODAY, nowMinutes: 0 },
+    });
 
     /*
      * Compared as artefacts, not searched as text: `doc.save()` compresses its streams, so a
@@ -512,7 +528,11 @@ Deno.test({
         clock: { today: TODAY, nowMinutes: 0 },
       }) as StoredInvoiceWire;
       await call(ctx, admin, { t: "invoice-update", id: draft.id, number });
-      await call(ctx, admin, { t: "invoice-issue", id: draft.id });
+      await call(ctx, admin, {
+        t: "invoice-issue",
+        id: draft.id,
+        clock: { today: TODAY, nowMinutes: 0 },
+      });
       await call(ctx, admin, { t: "invoice-pdf", id: draft.id });
       issued.push(getInvoice(ctx.db, draft.id)!.pdfPath!);
     }

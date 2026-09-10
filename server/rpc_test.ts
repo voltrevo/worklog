@@ -364,10 +364,12 @@ Deno.test("the whole invoice lifecycle over the protocol", async () => {
   assertEquals(draft.draft.totalMinor, 60_000);
   assertEquals(draft.draft.dueDate, "2026-11-02");
 
-  const issued = await call(ctx, a, { t: "invoice-issue", id: draft.id }) as { status: string };
+  const issued = await call(ctx, a, { t: "invoice-issue", id: draft.id, clock: CLOCK }) as {
+    status: string;
+  };
   assertEquals(issued.status, "issued");
   await assertRejects(
-    () => call(ctx, a, { t: "invoice-issue", id: draft.id }),
+    () => call(ctx, a, { t: "invoice-issue", id: draft.id, clock: CLOCK }),
     Refused,
     "already issued",
   );
@@ -391,7 +393,7 @@ Deno.test("11.25 -- the snapshot carries the warning about work added after issu
     period: "2026-09",
     clock: { today: "2026-10-01", nowMinutes: 0 },
   }) as { id: string };
-  await call(ctx, a, { t: "invoice-issue", id: draft.id });
+  await call(ctx, a, { t: "invoice-issue", id: draft.id, clock: CLOCK });
 
   let snap = await call(ctx, a, {
     t: "snapshot",
@@ -611,7 +613,7 @@ Deno.test({
     }) as Record<string, unknown>;
     assertEquals("pdfPath" in made, false, `create returned ${Object.keys(made).join(", ")}`);
 
-    await call(ctx, s, { t: "invoice-issue", id: made.id as string });
+    await call(ctx, s, { t: "invoice-issue", id: made.id as string, clock: CLOCK });
     const listed = await call(ctx, s, { t: "invoices" }) as Record<string, unknown>[];
     // Issued with a directory to write into, so the row has a path by now: this is the case.
     assertEquals(

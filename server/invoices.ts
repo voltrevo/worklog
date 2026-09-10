@@ -10,7 +10,7 @@
  * past. Neither is redundant — one produces a sentence, the other produces a guarantee.
  */
 
-import type { Instant, InvoiceStatus } from "@worklog/shared/types";
+import type { DateString, Instant, InvoiceStatus } from "@worklog/shared/types";
 import type { InvoiceEdit } from "@worklog/shared/protocol";
 import {
   appliedOverride,
@@ -297,7 +297,21 @@ export function updateDraft(
  * The due date is still recomputed, and only here: 10.7 says a draft's due date moves with the day
  * it is prepared, 10.8 says an issued one never moves again, and this is where the two meet.
  */
-export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvoice {
+/**
+ * @param issuedOn the calendar day of the person issuing it (27.51).
+ *
+ * Required, and not defaulted to `today()`, because that default *was* the bug: this stamps
+ * `invoiceDate` and the due date derived from it onto a document, and 10.8 freezes both at this
+ * moment. Read from the server's clock they were the date wherever the server happens to run — a
+ * container in UTC, most often — so anybody east of it issuing before mid-morning got yesterday.
+ * `invoice-create` three cases away already took the device's `clock.today`; issuance did not.
+ */
+export function issue(
+  db: Db,
+  id: string,
+  now: Instant,
+  issuedOn: DateString,
+): StoredInvoice {
   return transact(db, () => {
     const current = getInvoice(db, id);
     if (!current) {
@@ -310,7 +324,6 @@ export function issue(db: Db, id: string, now: Instant = Date.now()): StoredInvo
       throw new Refused("not-a-draft", `invoice ${current.number} is already ${current.status}`);
     }
 
-    const issuedOn = today();
     const refreshed = recomputeDraft({
       ...current.draft,
       invoiceDate: issuedOn,

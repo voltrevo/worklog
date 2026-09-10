@@ -644,7 +644,8 @@ export async function handle(
 
     case "invoice-issue": {
       requireInvoiceConfig(db);
-      const issued = issue(db, req.id, now);
+      // 27.51 — the day the person issuing it is on, not the day the server is on.
+      const issued = issue(db, req.id, now, req.clock.today);
 
       /*
        * 24.30 — freeze the *document*, not only the data.

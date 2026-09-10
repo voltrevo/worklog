@@ -168,7 +168,13 @@ export type Request =
    * two would disagree the first time either changed.
    */
   | ({ t: "invoice-update"; id: string } & InvoiceEdit)
-  | { t: "invoice-issue"; id: string }
+  /**
+   * 27.51 — carries the clock, because issuing stamps a date onto a document.
+   *
+   * `invoiceDate` and the due date derived from it are frozen at this moment (10.8), and they are
+   * the *person's* date. Without this the server used its own, which for a container is UTC.
+   */
+  | { t: "invoice-issue"; id: string; clock: Clock }
   | { t: "invoice-mark-paid"; id: string }
   | { t: "invoice-unmark-paid"; id: string }
   | { t: "invoice-revert-issue"; id: string }

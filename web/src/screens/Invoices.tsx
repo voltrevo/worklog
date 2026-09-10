@@ -323,7 +323,12 @@ function InvoiceRow(
     let at = order.indexOf(invoice.status);
     const want = order.indexOf(to);
     while (at < want) {
-      await call({ t: at === 0 ? "invoice-issue" : "invoice-mark-paid", id: invoice.id });
+      // 27.51 — issuing stamps a date, so it carries this device's day. Marking paid does not.
+      await call(
+        at === 0
+          ? { t: "invoice-issue", id: invoice.id, clock: { today: today(), nowMinutes: 0 } }
+          : { t: "invoice-mark-paid", id: invoice.id },
+      );
       at++;
     }
     while (at > want) {
