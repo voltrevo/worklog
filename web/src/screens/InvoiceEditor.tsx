@@ -24,6 +24,7 @@ import {
   OVERRIDABLE,
   PAYMENT_OVERRIDABLE,
   type PaymentOverride,
+  recomputeDraft,
 } from "@worklog/shared/invoice";
 import type { InvoiceLine } from "@worklog/shared/invoice";
 import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
@@ -260,19 +261,24 @@ export function InvoiceEditor(
     await onSave(lines, number.trim(), override, percent / 100, pay);
   };
 
-  // Shown as it will be, from the values on screen — but only where they are all readable. A
-  // running total that quietly skips the row you are in the middle of typing is worse than none.
+  /*
+   * Shown as it will be — by asking the thing that decides (27.60).
+   *
+   * This summed `hours × rate` from the values on screen, and `recomputeDraft` warns in its own
+   * doc that a client computing its own totals is a second implementation of the arithmetic which
+   * will disagree the first time either changes. It already did: the server rounds a line's hours
+   * to a tenth before multiplying (25.7) and this did not, so typing 2.5083 — two and a half
+   * hours, near enough, and a real thing to type — showed $7,261.00 for an invoice that saved as
+   * $7,260.00.
+   *
+   * `recomputeDraft` is that decision, it is pure, and it is already shared. Only where every row
+   * is readable: a running total that quietly skips the row being typed in is worse than none.
+   */
   const preview = rows.map(fromDraft);
   const total = preview.every((r) => "line" in r)
-    ? preview.reduce(
-      (t, r) =>
-        t + ("line" in r && r.line.hours !== null && r.line.rateMinor !== null
-          ? Math.round(r.line.hours * r.line.rateMinor)
-          : "line" in r
-          ? r.line.amountMinor
-          : 0),
-      0,
-    )
+    ? recomputeDraft(invoice.draft, {
+      lines: preview.flatMap((r) => "line" in r ? [r.line] : []),
+    }).workSubtotalMinor
     : undefined;
 
   return (

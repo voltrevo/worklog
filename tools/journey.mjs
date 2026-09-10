@@ -1155,6 +1155,38 @@ async function main() {
   );
   await desktop.page.getByRole("button", { name: "Not now" }).click();
 
+  /*
+   * 27.60 — the running total is the one the invoice will have.
+   *
+   * `recomputeDraft` says in its own doc that a client computing its own totals would be a second
+   * implementation of the arithmetic and the two would disagree the first time either changed.
+   * The editor's "Work rows total" was exactly that: it multiplied the hours *as typed* by the
+   * rate, while the server rounds the hours to a tenth first (25.7) and multiplies that. Type a
+   * precise duration and the figure on screen is not the figure you get.
+   *
+   * 2.5083 hours is 2h30m30s, which prints as 2.5 — the case 25.7 was written for, arriving
+   * through the editor instead of through a stopwatch.
+   */
+  const rowsTotal = () =>
+    desktop.page.getByText(/^Work rows total/).innerText().then((t) => t.trim());
+  await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("2.5083");
+  await desktop.page.waitForTimeout(300);
+  const previewed = await rowsTotal();
+  await desktop.page.getByRole("button", { name: "Save the draft" }).click();
+  await until(
+    "editor closed",
+    desktop.page,
+    async (p) => (await p.locator(".linetable").count()) === 0,
+  );
+  await draftRow.getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.locator(".linetable").waitFor({ timeout: 15_000 });
+  const afterSaving = await rowsTotal();
+  check(
+    "27.60 — the editor's running total is what saving produces",
+    previewed === afterSaving,
+    `showed ${previewed}, saved ${afterSaving}`,
+  );
+
   await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("1.5");
   await desktop.page.getByLabel("Description on line 1", { exact: true }).fill("Revised scope");
   await desktop.page.getByRole("button", { name: "Save the draft" }).click();
