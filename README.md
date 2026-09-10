@@ -74,6 +74,19 @@ fails the run — but writes the rest to `.screenshots/`, which is ignored. Noth
 fourteen, nothing ever compared them against a baseline, and an older version's are recoverable by
 checking that commit out and regenerating.
 
+**Copying the data directory is not one file.** `./data` holds `worklog.sqlite`, the note audio
+under `notes/`, the issued PDFs under `invoices/`, and the KPS keypair that is the server's
+address. The database runs in WAL mode, so while the server is up the main file can be four
+kilobytes of header with every recent entry sitting in `worklog.sqlite-wal` — and a copy of
+`worklog.sqlite` on its own opens cleanly and is *empty*, which is the worst way to discover a
+backup was not one. Measured: twenty entries in, four kilobytes in the main file, three hundred
+and ninety in the WAL, nought in the copy.
+
+Stop the server and copy the directory; a clean close checkpoints the WAL into the main file. If
+it has to be live, copy all three `worklog.sqlite*` files together — that reads back correctly,
+though it is still a torn read of a moving target. `VACUUM INTO` is not available here: Deno's
+`node:sqlite` caps attached databases at zero and the statement needs one.
+
 `deno task seed ./data` fills a database with invented work if you want something to look at — the
 same directory as the flags, for the reason above.
 `deno task shots` rebuilds the frontend and drives a real browser through the whole thing. It needs

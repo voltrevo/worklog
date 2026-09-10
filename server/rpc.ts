@@ -583,9 +583,18 @@ export async function handle(
       }
       const id = crypto.randomUUID();
 
-      // 17.10 — the audio goes to disk and only its path is stored. A minute of speech is a
-      // couple of hundred kilobytes, and a database that holds them stops being a file you can
-      // copy while the server is running.
+      /*
+       * 17.10 — the audio goes to disk and only its path is stored. A minute of speech is a
+       * couple of hundred kilobytes, and a database that holds them is a database nobody will
+       * copy: the size is the reason, and it is the honest one.
+       *
+       * **The old reason given here was wrong** and worth correcting rather than deleting: it said
+       * a small database "stays a file you can copy while the server is running". It does not.
+       * `journal_mode = WAL` means the main file can be four kilobytes of header while four
+       * hundred kilobytes of committed work sits in `worklog.sqlite-wal`, and a copy of the main
+       * file alone opens perfectly and is empty. Measured, not assumed. The README says what to do
+       * instead.
+       */
       let audioPath: string | null = null;
       if (req.audioBase64) {
         if (!ctx.dataDir) throw new Refused("no-data-dir", "this server stores no files");
