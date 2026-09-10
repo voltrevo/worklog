@@ -1302,18 +1302,36 @@ async function main() {
    * times have to survive a round trip through the other shape.
    */
   const recordAs = desktop.page.getByLabel("Record as");
+  /*
+   * Asked for before it is used, because a missing control is the failure this exists to catch and
+   * `selectOption` on one that is not there throws out of the whole run: 30 seconds, a
+   * "locator.selectOption: Timeout" with no requirement number on it, and every check after this
+   * point never runs. Verified by removing the control — which is exactly the state before 27.20 —
+   * and watching the suite die at this line.
+   */
+  if (await recordAs.count() !== 1) {
+    check(
+      "27.20 — an existing entry has the shape control",
+      false,
+      await visibleText(desktop.page),
+    );
+    await desktop.page.getByRole("button", { name: "Cancel" }).click();
+    await desktop.page.getByRole("row").filter({ hasText: TAG }).first()
+      .getByRole("button", { name: "Edit" }).click();
+    await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+  }
   const [wasFrom, wasTo] = [
     await desktop.page.getByLabel("From", { exact: true }).inputValue(),
     await desktop.page.getByLabel("To", { exact: true }).inputValue(),
   ];
-  await recordAs.selectOption({ label: "a duration" });
+  if (await recordAs.count() === 1) await recordAs.selectOption({ label: "a duration" });
   check(
     "27.20 — an existing timed entry can be switched to a duration from the dropdown",
     (await desktop.page.getByLabel("From", { exact: true }).count()) === 0 &&
       !(await howLong.isDisabled()) && !["", "—"].includes(await howLong.inputValue()),
     `how long: ${await howLong.inputValue()} (was ${spanBefore})`,
   );
-  await recordAs.selectOption({ label: "start and end" });
+  if (await recordAs.count() === 1) await recordAs.selectOption({ label: "start and end" });
   check(
     "27.20 — and switching back gives the times back",
     (await desktop.page.getByLabel("From", { exact: true }).inputValue()) === wasFrom &&
