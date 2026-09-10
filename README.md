@@ -25,6 +25,27 @@ localhost cannot connect at all (24.38, 24.39). The app says so now instead of f
 first signature. GitHub Pages is HTTPS, and `deno task web` binds to `127.0.0.1`, so both of the
 intended ways in are fine; it is copying `web/dist` onto a plain HTTP server that is not.
 
+That leaves one case the advice could not help with: a phone on the same network, which can reach
+neither. Generate a certificate and the dev server picks it up (27.27) — self-signed is enough,
+because the rule is about the origin being secure, not about anybody trusting it:
+
+```sh
+cd web && mkdir -p .certs && openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+  -keyout .certs/dev-key.pem -out .certs/dev-cert.pem -subj "/CN=worklog-dev" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:<the address the phone dials>"
+cd .. && deno task web --host 0.0.0.0
+```
+
+**No `--` before `--host`**, which is the opposite of the usual shape and worth one sentence
+because getting it wrong fails silently. `deno task` forwards a literal `--` as an argument, and
+the task already ends in the one npm needs, so `deno task web -- --host 0.0.0.0` hands vite a bare
+`--`; vite treats that as the end of its options, ignores the flag, binds to localhost, and prints
+a perfectly happy startup banner with no Network line.
+
+`.certs/` is gitignored and a clone without one behaves exactly as before. The frontend also
+carries what a phone needs to install it as an app (27.24), so the page can be added to a home
+screen and opened without browser chrome.
+
 ```sh
 deno task web           # the frontend, on http://127.0.0.1:5273
 deno task web:build     # or a static bundle in web/dist
@@ -33,7 +54,19 @@ deno task desktop       # or the same frontend in a desktop window
 
 The server prints something like `192.168.1.5:41108:uEiA…`. Paste it into the frontend's first
 screen. **It is the only way in**, so treat it as a secret until a device is authorized — the first
-device to arrive can claim admin, and every one after that has to be approved by an admin.
+device to arrive can claim admin, and every one after that has to be approved by an admin. For a
+phone there is a QR: **Users → Invite a device** encodes this page's own URL with the address in
+the fragment, so a camera does in a second what is otherwise sixty characters of certificate hash
+read off one screen and typed into another. The app takes the fragment out of the URL once it is
+in, and the invitation grants nothing — the device still has to be approved.
+
+**`deno task serve` does not run with `-A`** (27.25). It gets read and write on `./data`, read on
+`./node_modules` for the KPS client, `--allow-sys=networkInterfaces` to find the address a device
+dials, and `--allow-ffi=./node_modules` for two dependencies that load native libraries. Net is
+unscoped and that one cannot be narrowed: WebRTC binds ephemeral UDP ports and dials whatever a
+peer offers. The practical consequence is that `--data` somewhere other than `./data` needs the
+read and write flags to name it — the server prints the whole command when that happens rather
+than leaving you with Deno's "run again with the --allow-write flag".
 
 Only the four images this README embeds are committed. `deno task shots` captures every screen in
 both shells — that walk is what validates them (23.5), and a screen that throws while rendering
@@ -41,7 +74,8 @@ fails the run — but writes the rest to `.screenshots/`, which is ignored. Noth
 fourteen, nothing ever compared them against a baseline, and an older version's are recoverable by
 checking that commit out and regenerating.
 
-`deno task seed ./data` fills a database with invented work if you want something to look at.
+`deno task seed ./data` fills a database with invented work if you want something to look at — the
+same directory as the flags, for the reason above.
 `deno task shots` rebuilds the frontend and drives a real browser through the whole thing. It needs
 `CHROME_PATH` pointing at a Chromium, because Playwright cannot download one everywhere; it checks
 before it starts rather than after a minute of setup.
@@ -63,23 +97,25 @@ and nothing later can move it — a session across midnight belongs entirely to 
 (2.19–2.23). Everything downstream is then timezone-free: the month an entry belongs to is a
 substring of a string.
 
-**How the projection is computed** (24.18 moved this off the screen). Every day of the month
-contributes the work recorded on it plus however much of its scheduled interval has not yet
-elapsed. A past day has none left, a future day has all of it, and today has the part after the
-current minute — so the projection moves through the day, and sitting idle through a scheduled
-morning shows up now rather than at midnight.
+**Pacing is a schedule, not a number of hours** (24.18 moved this explanation off the screen).
+Every day of the month contributes the work recorded on it plus however much of its scheduled
+interval has not yet elapsed. A past day has none left, a future day has all of it, and today has
+the part after the current minute — so the projection moves through the day, and sitting idle
+through a scheduled morning shows up now rather than at midnight.
 
 The screen shows that as one figure and two bars: how far through the month's *scheduled* time we
-are, and how much of the target is done. Ahead or behind is the offset between them. It is drawn
-rather than stated because the stated version needs a negative number — a month with 176 scheduled
-hours against a 160-hour target carries 16 hours of slack, so "where you should be" opens at −16.
+are, and how much of the target is done. Ahead or behind is the offset between them, drawn rather
+than stated, because the stated version needs a negative number — a month with 176 scheduled hours
+against a 160-hour target carries 16 hours of slack, so "where you should be" opens at −16. The
+terms are shown adding up, because a pace figure on its own is a number to be believed or not.
 
-**Pacing is a schedule, not a number of hours.** Every day of the month contributes work recorded on
-it plus however much of its scheduled interval has not yet elapsed. A past day has none left, a
-future day has all of it, today has the part after the current minute — so the projection moves
-through the day, and sitting idle through a scheduled morning shows up now rather than at midnight.
-The pacing screen shows the terms adding up, because a pace figure on its own is a number to be
-believed or not.
+**And none of it is shown before you have said what your week is** (27.30–27.33). There is no
+default working week, no default monthly target and no default prompt interval: 160 hours is
+full-time and Mon–Fri 09:00–17:00 is somebody's life, and a screen that reads "12h behind" against
+figures nobody chose is a lie with a decimal point in it. So a new server's pacing screen offers
+what it knows — hours worked, and which days they went on — and asks for the rest. Ahead and behind
+are statements *about* a target, and with none set they are not shown at all rather than computed
+against nothing.
 
 **A month is the unit of invoicing.** That collapses "do these two invoices overlap?" to a string
 comparison, and makes the real rule *at most one issued-or-paid invoice per calendar month* — which

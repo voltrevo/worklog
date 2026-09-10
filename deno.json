@@ -20,7 +20,7 @@
     "seed": "deno run --node-modules-dir=manual --allow-read=./data --allow-write=./data --allow-env=WORKLOG_SEED_PROMPT_MS tools/seed.ts",
     "//seed": "27.25 -- the fixture writer touches one directory and reads one variable. `WORKLOG_SEED_PROMPT_MS` is the journey's knob for a prompt that fires while it is watching; naming it rather than allowing `--allow-env` means a dependency that starts reading the environment is a failure rather than a surprise. Pass a directory as the argument, and give the read and write flags the same one.",
     "web": "cd web && npm run dev --",
-    "//web": "The trailing `--` is npm's, not a typo: without it `deno task web --host 0.0.0.0` drops the flag and vite still prints \"use --host to expose\". With it, every vite flag forwards (27.27).",
+    "//web": "The trailing `--` is npm's, not a typo: without it `deno task web --host 0.0.0.0` drops the flag and vite still prints \"use --host to expose\". With it, every vite flag forwards (27.27). **Do not add a second one.** `deno task` passes a literal `--` through as an argument, so `deno task web -- --host 0.0.0.0` reaches vite as `-- --host 0.0.0.0`; vite reads the bare `--` as the end of its options, ignores the flag, binds to localhost and prints a normal banner with no Network line. Verified both ways rather than reasoned about -- the failing form is the one that looks right.",
     "web:build": "cd web && npm run build",
     "test:bundle": "deno test --allow-read=. web/bundle_test.ts",
     "//test:bundle": "Runs *after* web:build in the gate, never as part of `test`. It reads web/dist, so running it first checks whichever bundle happened to be lying around -- and on a fresh clone there is none, and it would skip in silence.",
