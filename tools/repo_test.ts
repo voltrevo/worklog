@@ -438,3 +438,42 @@ Deno.test({
     assertEquals(offenders, [], "a write under the data directory skips writeUnderData (27.54)");
   },
 });
+
+Deno.test({
+  name: "27.58 -- an exported function is called by something",
+  permissions: { read: ["."], run: ["git"] },
+  async fn() {
+    /*
+     * Not a tidiness rule. The two this found were both worth knowing about:
+     *
+     * - `clearAddress`, written for 22.6 and called by nobody, which meant "Disconnect from this
+     *   server" left the address in device storage and one reload undid it (27.57). An exported
+     *   function with no callers is a question about the caller that should exist.
+     * - `invoiceConfigGaps`, a fourth list of what an invoice is missing, disagreeing with the
+     *   authority it duplicated — it omitted the BSB, the bank and the payment method. Dead, and
+     *   a hazard while it existed, because the next person to need that list would have found it.
+     *
+     * A reference from a *test* counts. Something exported only so it can be tested is a decision,
+     * and this is not the place to argue with it.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const files = (await trackedFiles()).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"));
+    const text = new Map<string, string>();
+    for (const f of files) text.set(f, await Deno.readTextFile(`${root}${f}`));
+
+    const orphans: string[] = [];
+    for (const [file, body] of text) {
+      if (file.includes("_test")) continue;
+      for (const found of body.matchAll(/^export (?:async )?function (\w+)/gm)) {
+        const name = found[1]!;
+        const used = new RegExp(`(?<![\\w.])${name}(?![\\w])`);
+        const elsewhere = [...text].some(([g, t]) => g !== file && used.test(t));
+        // Its own file counts too, minus the declaration itself: a helper used only where it lives
+        // is over-exported, which is untidy rather than wrong.
+        const here = (body.match(new RegExp(`(?<![\\w.])${name}(?![\\w])`, "g")) ?? []).length - 1;
+        if (!elsewhere && here === 0) orphans.push(`${file}: ${name}`);
+      }
+    }
+    assertEquals(orphans, [], "an exported function is called by nothing at all (27.58)");
+  },
+});

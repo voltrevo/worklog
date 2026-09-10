@@ -79,7 +79,11 @@ export function hoursIn(interval: DayInterval): number {
 }
 
 /**
- * The effective shape of one day.
+ * The effective shape of one day, and where 6.24 lives.
+ *
+ * A day with a non-empty interval is a workday unless a public holiday or a pacing override says
+ * otherwise, and `hours > 0` is that sentence. `isWorkday` used to say it again as a one-line
+ * wrapper and was called by nothing; the citation moved here rather than going with it.
  *
  * **An override outranks a holiday**, because that is the point of it: 6.19 gives the example of
  * intentional weekend work, and a holiday you have decided to work is the same case. A holiday with
@@ -100,11 +104,6 @@ export function shapeOf(date: DateString, cal: Calendar): DayShape {
 
   const interval = cal.schedule[weekdayOf(date)];
   return { date, interval, hours: hoursIn(interval), overridden: false };
-}
-
-/** 6.24 — a day with a non-empty interval, once holidays and overrides have had their say. */
-export function isWorkday(date: DateString, cal: Calendar): boolean {
-  return shapeOf(date, cal).hours > 0;
 }
 
 /** Every day of the month, shaped. Callers filter; nothing here decides what is interesting. */

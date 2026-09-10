@@ -381,17 +381,6 @@ export function publicInvoiceConfig(cfg: InvoiceConfig): PublicInvoiceConfig {
   };
 }
 
-/** Anything missing that would make an invoice wrong rather than merely plain (20.9). */
-export function invoiceConfigGaps(cfg: InvoiceConfig): string[] {
-  const gaps: string[] = [];
-  if (!cfg.fromName) gaps.push("your name or trading name");
-  if (!cfg.clientName) gaps.push("the client's name");
-  if (cfg.rateMinor <= 0) gaps.push("an hourly rate");
-  if (!cfg.currency) gaps.push("a currency");
-  if (!cfg.payName || !cfg.payAccountNumber) gaps.push("payment details");
-  return gaps;
-}
-
 /**
  * What is missing before an invoice can be produced (24.31, 24.1).
  *
