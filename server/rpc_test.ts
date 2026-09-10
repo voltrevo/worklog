@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
+import { assertEquals, assertRejects, assertStringIncludes } from "jsr:@std/assert@^1";
 import { exportPublicKey, generateDeviceKey, signClaim } from "@worklog/shared/auth";
 import {
   type Event,
@@ -666,4 +666,49 @@ Deno.test("27.16 -- a running timer is in the pacing figures", async () => {
   // invoice's snapshot. A session still running belongs in neither.
   assertEquals(during.entries.length, before.entries.length);
   assertEquals(during.today.length, before.today.length);
+});
+
+Deno.test({
+  name: "27.55 -- a note whose recording is gone says so, rather than failing generically",
+  // A real directory, because the point is a row that has a path and a disk that does not.
+  permissions: { read: ["."], write: [".tmp"] },
+  async fn() {
+    /*
+     * The scenario the README's backup section now describes: `worklog.sqlite` restored without
+     * `notes/` beside it. Every spoken note is then a row pointing at nothing, and pressing Play
+     * threw — which `main.ts` correctly turns into "the server could not complete that request",
+     * because it does not leak the detail of an error nobody anticipated. This one is anticipated.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "lostaudio-" });
+    const ctx: ServerContext = { ...context(), dataDir: dir };
+    const s: Session = { id: "x", authenticated: true, role: "admin" };
+
+    const { id } = await call(ctx, s, {
+      t: "note-add",
+      body: "spoken",
+      audioBase64: btoa("not really audio"),
+      audioType: "audio/webm",
+      audioMs: 1_000,
+    }) as { id: string };
+
+    // It reads back while the file is there.
+    const heard = await call(ctx, s, { t: "note-audio", id }) as { audioBase64: string };
+    assertEquals(heard.audioBase64.length > 0, true);
+
+    // And then the files go, exactly as a partial restore leaves them.
+    await Deno.remove(`${dir}/notes`, { recursive: true });
+
+    const refused = await call(ctx, s, { t: "note-audio", id }).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    assertEquals(refused instanceof Refused, true, `threw ${refused?.constructor.name}`);
+    assertStringIncludes(refused!.message, "not on the server any more");
+    // The note is not the recording, and saying so is most of the value of the message.
+    assertStringIncludes(refused!.message, "note itself is intact");
+    // The path is in the log and not in what the device was told.
+    assertEquals(/notes\//.test(refused!.message), false, refused!.message);
+
+    await Deno.remove(dir, { recursive: true });
+  },
 });

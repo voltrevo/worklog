@@ -475,7 +475,29 @@ export async function handle(
         | undefined;
       if (!row?.audio_path) throw new Refused("no-such-audio", "that note has no recording");
       if (!ctx.dataDir) throw new Refused("no-data-dir", "this server stores no files");
-      const bytes = await Deno.readFile(`${ctx.dataDir}/${row.audio_path}`);
+      /*
+       * 27.55 — a recording the database knows about and the disk does not.
+       *
+       * Reachable, and by the mistake this repo now documents: restore `worklog.sqlite` without
+       * `notes/` beside it and every spoken note is a row pointing at nothing. Left to throw, the
+       * device got "the server could not complete that request" — which is the right answer for an
+       * error nobody anticipated and the wrong one for a situation fully understood where it
+       * happens. The line above already refuses a note that never had a recording; this is the
+       * same sentence for the other way of having none.
+       *
+       * The path goes to the log, not to the device: `main.ts` deliberately keeps unexpected
+       * detail server-side, and a message is no reason to make an exception.
+       */
+      const bytes = await Deno.readFile(`${ctx.dataDir}/${row.audio_path}`).catch(() => undefined);
+      if (!bytes) {
+        ctx.log("error", "notes", "a note's recording is missing from disk", {
+          path: row.audio_path,
+        });
+        throw new Refused(
+          "audio-missing",
+          "the recording for that note is not on the server any more; the note itself is intact",
+        );
+      }
       return { audioBase64: toBase64(bytes) };
     }
 
