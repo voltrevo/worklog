@@ -827,3 +827,7 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### Cost on the hot path
 
 27.36. Work done on every snapshot MUST NOT grow with the product of two things that both grow. A snapshot is rebuilt for every event the server pushes to every connected device, so a pass over the whole history is affordable and a pass over the history once per invoice is not.
+
+### What an unauthenticated caller can grow
+
+27.37. State that an unauthenticated request adds to MUST be bounded in size as well as in lifetime. The four open requests of `OPEN` exist so a device can get far enough to prove who it is; anything they accumulate is accumulated on behalf of whoever can reach the server, which is not yet anybody in particular.

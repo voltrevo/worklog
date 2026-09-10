@@ -56,9 +56,55 @@ export interface PendingRequest {
  */
 export class ChallengeStore {
   #issued = new Map<string, { at: Instant }>();
+  /** Set once the cap has been reached, so the log says it happened without saying it repeatedly. */
+  #capped = false;
 
-  issue(now: Instant = Date.now()): Uint8Array {
+  /**
+   * 27.37 — how many may be outstanding at once.
+   *
+   * The store's *lifetime* was bounded from the start and its *size* was not. `hello` is one of
+   * the four requests that need no authentication — it has to be, since it is where a device gets
+   * the challenge it will authenticate with — and it issues one on every call, so anything that
+   * can reach this server can add an entry every time it asks. The sweep bounds that to two
+   * minutes of traffic, which is a bound in the same sense that a bucket with a hole is.
+   *
+   * Reaching the server means knowing the address, which is the secret that gates everything here
+   * (22.1), so this is a nuisance rather than a way in. Ten thousand is far above any real burst —
+   * a person pressing a button makes one, a fleet of devices reconnecting after an outage makes
+   * one each — and far below anything that troubles the process.
+   */
+  static readonly MAX_OUTSTANDING = 10_000;
+
+  /**
+   * The cap is a constructor argument so a test can reach it in fifty iterations rather than ten
+   * thousand — and so raising the default cannot make that test slower. The first version derived
+   * its own workload from `MAX_OUTSTANDING`, so mutating the constant to check the test could fail
+   * turned it into ten million calls to `getRandomValues` and hung the run.
+   */
+  constructor(readonly max: number = ChallengeStore.MAX_OUTSTANDING) {}
+
+  issue(now: Instant = Date.now(), onCap?: (message: string) => void): Uint8Array {
     this.#sweep(now);
+    /*
+     * Evict the oldest rather than refuse the newest.
+     *
+     * Both bound the memory and both are reachable by whoever is flooding. Refusing would let them
+     * stop a legitimate device from getting a challenge at all; evicting costs that device one
+     * retry, because the challenge it is holding may be gone by the time it answers. Insertion
+     * order is issue order, so the first key is the oldest.
+     */
+    while (this.#issued.size >= this.max) {
+      const oldest = this.#issued.keys().next().value;
+      if (oldest === undefined) break;
+      this.#issued.delete(oldest);
+      if (!this.#capped) {
+        this.#capped = true;
+        onCap?.(
+          `more than ${this.max} unanswered challenges are outstanding; ` +
+            `discarding the oldest. Something is asking for them faster than anyone answers.`,
+        );
+      }
+    }
     const bytes = crypto.getRandomValues(new Uint8Array(32)); // 13.15
     this.#issued.set(hex(bytes), { at: now });
     return bytes;

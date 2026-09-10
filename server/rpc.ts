@@ -315,7 +315,10 @@ export async function handle(
       const result: HelloResult = {
         protocolVersion: PROTOCOL_VERSION,
         serverCertHash: ctx.serverCertHash,
-        challenge: toBase64(ctx.challenges.issue(now)),
+        // 27.37 — the log is how a flood becomes visible; without it the cap is silent.
+        challenge: toBase64(
+          ctx.challenges.issue(now, (why) => ctx.log("warn", "access", why)),
+        ),
         offer: asserted ? purposeFor(db, asserted) : deviceCount(db) === 0 ? "claim" : "request",
         version: ctx.version,
       };

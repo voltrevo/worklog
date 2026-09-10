@@ -407,3 +407,41 @@ Deno.test("and a device that is not an admin is not protected by the rule", () =
   assertEquals(deviceCount(db), 0);
   db.close();
 });
+
+Deno.test("27.37 -- outstanding challenges are bounded, and the oldest go first", () => {
+  /*
+   * `hello` needs no authentication — it is where a device gets the challenge it will
+   * authenticate with — so anything that can reach the server can add an entry to this store on
+   * every call. The two-minute sweep bounds how long one lives and said nothing about how many
+   * there are.
+   *
+   * The cap is far above any real burst, so this drives it directly rather than pretending to
+   * flood: what matters is that the store stops growing, that it says so once, and that a
+   * challenge issued after the cap still works — evicting the oldest must not break the newest.
+   */
+  // A small cap, so this costs fifty iterations rather than ten thousand — and so raising the
+  // real one cannot slow this down. The real one is checked for sanity at the end.
+  const store = new ChallengeStore(50);
+  const said: string[] = [];
+  const at = 1_759_000_000_000;
+
+  const first = store.issue(at, (m) => said.push(m));
+  for (let i = 0; i < 60; i++) store.issue(at, (m) => said.push(m));
+
+  assertEquals(store.size <= 50, true, `size is ${store.size}`);
+  assertEquals(said.length, 1, "said it once, not once per eviction");
+
+  // The oldest is gone, which is the whole point of choosing that one.
+  assertEquals(store.consume(first, at), false);
+
+  // And the store still works: a challenge issued now is still good, so a flood costs a legitimate
+  // device a retry rather than locking it out.
+  const fresh = store.issue(at);
+  assertEquals(store.consume(fresh, at), true);
+  assertEquals(store.consume(fresh, at), false, "still single-use");
+
+  // And the shipped cap is in the range the reasoning above assumes: high enough that no real
+  // burst reaches it, low enough to be a bound. A default of ten million is not a cap.
+  assertEquals(ChallengeStore.MAX_OUTSTANDING >= 1_000, true);
+  assertEquals(ChallengeStore.MAX_OUTSTANDING <= 100_000, true);
+});
