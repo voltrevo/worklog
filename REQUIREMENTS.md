@@ -855,3 +855,5 @@ From a session driving the built app. Several items are two ends of one fault; t
 27.48. The screen audits MUST cover the dialogs. They walked navigation and one dialog, and every other place this app asks for input is a sheet opened from a control — the entry editor, the work note and its microphone picker, the invitation — which is where most recent work went and which neither audit had ever seen.
 
 27.49. The setup a clone is told to run MUST be the setup that is tested. CI installed the frontend's dependencies with a line of its own, so `deno task deps` was never enough on its own and nothing noticed: a fresh clone following the README reached `tsc: command not found` while CI stayed green.
+
+27.50. The published frontend MUST be verified where it is published: served from a repo subpath, not from the root of a host. An absolute base, an absolute manifest or icon reference, a `start_url` of `/`, or a service worker scoped to the whole origin all build cleanly and all work when the same files are served from `/` — so every existing check passes and only the deployed copy is broken.

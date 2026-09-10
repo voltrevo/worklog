@@ -96,6 +96,10 @@ jobs:
       # would produce a diff. This checks they still render and that no screen throws.
       - run: deno task shots
 
+      # 27.50 — and the copy strangers actually load, served from a repo subpath rather than from
+      # the root of a host. An absolute base, manifest href or worker scope fails only there.
+      - run: deno task pages
+
   deploy:
     needs: gate
     if: github.ref == 'refs/heads/main'
