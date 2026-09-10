@@ -622,6 +622,7 @@ Deno.test({
       "an issued invoice published the server's path to its PDF",
     );
     ctx.db.close();
+
     await Deno.remove(dir, { recursive: true });
   },
 });
@@ -708,6 +709,37 @@ Deno.test({
     assertStringIncludes(refused!.message, "note itself is intact");
     // The path is in the log and not in what the device was told.
     assertEquals(/notes\//.test(refused!.message), false, refused!.message);
+
+    /*
+     * And a read that fails for any other reason is a different fact, so it gets the generic reply
+     * rather than a confident sentence about a file that is right there. Reachable since 27.54
+     * made these 0600 and a restore can land them under another account; provoked here with a
+     * directory where the file should be, which fails deterministically and needs no `chmod`
+     * — a test that turns on file permissions behaves differently depending on who runs it.
+     */
+    const other = await Deno.makeTempDir({ dir: ".tmp", prefix: "unreadable-" });
+    const ctx2: ServerContext = { ...context(), dataDir: other };
+    const made = await call(ctx2, s, {
+      t: "note-add",
+      body: "spoken",
+      audioBase64: btoa("not really audio"),
+      audioType: "audio/webm",
+      audioMs: 1_000,
+    }) as { id: string };
+    const name = [...Deno.readDirSync(`${other}/notes`)][0]!.name;
+    await Deno.remove(`${other}/notes/${name}`);
+    await Deno.mkdir(`${other}/notes/${name}`);
+
+    const opaque = await call(ctx2, s, { t: "note-audio", id: made.id }).then(
+      () => undefined,
+      (e: Error) => e,
+    );
+    assertEquals(
+      opaque instanceof Refused,
+      false,
+      `a read that is not NotFound must not be dressed up as a missing file: ${opaque?.message}`,
+    );
+    await Deno.remove(other, { recursive: true });
 
     await Deno.remove(dir, { recursive: true });
   },

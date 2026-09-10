@@ -488,7 +488,17 @@ export async function handle(
        * The path goes to the log, not to the device: `main.ts` deliberately keeps unexpected
        * detail server-side, and a message is no reason to make an exception.
        */
-      const bytes = await Deno.readFile(`${ctx.dataDir}/${row.audio_path}`).catch(() => undefined);
+      /*
+       * `NotFound` only. A blanket catch would answer a permission error — newly possible, since
+       * 27.54 made these files 0600 and a restore can land them under another account — with "not
+       * on the server any more", which is a confident sentence about a file that is right there.
+       * Anything else falls through to the generic reply, whose whole job is not knowing.
+       */
+      const bytes = await Deno.readFile(`${ctx.dataDir}/${row.audio_path}`)
+        .catch((err) => {
+          if (err instanceof Deno.errors.NotFound) return undefined;
+          throw err;
+        });
       if (!bytes) {
         ctx.log("error", "notes", "a note's recording is missing from disk", {
           path: row.audio_path,
