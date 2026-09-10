@@ -80,6 +80,20 @@ function useIsMobile(): boolean {
   return mobile;
 }
 
+/**
+ * 27.11 — how a screen sends somebody to another screen.
+ *
+ * `screen` lives in `App`, and nothing below could reach it: a card that knows an invoice cannot
+ * be made until the settings are filled in could say so and could not offer to take you there.
+ * One context, one function, and no history or URL behind it — 21.19 still holds and 27.23's hash
+ * is a separate, deliberate exception.
+ */
+const NavCtx = createContext<(to: ScreenId) => void>(() => {});
+
+export function useNav(): (to: ScreenId) => void {
+  return useContext(NavCtx);
+}
+
 function Screen({ id }: { id: ScreenId }) {
   switch (id) {
     case "timer":
@@ -233,11 +247,13 @@ function Shell() {
 
   return (
     <Presentation.Provider value={mobile ? "mobile" : "desktop"}>
-      {mobile
-        ? <MobileShell screen={screen} setScreen={setScreen} />
-        : <DesktopShell screen={screen} setScreen={setScreen} />}
-      {/* 5.16 — a prompt interrupts whichever screen is showing, because that is what it is for. */}
-      {prompt && <WorkNote prompted onClose={dismissPrompt} />}
+      <NavCtx.Provider value={setScreen}>
+        {mobile
+          ? <MobileShell screen={screen} setScreen={setScreen} />
+          : <DesktopShell screen={screen} setScreen={setScreen} />}
+        {/* 5.16 — a prompt interrupts whichever screen is showing, because that is what it is for. */}
+        {prompt && <WorkNote prompted onClose={dismissPrompt} />}
+      </NavCtx.Provider>
       {/* 14.12-14.14 — renders nothing; it exists so the loop outlives the settings screen. */}
       <LoopPlayback />
     </Presentation.Provider>

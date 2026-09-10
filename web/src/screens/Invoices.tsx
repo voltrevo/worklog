@@ -22,6 +22,8 @@ import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, saveFile } from "../download.ts";
 import { isDesktop } from "../desktop.ts";
+import { invoiceNeeds, needsSentence } from "../invoiceNeeds.ts";
+import { useNav } from "../App.tsx";
 import type {
   InvoicePdfResult,
   PublicInvoiceConfig,
@@ -62,6 +64,8 @@ export function Invoices() {
   const [invoices, setInvoices] = useState<StoredInvoiceWire[]>();
   // 25.12 — what a blank override falls through to, shown in the editor as placeholder text.
   const [config, setConfig] = useState<PublicInvoiceConfig>();
+  const goTo = useNav();
+  const needs = config ? invoiceNeeds(config) : [];
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
@@ -142,6 +146,31 @@ export function Invoices() {
       </div>
 
       {problem && <div className="notice bad">{problem}</div>}
+
+      {
+        /*
+         * 27.11 — the settings this screen cannot work without, before anything is pressed.
+         *
+         * 24.31 refuses to render a document with holes in it and names what is missing, which is
+         * the right answer to *asking*. Somebody arriving here for the first time has not asked
+         * yet: they see a screen that looks ready and a button that will refuse. The same words,
+         * up front, and a way to go and fix it.
+         */
+      }
+      {config && needs.length > 0 && (
+        <div className="notice warn row between wrap" style={{ gap: 10 }}>
+          <span>{needsSentence(needs)}</span>
+          <button
+            className="btn"
+            type="button"
+            onClick={() =>
+              goTo("settings")}
+          >
+            Open settings
+          </button>
+        </div>
+      )}
+
       {snapshot?.invoiceWarnings.map((w, i) => <Warning key={i} warning={w} />)}
 
       <div className="card">

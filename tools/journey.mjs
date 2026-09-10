@@ -790,6 +790,29 @@ async function main() {
   await desktop.page.waitForTimeout(600);
 
   await nav(desktop.page, "Invoices");
+  /*
+   * 27.11 — before anything is pressed.
+   *
+   * 24.31 names what is missing when a document is *asked for*, which is the right answer to a
+   * question. Somebody arriving on a screen that looks ready, in front of a button that will
+   * refuse, has not asked yet.
+   *
+   * Checked here rather than against the cleared BSB below: a device is told whether the payment
+   * group holds anything, not which field of it is empty (25.42), so with four of the five still
+   * set there is nothing for this screen to notice. The client's name is in the public config.
+   */
+  check(
+    "27.11 — the invoices screen says what the settings are missing, unprompted",
+    await until(
+      "needs shown",
+      desktop.page,
+      async (p) =>
+        (await p.getByText(/An invoice still needs .*client's name/).count()) > 0 &&
+        (await p.getByRole("button", { name: "Open settings" }).count()) > 0,
+    ),
+    await visibleText(desktop.page),
+  );
+
   await desktop.page.getByRole("button", { name: "New invoice" }).click();
   check(
     "an incomplete invoice configuration is refused, naming the field",
