@@ -3027,5 +3027,19 @@ async function monthTotal(page) {
 await main().catch((err) => {
   // The stack, not just the message: every locator in this file times out with the same sentence.
   console.error(`journey: ${err.stack ?? err.message}`);
+  /*
+   * And where it got to, which a crash used to say nothing about.
+   *
+   * This script is a linear drive through the product, so a locator that throws ends the run — and
+   * it printed a stack and exited with no tally at all. "It broke" reads the same whether it broke
+   * at the third check or the hundred and sixtieth, and the checks that never ran are invisible:
+   * nothing distinguishes them from checks that passed. Found by removing a control and watching
+   * the suite die two thirds of the way through with a `selectOption` timeout.
+   */
+  console.error(
+    `\n${checks} checks ran before that, ${failures.length} of them failed. ` +
+      `The rest of the run did not happen — they are not passes.`,
+  );
+  if (failures.length > 0) console.error(`  failed: ${failures.join("\n  failed: ")}`);
   process.exit(1);
 });
