@@ -840,3 +840,5 @@ From a session driving the built app. Several items are two ends of one fault; t
 27.40. The same as 27.38, of the editor that holds invoice lines: it MUST NOT be owned by the row it edits, because a row keyed by record id unmounts when that record is deleted elsewhere and takes an open editor, and everything typed into it, off the screen without a word.
 
 27.41. A record that can move backwards MUST be read by its current state, not by which of its fields happen to be filled in. Reverting an issuance leaves the snapshot in place, because that is the record of what was sent; a reader that takes `snapshot ?? draft` therefore shows a reverted invoice the figures it was issued with while the draft changes underneath it.
+
+27.42. "What does this record say now" MUST be asked in one place. The rule was written out at three call sites — the list, the PDF re-render, and the render at issuance — and two of the three were wrong in the same way, which is what a rule copied rather than shared does.

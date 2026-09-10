@@ -5,6 +5,7 @@ import {
   buildLines,
   canIssue,
   defaultInvoiceNumber,
+  documentFor,
   dueDateFor,
   type InvoiceRecord,
   invoiceWarnings,
@@ -455,5 +456,45 @@ Deno.test("27.36 -- the warning pass stays linear in how much work there is", ()
     true,
     `four times the work took ${ratio.toFixed(1)}x the time ` +
       `(${small.toFixed(1)}ms then ${large.toFixed(1)}ms); linear is about 4x, quadratic about 16x`,
+  );
+});
+
+Deno.test("27.42 -- what an invoice says now, in each state it can be in", () => {
+  /*
+   * The rule three call sites got subtly different. `snapshot ?? draft` is right until an
+   * issuance is reverted, at which point the snapshot is a record of the past and the draft is
+   * what the invoice says — and the list, and the PDF re-render, both went on reading the past.
+   */
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: [entry("a", "2026-09-01", 8)] });
+  const edited = buildDraft({
+    ...BASE,
+    period: "2026-09",
+    entries: [entry("a", "2026-09-01", 1)],
+  });
+  const frozen = { ...draft, issuedAt: 1_759_000_000_000 };
+
+  // A draft that has never been issued: there is only one answer.
+  assertEquals(documentFor({ status: "draft", draft }).workHours, draft.workHours);
+
+  // Issued, and paid: the snapshot, because that is what was sent.
+  assertEquals(
+    documentFor({ status: "issued", draft: edited, snapshot: frozen }).workHours,
+    draft.workHours,
+  );
+  assertEquals(
+    documentFor({ status: "paid", draft: edited, snapshot: frozen }).workHours,
+    draft.workHours,
+  );
+
+  // Reverted, and then edited: the draft. The snapshot is still there — it is the record of an
+  // issuance that happened — and it is no longer what this invoice says.
+  assertEquals(
+    documentFor({ status: "draft", draft: edited, snapshot: frozen }).workHours,
+    edited.workHours,
+  );
+  assertEquals(
+    draft.workHours === edited.workHours,
+    false,
+    "the two drafts must differ or this test cannot fail",
   );
 });

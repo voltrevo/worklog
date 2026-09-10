@@ -423,6 +423,24 @@ export type InvoiceWarning =
  * hours on the 12th. That month *is* invoiced, so the first check would say nothing about it — and
  * it is money. The snapshot's entry list (11.23) makes it a set difference.
  */
+/**
+ * The document an invoice *currently is* (27.42).
+ *
+ * Three places asked this and each wrote `snapshot ?? draft`, which is correct for two of the
+ * three states and wrong for the one that can go backwards. Reverting an issuance leaves the
+ * snapshot in place on purpose — it is the record of what was sent — so a reverted invoice went on
+ * reading as the document it had been issued as: in the list, and in the PDF re-rendered for a
+ * draft, while the editor changed the draft underneath both.
+ *
+ * A snapshot answers "what was sent". This answers "what does it say now", and they differ for
+ * exactly as long as somebody has reverted an issuance and not re-issued it.
+ */
+export function documentFor(
+  invoice: { status: InvoiceStatus; draft: InvoiceDraft; snapshot?: InvoiceDraft },
+): InvoiceDraft {
+  return invoice.status === "draft" ? invoice.draft : invoice.snapshot ?? invoice.draft;
+}
+
 export function invoiceWarnings(
   entries: readonly WorkEntry[],
   invoices: readonly InvoiceRecord[],

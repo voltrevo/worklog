@@ -27,7 +27,7 @@ import {
 import type { AccessRole } from "@worklog/shared/auth";
 import { project } from "@worklog/shared/pacing";
 import { shapeOf } from "@worklog/shared/schedule";
-import { appliedPaymentOverride, invoiceWarnings } from "@worklog/shared/invoice";
+import { appliedPaymentOverride, documentFor, invoiceWarnings } from "@worklog/shared/invoice";
 import type { DayInterval, Holiday, PacingOverride, WorkEntry } from "@worklog/shared/types";
 import { monthOf } from "@worklog/shared/dates";
 import { type Db, transact } from "./db.ts";
@@ -669,7 +669,7 @@ export async function handle(
          * re-render, and not to the document actually sent.
          */
         const rendered = await renderInvoicePdfChecked(
-          issued.snapshot ?? issued.draft,
+          documentFor(issued),
           frozenConfigFor(db, issued.id) ?? getConfig(db, "invoice"),
         );
         const bytes = rendered.bytes;
@@ -784,7 +784,15 @@ export async function handle(
           ...getConfig(db, "invoice"),
           ...appliedPaymentOverride(paymentOverrideFor(db, invoice.id)),
         };
-        const rendered = await renderInvoicePdfChecked(invoice.snapshot ?? invoice.draft, config);
+        /*
+         * 27.42 — what it says now, which for a reverted draft is not what it was issued as.
+         *
+         * This read `snapshot ?? draft`, and the frozen-file branch above is gated on the status
+         * while this one was not. So a reverted invoice re-rendered its old snapshot: the number
+         * on the page came from an issuance that had been taken back, and editing the draft
+         * changed nothing about the document it produced.
+         */
+        const rendered = await renderInvoicePdfChecked(documentFor(invoice), config);
         bytes = rendered.bytes;
         // Every column width in the renderer is a number chosen against the fixture. When a real
         // value does not fit one of them the document is still produced — refusing to hand over
