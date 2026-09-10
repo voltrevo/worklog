@@ -23,7 +23,7 @@ import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, saveFile } from "../download.ts";
 import { isDesktop } from "../desktop.ts";
 import { invoiceNeeds, needsSentence } from "../invoiceNeeds.ts";
-import { useNav } from "../App.tsx";
+import { useNav, usePresentation } from "../App.tsx";
 import type {
   InvoicePdfResult,
   PublicInvoiceConfig,
@@ -218,6 +218,7 @@ function InvoiceRow(
   },
 ) {
   const { call } = useStore();
+  const presentation = usePresentation();
   const [viewing, setViewing] = useState<{ url: string; name: string }>();
   const [confirm, setConfirm] = useState<"delete">();
   /** Where the desktop shell put it, when there was nowhere to show it. */
@@ -226,35 +227,39 @@ function InvoiceRow(
   const shown = invoice.snapshot ?? invoice.draft;
 
   /**
-   * 26.11, 8.33 — fetch it and show it, where showing it is a thing this engine can do.
+   * 26.11, 27.15 — read it here, or take it away, and both wherever they work.
    *
-   * It used to download. Reading the thing is the common case by a wide margin, and every browser
-   * already has a save button on its own PDF viewer, so the app offering one was a second way to
-   * do something the first way did better. The blob URL is revoked when the dialog closes.
+   * 26.11 replaced a download with a viewer, on the reasoning that every browser has one of its
+   * own and the app should not reimplement it. Two browsers this ships to do not: the desktop
+   * window draws nothing at all for a PDF in an iframe, and on a phone the viewer does not work
+   * either. So Download is back, everywhere, and View is offered where the engine will honour it.
    *
-   * **The desktop window is not every browser.** WebKitGTK renders nothing for a PDF in an iframe
-   * — not from a blob URL and not from a data URL — while reporting `navigator.pdfViewerEnabled`
-   * as `true`, so the flag cannot be asked either. An HTML blob in the same iframe loads fine, so
-   * it is the format and not the frame. `desktop/selftest.ts` measures all three in the real
-   * engine and fails if that ever changes, which is when this branch should go.
-   *
-   * There, the shell writes the file and says where it went — which is what this button did
-   * before 26.11 and the only thing that works in that window.
+   * 27.14 — and it is named for the invoice. A blob URL has no name, so what the browser's own
+   * viewer saves is a uuid; `saveFile` is handed `INV-2026-08.pdf` and uses it.
    */
-  const view = async () => {
+  const canView = !isDesktop() && presentation !== "mobile";
+
+  const pdf = async () => {
     const res = await call<InvoicePdfResult>({ t: "invoice-pdf", id: invoice.id });
-    const bytes = bytesFromBase64(res.pdfBase64);
-    if (isDesktop()) {
-      const { path } = await saveFile(res.fileName, bytes, "application/pdf");
-      setSaved(path ?? res.fileName);
-      return;
-    }
+    return { bytes: bytesFromBase64(res.pdfBase64), fileName: res.fileName };
+  };
+
+  const view = async () => {
+    const { bytes, fileName } = await pdf();
     const url = URL.createObjectURL(
       // `.slice()` gives a plain `ArrayBuffer`; a `Uint8Array` over a shared buffer is not a
       // `BlobPart` as far as the DOM types are concerned.
       new Blob([bytes.slice().buffer], { type: "application/pdf" }),
     );
-    setViewing({ url, name: res.fileName });
+    setViewing({ url, name: fileName });
+  };
+
+  const download = async () => {
+    const { bytes, fileName } = await pdf();
+    const { path } = await saveFile(fileName, bytes, "application/pdf");
+    // The desktop shell writes it and says where; a browser puts it wherever downloads go and
+    // there is nothing useful to report.
+    if (path) setSaved(path);
   };
 
   /**
@@ -317,17 +322,23 @@ function InvoiceRow(
           )
           : <StatusPill status={invoice.status} />}
 
-        {
-          /* 26.11 — reading it is the common case; saving it is the browser's job, except in the
-             window that has no reader, where saving it is the whole of what can be offered. */
-        }
+        {canView && (
+          <button
+            className="btn"
+            type="button"
+            disabled={busy}
+            onClick={() => void act(view)}
+          >
+            View
+          </button>
+        )}
         <button
           className="btn"
           type="button"
           disabled={busy}
-          onClick={() => void act(view)}
+          onClick={() => void act(download)}
         >
-          {isDesktop() ? "Save PDF" : "View"}
+          Download
         </button>
 
         {canWrite && invoice.status === "draft" && (

@@ -909,10 +909,41 @@ async function main() {
     ),
   );
 
-  // 26.10 — the list offers reading, not saving. Saving is in the viewer the browser supplies.
+  /*
+   * 27.14, 27.15 — take it away, named for the invoice.
+   *
+   * 26.10 said the opposite and was wrong about the browsers this ships to: the desktop window
+   * draws nothing for a PDF in an iframe, and on a phone the viewer does not work either. What a
+   * browser's own viewer saves is named for the blob it came from, which is a uuid; this is
+   * handed the invoice's own filename.
+   */
+  const wantDownload = desktop.page.waitForEvent("download", { timeout: 20_000 }).catch(() =>
+    undefined
+  );
+  await invoiceRow().getByRole("button", { name: "Download" }).click();
+  const file = await wantDownload;
   check(
-    "26.10 — no download control on the list",
-    (await invoiceRow().getByRole("button", { name: /download/i }).count()) === 0,
+    "27.14 — a downloaded invoice is named for the invoice",
+    file?.suggestedFilename() === `${preparing.replace(" ", "-")}.pdf` ||
+      /^INV-\d{4}-\d{2}\.pdf$/.test(file?.suggestedFilename() ?? ""),
+    file?.suggestedFilename() ?? "no download",
+  );
+
+  /*
+   * 27.15 — and the phone, where the viewer does not work, is offered only the control that does.
+   *
+   * Not a capability probe: no engine reports "my PDF viewer will not work in this frame", which is
+   * exactly how 26.10 shipped a screen the desktop window could not show anything on. The
+   * presentation is the proxy, because it is what the report was about.
+   */
+  await nav(mobile.page, "Invoices");
+  const phoneRow = mobile.page.locator(".stacked-row").filter({ hasText: preparing }).first();
+  await phoneRow.waitFor({ timeout: 30_000 });
+  check(
+    "27.15 — the phone is offered Download and not View",
+    (await phoneRow.getByRole("button", { name: "Download" }).count()) === 1 &&
+      (await phoneRow.getByRole("button", { name: "View" }).count()) === 0,
+    await visibleText(mobile.page),
   );
 
   // 8.33 / 26.11 — the document itself, in the viewer, over a blob URL.
