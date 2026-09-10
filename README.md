@@ -15,7 +15,7 @@ and never revisit. Nearly every comment in this codebase cites one.
 ## Running it
 
 ```sh
-deno task deps          # npm install, once — see "Why there is a package.json" below
+deno task deps          # npm install for both package.json files, once — see below
 deno task serve         # prints the address a frontend needs
 ```
 

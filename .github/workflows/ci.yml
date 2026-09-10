@@ -39,12 +39,11 @@ jobs:
         with:
           node-version: "22"
 
-      # `deno task deps` and the frontend's own install. Both are npm rather than Deno because
-      # Deno's resolver cannot install the KPS listener — see the README.
+      # The task, not a copy of what it does. It installs both package.json files, and CI having
+      # its own second line is why the documented setup went untested: a fresh clone following the
+      # README reached `tsc: command not found` while CI was green.
       - name: Install dependencies
-        run: |
-          deno task deps
-          npm --prefix web install --no-audit --no-fund
+        run: deno task deps
 
       - run: deno task gate
 
@@ -73,9 +72,7 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: |
-          deno task deps
-          npm --prefix web install --no-audit --no-fund
+        run: deno task deps
           npx playwright install --with-deps chromium
 
       # Playwright's own Chromium, found the ordinary way. `harness.mjs` insists on being told
