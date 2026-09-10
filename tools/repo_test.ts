@@ -404,3 +404,37 @@ Deno.test({
     assertEquals(declared, [], "base64 is declared outside shared/protocol.ts (27.46)");
   },
 });
+
+Deno.test({
+  name: "27.54 -- everything written under the data directory goes through one writer",
+  permissions: { read: ["."], run: ["git"] },
+  async fn() {
+    /*
+     * `writeUnderData` makes the parent directory and sets the mode to 0600, because the data
+     * directory holds the payment block, PDFs with those details printed on them, and recordings
+     * of somebody's voice — and both SQLite and `Deno.writeFile` create files at 0666 less the
+     * umask, which is 0644 on an ordinary machine.
+     *
+     * The invoice PDF bypassed it, calling `Deno.writeFile` directly, so the one file with bank
+     * details *printed* on it was the one written world-readable. I found that by writing this
+     * guard, not by reading the code, and the audio path two hundred lines away had been correct
+     * the whole time — which is what a second writer looks like.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const offenders: string[] = [];
+    for (const file of (await trackedFiles()).filter((f) => f.startsWith("server/"))) {
+      if (file.endsWith("_test.ts")) continue;
+      const text = await Deno.readTextFile(`${root}${file}`);
+      for (const [i, line] of text.split("\n").entries()) {
+        if (/^\s*(\*|\/\/)/.test(line)) continue;
+        // A write aimed at the data directory, by any of the ways one is spelled here.
+        if (/Deno\.write(File|TextFile)\(/.test(line) && /dataDir|args\.data|\bat\b/.test(line)) {
+          if (!text.slice(0, text.indexOf(line)).includes("function writeUnderData")) continue;
+          if (/function writeUnderData/.test(text.split("\n")[i - 3] ?? "")) continue;
+          offenders.push(`${file}:${i + 1} ${line.trim()}`);
+        }
+      }
+    }
+    assertEquals(offenders, [], "a write under the data directory skips writeUnderData (27.54)");
+  },
+});

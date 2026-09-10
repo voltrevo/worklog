@@ -81,6 +81,33 @@ async function readAll(readable: ReadableStream<Uint8Array>): Promise<Uint8Array
   return out;
 }
 
+/**
+ * The data directory belongs to whoever runs the server (27.54).
+ *
+ * Everything sensitive this product has is in here. The database holds the payment block —
+ * `payBsb`, `payAccountNumber`, `payBank` — which `SENSITIVE_INVOICE_FIELDS` goes to some trouble
+ * to keep off the wire and out of every log; `invoices/` holds PDFs with those same details
+ * printed on them; `notes/` holds recordings of somebody's voice. SQLite and `Deno.writeFile`
+ * create files at 0666 less the umask, which on an ordinary box is 0644 — readable by every
+ * account on the machine. The KPS library already writes its private key at 0600, which is what
+ * made the rest look wrong by comparison.
+ *
+ * Best effort and never fatal: `chmod` does not exist on Windows, a directory somebody has
+ * deliberately shared is their business, and none of this is a reason to refuse to start. It runs
+ * on every boot rather than only at creation, so a file restored from a backup with loose modes
+ * is tightened the next time the server comes up.
+ */
+async function tighten(dataDir: string): Promise<void> {
+  if (Deno.build.os === "windows") return;
+  const paths = [dataDir, join(dataDir, "notes"), join(dataDir, "invoices")];
+  for (const dir of paths) {
+    await Deno.chmod(dir, 0o700).catch(() => {});
+    for await (const entry of Deno.readDir(dir)) {
+      if (entry.isFile) await Deno.chmod(join(dir, entry.name), 0o600).catch(() => {});
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args);
   await Deno.mkdir(args.data, { recursive: true });
@@ -95,6 +122,14 @@ async function main(): Promise<void> {
     certPath: join(args.data, "kps-cert.pem"),
     keyPath: join(args.data, "kps-key.pem"),
   });
+
+  /*
+   * After the listener, not before it: KPS writes the certificate and the key on first start, and
+   * tightening before that missed them both on the one boot where they are created. It writes the
+   * *key* at 0600 itself and leaves the certificate at the umask, which on this machine is 0666 —
+   * world-writable, for the file that pins the server's identity.
+   */
+  await tighten(args.data);
 
   const ctx: ServerContext = {
     db,

@@ -18,7 +18,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { claimAndApprove, DESKTOP, MOBILE, root, startRig, visibleText } from "./harness.mjs";
 
@@ -3124,6 +3124,43 @@ async function main() {
    *
    * Last, because it stops and starts the one server every other check is talking to.
    */
+  /*
+   * ------------------------------------------------------------- what is left on the server's disk
+   *
+   * 27.54. Everything sensitive this product has is in the data directory: the database holds the
+   * payment block that `SENSITIVE_INVOICE_FIELDS` keeps off the wire, `invoices/` holds PDFs with
+   * those details printed on them, and `notes/` holds a recording of somebody's voice. SQLite and
+   * `Deno.writeFile` create files at 0666 less the umask, which is 0644 on an ordinary box.
+   *
+   * Checked here rather than at startup, because by this point the run has written a voice note —
+   * a file created long after the modes were set, so a mode applied only at boot would pass a
+   * check that only looked at boot. The invoice PDF is the other such file and is not here: the
+   * run ends with a draft, and a draft renders on demand rather than freezing a file. That path is
+   * covered by the repo guard instead, which is what found it writing at the umask.
+   */
+  console.log("\nwhat is on disk:");
+  const loose = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const at = join(dir, entry.name);
+      const mode = statSync(at).mode & 0o777;
+      if (entry.isDirectory()) {
+        if (mode & 0o077) loose.push(`${at} is ${mode.toString(8)}`);
+        walk(at);
+      } else if (mode & 0o077) {
+        loose.push(`${at} is ${mode.toString(8)}`);
+      }
+    }
+  };
+  walk(rig.dataDir);
+  const written = readdirSync(join(rig.dataDir, "notes")).length +
+    readdirSync(join(rig.dataDir, "invoices")).length;
+  check(
+    "27.54 — nothing in the data directory is readable by anybody else",
+    loose.length === 0 && written >= 1,
+    loose.length ? loose.join("; ") : `${written} files written at runtime; none of them loose`,
+  );
+
   console.log("\nlosing the server:");
   // Foregrounded first: Chromium throttles timers in a hidden page to about one a minute, and by
   // this point in the run the last page opened is somebody else. The heartbeat below is a timer.

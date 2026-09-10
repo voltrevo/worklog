@@ -145,7 +145,7 @@ export interface ServerContext {
 async function writeUnderData(dataDir: string, relative: string, bytes: Uint8Array): Promise<void> {
   const at = `${dataDir}/${relative}`;
   await Deno.mkdir(at.slice(0, at.lastIndexOf("/")), { recursive: true });
-  await Deno.writeFile(at, bytes);
+  await Deno.writeFile(at, bytes, { mode: 0o600 });
 }
 
 /**
@@ -815,7 +815,10 @@ export async function handle(
             more: Math.max(0, rendered.outside.length - 5),
           });
         }
-        await Deno.writeFile(`${ctx.dataDir}/${relative}`, bytes);
+        // 27.54 — through the one writer, which sets the mode. This called `Deno.writeFile`
+        // directly and so wrote the invoice PDF — the file with the bank details printed on it —
+        // at the umask, 0644 on an ordinary box, while the note audio beside it was 0600.
+        await writeUnderData(ctx.dataDir, relative, bytes);
         attachPdf(db, invoice.id, relative, now);
         ctx.log("info", "invoice", "rendered a PDF", {
           number: invoice.number,
