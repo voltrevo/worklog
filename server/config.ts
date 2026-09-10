@@ -9,6 +9,7 @@
  */
 
 import type { Instant, PacingConfig } from "@worklog/shared/types";
+import type { PublicInvoiceConfig } from "@worklog/shared/protocol";
 import { emptySchedule } from "@worklog/shared/schedule";
 import type { Db } from "./db.ts";
 import { Refused } from "./work.ts";
@@ -308,9 +309,19 @@ export function allConfig(db: Db): Config {
   };
 }
 
-export type PublicInvoiceConfig =
-  & Omit<InvoiceConfig, typeof SENSITIVE_INVOICE_FIELDS[number]>
-  & { paymentDetailsSet: boolean; addressSet: boolean };
+/*
+ * 27.44 — one declaration of the wire shape, which is the one the frontend reads.
+ *
+ * This was declared here as `Omit<InvoiceConfig, …> & { … }` *and* written out by hand in
+ * `shared/protocol.ts`. Two declarations of one contract: structurally equal today, and the sort
+ * of equality that lasts until somebody adds a field to one of them. Adding
+ * `paymentDetailsComplete` to the hand-written one and not to this one is exactly how it broke.
+ *
+ * The shared one wins because it is the one the device compiles against. `publicInvoiceConfigKeys`
+ * in `config_test.ts` pins what actually crosses, since a spread cannot be checked for excess
+ * properties and a new `InvoiceConfig` column would otherwise be published by default.
+ */
+export type { PublicInvoiceConfig };
 
 /**
  * The invoice configuration with the payment block removed (20.1, 20.3, 9.19).
@@ -323,6 +334,18 @@ export type PublicInvoiceConfig =
  * `InvoiceConfig` should appear in the UI by default, and a field added to
  * `SENSITIVE_INVOICE_FIELDS` should disappear from the wire without anything else being edited.
  */
+/**
+ * The labels `missingInvoiceConfig` uses for the payment block, so `paymentDetailsComplete` is
+ * derived from that function rather than from a second list of the same fields (27.42's lesson).
+ */
+const PAYMENT_LABELS = new Set([
+  "the payment method",
+  "the account name",
+  "the BSB",
+  "the account number",
+  "the bank",
+]);
+
 export function publicInvoiceConfig(cfg: InvoiceConfig): PublicInvoiceConfig {
   const rest = { ...cfg } as Record<string, unknown>;
   for (const field of SENSITIVE_INVOICE_FIELDS) delete rest[field];
@@ -338,6 +361,22 @@ export function publicInvoiceConfig(cfg: InvoiceConfig): PublicInvoiceConfig {
     // payment block that reads as configured because somebody typed the *method* is a block that
     // will print an invoice with no account on it.
     paymentDetailsSet: set(["payName", "payBsb", "payAccountNumber", "payBank"]),
+    /*
+     * 27.44 — a second flag, because `paymentDetailsSet` answers a different question.
+     *
+     * That one is `.some(...)` and exists for masking: is there anything stored here, so should
+     * the box show a mask or be empty. `invoiceNeeds` on the device reused it to decide whether
+     * the payment block was *complete*, so typing only an account name made the invoices screen
+     * report nothing missing — and then `missingInvoiceConfig` refused the invoice for the BSB,
+     * the account number and the bank. One flag, two questions, and the wrong answer to the second
+     * only shows up when somebody has filled in part of the block.
+     *
+     * `payMethod` is included here and excluded above, for the reason given there: it is "Wire
+     * Transfer", not an account, so it must not make the block *look* configured — but the
+     * document prints it and `missingInvoiceConfig` requires it, so it does belong to complete.
+     */
+    paymentDetailsComplete:
+      missingInvoiceConfig(cfg).filter((what) => PAYMENT_LABELS.has(what)).length === 0,
     addressSet: set(HIDDEN_GROUPS.address),
   };
 }

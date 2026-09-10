@@ -9,7 +9,13 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { Refused } from "./work.ts";
 import { open } from "./db.ts";
-import { getConfig, type InvoiceConfig, publicInvoiceConfig, setConfig } from "./config.ts";
+import {
+  getConfig,
+  type InvoiceConfig,
+  missingInvoiceConfig,
+  publicInvoiceConfig,
+  setConfig,
+} from "./config.ts";
 
 Deno.test("25.42 -- the address is hidden like the payment block, with a flag for each group", () => {
   const db = open({ path: ":memory:" });
@@ -137,5 +143,69 @@ Deno.test("27.30 -- there is no default prompt interval, and none can be invente
   );
   assertEquals(getConfig(db, "prompt").meanIntervalMs, 30 * 60_000);
 
+  db.close();
+});
+
+Deno.test("27.44 -- exactly these fields cross to a device, and no others", () => {
+  /*
+   * `publicInvoiceConfig` spreads everything that is not sensitive, and a spread is not checked
+   * for excess properties against its return type. So a column added to `InvoiceConfig` is
+   * published to every device by default, and the type says nothing about it — which is the
+   * opposite of how the payment block is handled two functions up.
+   *
+   * The list is the check. Adding a field here is a decision; forgetting to is a red test.
+   */
+  const db = open({ path: ":memory:" });
+  const wire = publicInvoiceConfig(getConfig(db, "invoice"));
+  assertEquals(Object.keys(wire).sort(), [
+    "addressSet",
+    "approver",
+    "bonusMinor",
+    "bonusTeamProject",
+    "clientAddress",
+    "clientName",
+    "currency",
+    "fromAbn",
+    "fromEmail",
+    "fromName",
+    "fromPhone",
+    "note",
+    "paymentDetailsComplete",
+    "paymentDetailsSet",
+    "rateMinor",
+    "taxLabel",
+    "taxRate",
+    "teamProject",
+  ]);
+  db.close();
+});
+
+Deno.test("27.44 -- a part-filled payment block is not a complete one", () => {
+  /*
+   * `paymentDetailsSet` is `.some(...)`, for masking: is there anything here to hide. The invoices
+   * screen asked it a different question — may an invoice be made — so typing only an account name
+   * made that screen report nothing missing, and then rendering refused for the BSB, the account
+   * number and the bank.
+   */
+  const db = open({ path: ":memory:" });
+  setConfig(db, "invoice", { payName: "Wren & Co" });
+
+  const partial = publicInvoiceConfig(getConfig(db, "invoice"));
+  assertEquals(partial.paymentDetailsSet, true, "there is something to mask");
+  assertEquals(partial.paymentDetailsComplete, false, "and it is not a usable payment block");
+
+  setConfig(db, "invoice", {
+    payMethod: "Wire Transfer",
+    payBsb: "000-000",
+    payAccountNumber: "00000000",
+    payBank: "Example Bank",
+  });
+  const full = publicInvoiceConfig(getConfig(db, "invoice"));
+  assertEquals(full.paymentDetailsComplete, true);
+
+  // And the two agree with the authority, which is the whole point of deriving one from it.
+  const stillMissing = missingInvoiceConfig(getConfig(db, "invoice"))
+    .filter((w) => /payment|account|BSB|bank/i.test(w));
+  assertEquals(stillMissing, []);
   db.close();
 });

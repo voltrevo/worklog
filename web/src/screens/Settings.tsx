@@ -464,7 +464,9 @@ function InvoiceCard(
     !draft.clientName && "the client's name",
     draft.rateMinor <= 0 && !unreadable.includes("the hourly rate") &&
     "an hourly rate",
-    !cfg.paymentDetailsSet && !pay.payAccountNumber && "payment details",
+    // 27.44 — complete, not merely non-empty. `paymentDetailsSet` is the masking question and
+    // says yes to a lone account name, which is not a block an invoice can be paid into.
+    !cfg.paymentDetailsComplete && !pay.payAccountNumber && "payment details",
   ].filter(Boolean) as string[];
 
   const paymentHidden = cfg.paymentDetailsSet && !cleared.payment;

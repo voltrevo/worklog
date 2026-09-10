@@ -337,6 +337,14 @@ export interface PublicInvoiceConfig {
    * The values stay on the server; see `SENSITIVE_INVOICE_FIELDS`.
    */
   paymentDetailsSet: boolean;
+  /**
+   * 27.44 — whether the block is *usable*, as against whether anything is stored in it.
+   *
+   * `paymentDetailsSet` is for masking and is true when any one field has something in it. This is
+   * what a screen asks before saying an invoice can be made, and it is the server's own
+   * `missingInvoiceConfig` answering.
+   */
+  paymentDetailsComplete: boolean;
   addressSet: boolean;
 }
 

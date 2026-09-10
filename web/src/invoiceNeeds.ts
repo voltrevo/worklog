@@ -21,7 +21,8 @@ export function invoiceNeeds(cfg: PublicInvoiceConfig): string[] {
     !cfg.currency.trim() && "a currency",
     !cfg.teamProject.trim() && "a team or project",
     !(cfg.rateMinor > 0) && "an hourly rate",
-    !cfg.paymentDetailsSet && "payment details",
+    // 27.44 — complete, not merely non-empty: a lone account name is not a payment block.
+    !cfg.paymentDetailsComplete && "payment details",
   ].filter((x) => typeof x === "string");
 }
 
