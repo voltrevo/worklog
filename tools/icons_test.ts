@@ -10,21 +10,84 @@
  */
 
 import { assertEquals } from "jsr:@std/assert@^1";
-import { ICONS, png } from "./icons.ts";
+import { ICONS } from "./icons.ts";
 
 const dir = new URL("../web/public/", import.meta.url);
 
+/**
+ * The pixels a PNG holds, which is the thing being asserted about.
+ *
+ * **Not the file's bytes.** The first version of this compared the encoded PNGs, and that pins
+ * whatever `CompressionStream("deflate")` happens to emit — a zlib upgrade inside Deno would turn
+ * a green suite red while every pixel stayed identical, and the failure would say "the icon
+ * changed" about an icon that had not. What is committed has to *depict* what the script draws;
+ * how well it is compressed is not a claim this repo makes.
+ */
+async function pixelsOf(png: Uint8Array): Promise<{ size: number; pixels: Uint8Array }> {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  assertEquals(Array.from(png.subarray(0, 4)), [0x89, 0x50, 0x4e, 0x47], "not a PNG");
+
+  let at = 8;
+  let size = 0;
+  const idat: Uint8Array[] = [];
+  while (at < png.length) {
+    const length = view.getUint32(at);
+    const type = new TextDecoder().decode(png.subarray(at + 4, at + 8));
+    const body = png.subarray(at + 8, at + 8 + length);
+    if (type === "IHDR") size = new DataView(body.buffer, body.byteOffset).getUint32(0);
+    if (type === "IDAT") idat.push(body);
+    at += 12 + length;
+  }
+
+  const joined = new Uint8Array(idat.reduce((n, c) => n + c.length, 0));
+  let cursor = 0;
+  for (const chunk of idat) {
+    joined.set(chunk, cursor);
+    cursor += chunk.length;
+  }
+  const raw = new Uint8Array(
+    await new Response(
+      new Blob([joined]).stream().pipeThrough(new DecompressionStream("deflate")),
+    ).arrayBuffer(),
+  );
+  return { size, pixels: raw };
+}
+
 for (const icon of ICONS) {
   Deno.test({
-    name: `27.24 -- ${icon.name} is what tools/icons.ts draws`,
+    name: `27.24 -- ${icon.name} depicts what tools/icons.ts draws`,
     permissions: { read: ["."] },
     async fn() {
-      const committed = await Deno.readFile(new URL(icon.name, dir));
-      const drawn = await png(icon);
-      // Lengths first: comparing two multi-kilobyte arrays that differ prints every byte, and the
-      // length alone is usually the whole story.
-      assertEquals(committed.length, drawn.length, `${icon.name} is a different size`);
-      assertEquals(committed, drawn, `${icon.name} differs; run \`deno task icons\``);
+      const committed = await pixelsOf(await Deno.readFile(new URL(icon.name, dir)));
+      const drawn = icon.pixels();
+      const side = Math.sqrt(drawn.length / 4);
+
+      assertEquals(committed.size, side, `${icon.name} is a different size`);
+      // Row filters are all zero (see `encodePng`), so the decompressed stream is one filter byte
+      // then a row of RGBA, repeated. Comparing that to the drawing means walking past them.
+      const stride = side * 4;
+      for (let y = 0; y < side; y++) {
+        const row = committed.pixels.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+        const want = drawn.subarray(y * stride, (y + 1) * stride);
+        /*
+         * The window is placed at the difference, not at the start of the row.
+         *
+         * This first found a differing row and then asserted on its first forty bytes — which are
+         * the transparent corner of a rounded square and identical whatever the mark does. So it
+         * detected the change and then reported equality about it: a mutated radius turned the
+         * 32px icon red and left all four larger ones green, because at 512 pixels the difference
+         * is a thousand bytes into the row. An assertion has to be able to disagree with the thing
+         * that is actually wrong.
+         */
+        const at = row.findIndex((b, i) => b !== want[i]);
+        if (at === -1) continue;
+        const from = Math.max(0, at - 8);
+        assertEquals(
+          Array.from(row.subarray(from, from + 24)),
+          Array.from(want.subarray(from, from + 24)),
+          `${icon.name} differs at row ${y}, pixel ${Math.floor(at / 4)}; run \`deno task icons\``,
+        );
+      }
     },
   });
 }
