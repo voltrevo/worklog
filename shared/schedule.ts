@@ -96,7 +96,13 @@ export function capacityHours(month: string, cal: Calendar): number {
 }
 
 /** 6.17 — how much room the month has beyond the target. */
-export function slackHours(month: string, cal: Calendar, monthlyTargetHours: number): number {
+export function slackHours(
+  month: string,
+  cal: Calendar,
+  monthlyTargetHours: number | null,
+): number | null {
+  // 27.31 — no target, no slack against it.
+  if (monthlyTargetHours === null) return null;
   return capacityHours(month, cal) - monthlyTargetHours;
 }
 

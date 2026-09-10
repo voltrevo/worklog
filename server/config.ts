@@ -105,7 +105,13 @@ export interface Config {
 
 export const DEFAULTS: Config = {
   pacing: {
-    monthlyTargetHours: 160,
+    /*
+     * 27.31 — no default, for the reason 24.33 gives about the region and 27.30 about the prompt
+     * interval. 160 hours is full-time, which is a guess about the person, and the pacing screen
+     * spends it immediately: "you will land 12h under" against a number nobody chose is a lie
+     * carried to one decimal place.
+     */
+    monthlyTargetHours: null,
     schedule: defaultSchedule(),
     // 24.33 — no default. Mon–Fri 09:00–17:00 and 160 hours are sensible for anyone; a *place*
     // is not, and AU-NSW was a guess that silently decided which public holidays applied.

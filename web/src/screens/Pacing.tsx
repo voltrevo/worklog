@@ -13,13 +13,19 @@ import { useStore } from "../state.tsx";
 import { hours, pace } from "../format.ts";
 import { formatDay } from "@worklog/shared/dates";
 import { MonthNav } from "./MonthNav.tsx";
+import { useNav } from "../App.tsx";
 
 export function Pacing() {
   const { snapshot, month, setMonth } = useStore();
+  const go = useNav();
   if (!snapshot) return <p className="muted">Loading…</p>;
 
   const p = snapshot.pacing;
-  const paced = pace(p.paceHours);
+  /*
+   * 27.31 — with no monthly target there is no ahead or behind, and the screen says that instead
+   * of picking one of the two available lies ("on target", or "behind by everything").
+   */
+  const paced = p.paceHours === null ? undefined : pace(p.paceHours);
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -42,16 +48,41 @@ export function Pacing() {
       <div className="card">
         <div className="row between wrap" style={{ alignItems: "flex-end" }}>
           {/* 24.40 — the figure is unchanged: projected month total against the target. */}
-          <div
-            className="huge"
-            style={{ color: paced.tone === "bad" ? "var(--bad)" : undefined }}
-          >
-            {paced.text}
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="big tabular">{hours(p.projectedHours)}</div>
-            <div className="muted">projected</div>
-          </div>
+          {
+            /*
+             * 27.31 — with a target the headline is the comparison; without one it is the
+             * projection, which is the largest true thing this screen knows. Making the *absence*
+             * the biggest words on the page says the screen is broken, when what is missing is one
+             * number and the rest of it works.
+             */
+          }
+          {paced
+            ? (
+              <div
+                className="huge"
+                style={{ color: paced.tone === "bad" ? "var(--bad)" : undefined }}
+              >
+                {paced.text}
+              </div>
+            )
+            : (
+              <div className="stack" style={{ gap: 2 }}>
+                <div className="huge">{hours(p.projectedHours)}</div>
+                <div className="muted">
+                  projected — no monthly target, so nothing to be ahead or behind of.{" "}
+                  <button className="link" type="button" onClick={() => go("settings")}>
+                    Set one
+                  </button>
+                </div>
+              </div>
+            )}
+          {/* Not repeated when it is already the headline. */}
+          {paced && (
+            <div style={{ textAlign: "right" }}>
+              <div className="big tabular">{hours(p.projectedHours)}</div>
+              <div className="muted">projected</div>
+            </div>
+          )}
         </div>
 
         {
@@ -69,13 +100,19 @@ export function Pacing() {
             of={p.capacityHours}
             hint="of the scheduled hours"
           />
-          <Bar
-            label="Worked"
-            value={p.workedHours}
-            of={p.monthlyTargetHours}
-            hint="of the target"
-            tone={paced.tone === "bad" ? "bad" : "good"}
-          />
+          {
+            /* No target, no second bar: a bar needs something to be a proportion *of*, and the
+               month's capacity is already the bar above it. */
+          }
+          {p.monthlyTargetHours !== null && (
+            <Bar
+              label="Worked"
+              value={p.workedHours}
+              of={p.monthlyTargetHours}
+              hint="of the target"
+              tone={paced?.tone === "bad" ? "bad" : "good"}
+            />
+          )}
         </div>
       </div>
 
@@ -90,12 +127,14 @@ export function Pacing() {
           value={hours(p.capacityHours)}
           hint="every scheduled hour"
         />
-        <Figure
-          label="Slack"
-          value={hours(p.slackHours)}
-          hint={p.slackHours >= 0 ? "room above the target" : "the target exceeds the month"}
-          tone={p.slackHours >= 0 ? undefined : "bad"}
-        />
+        {p.slackHours !== null && (
+          <Figure
+            label="Slack"
+            value={hours(p.slackHours)}
+            hint={p.slackHours >= 0 ? "room above the target" : "the target exceeds the month"}
+            tone={p.slackHours >= 0 ? undefined : "bad"}
+          />
+        )}
       </div>
 
       <div className="card">

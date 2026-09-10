@@ -30,7 +30,8 @@ const MS_PER_HOUR = 3_600_000;
 export interface PacingInput {
   month: string;
   cal: Calendar;
-  monthlyTargetHours: number;
+  /** 27.31 — `null` when nobody has set one, which is the state a new server is in. */
+  monthlyTargetHours: number | null;
   /** Every entry; entries outside `month` are ignored rather than an error. */
   entries: readonly WorkEntry[];
   /** The viewing device's today (3.9). May be outside `month`, and usually is. */
@@ -82,9 +83,16 @@ export interface Pacing {
   actualAfterToday: number;
   /** 6.29 */
   projectedHours: number;
-  monthlyTargetHours: number;
-  /** 6.14, 6.15 — positive is ahead, negative is behind. */
-  paceHours: number;
+  /** 27.31 — `null` when nobody has set one. */
+  monthlyTargetHours: number | null;
+  /**
+   * 6.14, 6.15 — positive is ahead, negative is behind, `null` when there is nothing to be behind.
+   *
+   * Ahead and behind are statements *about a target*. With none set there is no true answer, and
+   * the two available lies are "on target" (0) and "behind by everything you have not done"
+   * (-projected) — both of which a screen would render as a confident sentence.
+   */
+  paceHours: number | null;
   /** 6.30 */
   capacityHours: number;
   /**
@@ -96,8 +104,8 @@ export interface Pacing {
    * and is the thing worth comparing hours against.
    */
   elapsedScheduledHours: number;
-  /** 6.17 */
-  slackHours: number;
+  /** 6.17 — and `null` with no target, for the same reason as `paceHours`. */
+  slackHours: number | null;
   /** 6.37 — which holidays shaped this month. */
   holidays: Holiday[];
   days: DayPacing[];
@@ -160,10 +168,10 @@ export function project(input: PacingInput): Pacing {
     actualAfterToday,
     projectedHours,
     monthlyTargetHours,
-    paceHours: projectedHours - monthlyTargetHours,
+    paceHours: monthlyTargetHours === null ? null : projectedHours - monthlyTargetHours,
     capacityHours: capacity,
     elapsedScheduledHours,
-    slackHours: capacity - monthlyTargetHours,
+    slackHours: monthlyTargetHours === null ? null : capacity - monthlyTargetHours,
     holidays: holidaysUsed(month, cal),
     days,
   };

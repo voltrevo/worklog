@@ -255,13 +255,15 @@ function ScheduleCard(
    */
   const { value, edits, set, touched, clear } = useEdits({
     schedule: cfg.schedule,
-    monthlyTargetHours: cfg.monthlyTargetHours as number | undefined,
+    // 27.31 — `null` is "nobody has set one"; `undefined` is "the box says something that is not
+    // a number". Different facts, and the Save button reads them differently.
+    monthlyTargetHours: cfg.monthlyTargetHours as number | null | undefined,
     region: cfg.region,
   });
   const schedule = value.schedule;
   const region = value.region;
   const targetHours = value.monthlyTargetHours;
-  const target = targetHours === undefined ? "" : String(targetHours);
+  const target = typeof targetHours === "number" ? String(targetHours) : "";
 
   const total = (Object.values(schedule) as DayInterval[]).reduce((t, i) => {
     if (!i) return t;
@@ -366,10 +368,10 @@ function ScheduleCard(
           <button
             className="btn primary"
             type="button"
-            disabled={!touched || targetHours === undefined}
+            disabled={!touched || typeof targetHours !== "number"}
             title={!touched
               ? "Nothing has changed."
-              : targetHours === undefined
+              : typeof targetHours !== "number"
               ? "The monthly target is not a number."
               : undefined}
             onClick={() =>
@@ -377,7 +379,9 @@ function ScheduleCard(
                 // Only what was changed. A card that was opened before somebody else's edit has
                 // nothing to say about the fields it was not used on.
                 ...("schedule" in edits ? { schedule } : {}),
-                ...("monthlyTargetHours" in edits ? { monthlyTargetHours: targetHours! } : {}),
+                ...("monthlyTargetHours" in edits
+                  ? { monthlyTargetHours: targetHours as number }
+                  : {}),
                 ...("region" in edits ? { region: region.trim().toUpperCase() } : {}),
               }).then((ok) => ok && clear())}
           >

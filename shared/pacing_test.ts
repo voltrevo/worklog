@@ -245,7 +245,7 @@ Deno.test("the parts add up to the whole, on every day of a worked month", () =>
         1e-9,
         `${day} @ ${now}`,
       );
-      assertAlmostEquals(p.paceHours, p.projectedHours - 160, 1e-9);
+      assertAlmostEquals(p.paceHours ?? NaN, p.projectedHours - 160, 1e-9);
     }
   }
 });
@@ -316,4 +316,44 @@ Deno.test("elapsed and remaining are the two halves of capacity", () => {
     const stillAhead = p.days.reduce((t, d) => t + d.remaining, 0);
     assertAlmostEquals(p.elapsedScheduledHours + stillAhead, p.capacityHours, 1e-9);
   }
+});
+
+Deno.test("27.31 -- with no monthly target there is no ahead or behind", () => {
+  /*
+   * The projection is still a projection: how the month will land is a fact about the schedule and
+   * the work, and it does not need a target. What needs one is the *comparison*, and with none set
+   * there is no true answer to "am I behind" — only two lies a screen would state confidently,
+   * "exactly on target" (paceHours 0) and "behind by everything you have not done" (-projected).
+   *
+   * So both derived figures are `null`, and everything that does not depend on a target is
+   * unaffected. That second half matters: it is what makes a blank target a missing comparison
+   * rather than a broken screen.
+   */
+  const p = project({
+    month: SEP,
+    cal: calendar(),
+    monthlyTargetHours: null,
+    entries: [entry("2026-09-01", 8)],
+    today: "2026-09-02",
+    nowMinutes: 12 * 60,
+  });
+
+  assertEquals(p.paceHours, null);
+  assertEquals(p.slackHours, null);
+  assertEquals(p.monthlyTargetHours, null);
+
+  assertEquals(p.workedHours, 8);
+  assertEquals(p.capacityHours, SEP_CAPACITY);
+  assertEquals(p.days.length > 0, true);
+  // The projection itself: unchanged by the absence, and the same number a target would not move.
+  const withTarget = project({
+    month: SEP,
+    cal: calendar(),
+    monthlyTargetHours: 160,
+    entries: [entry("2026-09-01", 8)],
+    today: "2026-09-02",
+    nowMinutes: 12 * 60,
+  });
+  assertAlmostEquals(p.projectedHours, withTarget.projectedHours, 1e-9);
+  assertAlmostEquals(withTarget.paceHours ?? NaN, withTarget.projectedHours - 160, 1e-9);
 });

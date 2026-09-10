@@ -87,8 +87,14 @@ export interface Holiday {
 }
 
 export interface PacingConfig {
-  /** 6.1 — hours, not milliseconds; this is a number a person types. */
-  monthlyTargetHours: number;
+  /**
+   * 6.1 — hours, not milliseconds; this is a number a person types.
+   *
+   * 27.31 — `null` until somebody sets one. There is no number of hours a month that is right for
+   * a stranger, and a screen that reads "12h behind" against one they never chose is a lie with a
+   * decimal point in it.
+   */
+  monthlyTargetHours: number | null;
   schedule: WeeklySchedule;
   /** 6.32 — an ISO 3166-2 subdivision code, or a country code for a nationwide set. */
   region: string;

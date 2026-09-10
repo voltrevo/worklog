@@ -98,7 +98,9 @@ export function Timer() {
   ]
     // A zero-width segment is a gap with a rounded end on each side: visible, and meaningless.
     .filter((seg) => seg.ms > 0);
-  const paced = pace(snapshot.pacing.paceHours);
+  // 27.31 — `null` when no monthly target has been set, and then there is no pill to draw. The
+  // pill beside it is about today's schedule, which is a different question and still answerable.
+  const paced = snapshot.pacing.paceHours === null ? undefined : pace(snapshot.pacing.paceHours);
 
   const moveStart = async () => {
     if (!active || startEdit === undefined) return;
@@ -195,13 +197,15 @@ export function Timer() {
                 : `${duration(-remainingMs)} over`}
             </span>
             {/* 3.8 — the monthly pace, beside today's, answering a different question. */}
-            <span
-              className={`pill ${
-                paced.tone === "good" ? "good" : paced.tone === "bad" ? "warn" : ""
-              }`}
-            >
-              {paced.text} this month
-            </span>
+            {paced && (
+              <span
+                className={`pill ${
+                  paced.tone === "good" ? "good" : paced.tone === "bad" ? "warn" : ""
+                }`}
+              >
+                {paced.text} this month
+              </span>
+            )}
           </div>
         </div>
 

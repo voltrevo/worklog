@@ -239,6 +239,14 @@ async function main() {
    * change is what it looks like: a screen that says it has nothing rather than a screen with a
    * number in it that nobody chose.
    */
+  /*
+   * 27.31 — and the pacing screen with no target, which is the state that used to say "12h behind"
+   * against 160 hours nobody had chosen.
+   */
+  await fresh.page.getByRole("button", { name: "Pacing", exact: true }).click();
+  await fresh.page.getByText(/no monthly target/).waitFor({ timeout: 20_000 });
+  await shot(fresh.page, "pacing-firstrun");
+
   await fresh.page.getByRole("button", { name: "Settings", exact: true }).click();
   await fresh.page.getByText("Work-detail prompts").waitFor({ timeout: 20_000 });
   const freshInterval = await fresh.page.getByLabel("About every (minutes)").inputValue();
