@@ -7,7 +7,13 @@
  * same moment resolve in SQLite rather than in whichever request arrived first.
  */
 
-import type { ActiveTimer, DateString, Instant, WorkEntry } from "@worklog/shared/types";
+import type {
+  ActiveTimer,
+  DateString,
+  EntryTiming,
+  Instant,
+  WorkEntry,
+} from "@worklog/shared/types";
 import { type Db, transact } from "./db.ts";
 
 /** Thrown for a request that is refused on its merits, as opposed to one that broke. */
@@ -72,7 +78,7 @@ export interface NewEntry {
   durationMs: number;
   billingTag: string;
   /** Omit for a duration-only entry (2.9). */
-  timing?: { startedAt: Instant; endedAt: Instant };
+  timing?: EntryTiming;
 }
 
 /**
@@ -176,7 +182,7 @@ export interface EntryPatch {
   date?: DateString;
   durationMs?: number;
   billingTag?: string;
-  timing?: { startedAt: Instant; endedAt: Instant } | null;
+  timing?: EntryTiming | null;
 }
 
 export function updateEntry(

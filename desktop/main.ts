@@ -50,6 +50,8 @@
  */
 
 import { dirname, join } from "jsr:@std/path@^1";
+// 27.46 — the shared pair, rather than a fourth copy of an encoder that device keys go through.
+import { fromBase64, toBase64 } from "@worklog/shared/protocol";
 import { type Handlers, serveBridge } from "./bridge.ts";
 
 interface BrowserWindowLike {
@@ -72,19 +74,6 @@ interface DeviceFile {
   /** Raw Ed25519 keys, base64. Held here precisely so that the page never has them. */
   publicKey: string;
   privateKeyPkcs8: string;
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s);
-}
-
-function fromBase64(text: string): Uint8Array {
-  const s = atob(text);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
 }
 
 /**

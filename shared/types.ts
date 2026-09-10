@@ -49,7 +49,19 @@ export interface WorkEntry {
    * A session that crossed midnight still belongs to `date`, so `endedAt` may fall on the next day
    * (2.21).
    */
-  timing?: { startedAt: Instant; endedAt: Instant };
+  timing?: EntryTiming;
+}
+
+/**
+ * When a timed entry ran (27.46).
+ *
+ * Written out inline in five places — the entry, two request shapes on the wire and two on the
+ * server — which is five declarations of one contract. `endedAt` may fall on the next day, per the
+ * note above; nothing about that survives being retyped.
+ */
+export interface EntryTiming {
+  startedAt: Instant;
+  endedAt: Instant;
 }
 
 /** The single globally-active timer (2.2), as the server sees it. */

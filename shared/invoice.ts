@@ -13,10 +13,8 @@
  */
 
 import type { DateString, Instant, InvoiceStatus, WorkEntry } from "./types.ts";
-import { monthOf, weeksThenMonday } from "./dates.ts";
+import { monthOf, MS_PER_HOUR, weeksThenMonday } from "./dates.ts";
 import { hoursOf, roundHours } from "./rounding.ts";
-
-const MS_PER_HOUR = 3_600_000;
 
 /** One row of the work/expense table (8.9, 8.10). */
 export interface InvoiceLine {

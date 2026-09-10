@@ -20,6 +20,7 @@
  *   rather than absorbed into it. The alternative — crediting only the larger of the two — hides
  *   real work, and this is a projection rather than an audit.
  */
+import { MS_PER_HOUR } from "./dates.ts";
 
 import type { DateString, Holiday, WorkEntry } from "./types.ts";
 import {
@@ -30,8 +31,6 @@ import {
   shapeMonth,
 } from "./schedule.ts";
 import { capacityHours } from "./schedule.ts";
-
-const MS_PER_HOUR = 3_600_000;
 
 export interface PacingInput {
   month: string;

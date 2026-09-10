@@ -13,10 +13,8 @@
  */
 
 import type { DateString, WorkEntry } from "./types.ts";
-import { monthOf } from "./dates.ts";
+import { monthOf, MS_PER_HOUR } from "./dates.ts";
 import { type InvoiceRecord, isCommitted } from "./invoice.ts";
-
-const MS_PER_HOUR = 3_600_000;
 
 /** 7.8 — the three states work can be in, from the invoice covering it. */
 export type WorkState = "uninvoiced" | "invoiced" | "paid";

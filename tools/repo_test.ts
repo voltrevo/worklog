@@ -369,3 +369,38 @@ Deno.test({
     assertEquals(offenders, [], "a screen decided for itself whether it may write (27.43)");
   },
 });
+
+Deno.test({
+  name: "27.46 -- a rule or an algorithm lives in one file",
+  permissions: { read: ["."], run: ["git"] },
+  async fn() {
+    /*
+     * Found by scanning for identical non-trivial lines across files. Most of what that turns up
+     * is idiom — a `<div className="row between wrap">` in seven screens is seven rows, not seven
+     * copies of a decision — but three were not:
+     *
+     * - `toBase64`/`fromBase64`, declared four times. Device private keys, note audio and invoice
+     *   PDFs all pass through them, and a divergence corrupts binary data silently.
+     * - `MS_PER_HOUR`, three times.
+     * - the timed-entry `{ startedAt, endedAt }` shape, five times, across the wire and the
+     *   server — the same class of thing as `PublicInvoiceConfig` being declared twice (27.45).
+     *
+     * This guards the one with teeth. The others are named types and constants now, and the
+     * compiler notices if they move.
+     */
+    const root = new URL("..", import.meta.url).pathname;
+    const declared: string[] = [];
+    for (
+      const file of (await trackedFiles()).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    ) {
+      if (file === "shared/protocol.ts") continue; // where they live
+      const text = await Deno.readTextFile(`${root}${file}`);
+      for (const [i, line] of text.split("\n").entries()) {
+        if (/^\s*(function|const|export function)\s+(to|from)Base64\b/.test(line)) {
+          declared.push(`${file}:${i + 1}`);
+        }
+      }
+    }
+    assertEquals(declared, [], "base64 is declared outside shared/protocol.ts (27.46)");
+  },
+});

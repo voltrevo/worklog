@@ -20,7 +20,7 @@
  */
 
 import type { AccessRole, AuthClaim, AuthPurpose } from "./auth.ts";
-import type { DateString, Instant, WorkEntry } from "./types.ts";
+import type { DateString, EntryTiming, Instant, WorkEntry } from "./types.ts";
 import type { Pacing } from "./pacing.ts";
 import type {
   InvoiceConfigOverride,
@@ -111,7 +111,7 @@ export type Request =
     date: DateString;
     durationMs: number;
     billingTag: string;
-    timing?: { startedAt: Instant; endedAt: Instant };
+    timing?: EntryTiming;
   }
   | {
     t: "entry-update";
@@ -119,7 +119,7 @@ export type Request =
     date?: DateString;
     durationMs?: number;
     billingTag?: string;
-    timing?: { startedAt: Instant; endedAt: Instant } | null;
+    timing?: EntryTiming | null;
   }
   | { t: "entry-delete"; id: string }
   /**

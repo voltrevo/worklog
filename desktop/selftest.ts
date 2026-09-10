@@ -19,6 +19,8 @@
  */
 
 import { dirname } from "jsr:@std/path@^1";
+// 27.46 — the shared pair, rather than a fourth copy of an encoder that device keys go through.
+import { fromBase64, toBase64 } from "@worklog/shared/protocol";
 import { serveBridge, type Window } from "./bridge.ts";
 
 interface Ctor {
@@ -48,18 +50,6 @@ const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
   "verify",
 ]) as CryptoKeyPair;
 const publicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
-
-function toBase64(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s);
-}
-function fromBase64(text: string): Uint8Array {
-  const s = atob(text);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
-}
 
 const settings: Record<string, string> = { "worklog.existing": "kept" };
 

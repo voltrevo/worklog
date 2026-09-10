@@ -167,3 +167,6 @@ export function formatMonth(period: string): string {
 export function monthShortName(month1To12: number): string {
   return MONTH_NAMES[month1To12 - 1] ?? "";
 }
+
+/** 27.46 — one of these, rather than the three that had drifted apart in nothing but position. */
+export const MS_PER_HOUR = 3_600_000;

@@ -22,6 +22,10 @@
  */
 
 import type { Signer } from "@worklog/shared/client";
+// 27.46 — the shared pair. This file had its own byte-for-byte copy, as did `desktop/main.ts` and
+// `desktop/selftest.ts`: four encoders for device keys, note audio and invoice PDFs, and a
+// divergence in any of them corrupts binary data without saying anything.
+import { fromBase64, toBase64 } from "@worklog/shared/protocol";
 import { bridge, desktopBuild } from "./bridge.ts";
 
 export function isDesktop(): boolean {
@@ -80,19 +84,6 @@ export function desktopSigner(): Signer {
     publicKey: async () => fromBase64(await call.publicKey()),
     sign: async (message) => fromBase64(await call.sign(toBase64(message))),
   };
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s);
-}
-
-function fromBase64(text: string): Uint8Array {
-  const s = atob(text);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
 }
 
 // ------------------------------------------------------------------ device-local settings

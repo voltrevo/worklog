@@ -407,7 +407,7 @@ function useRecorder() {
         const blob = new Blob(chunks, { type: media.mimeType || "audio/webm" });
         release();
         const take: Recording = {
-          base64: await toBase64(blob),
+          base64: await base64OfBlob(blob),
           ms: Date.now() - startedRef.current,
           type: blob.type,
           url: URL.createObjectURL(blob),
@@ -470,7 +470,16 @@ function useRecorder() {
   };
 }
 
-function toBase64(blob: Blob): Promise<string> {
+/**
+ * 27.46 — named for what it takes, because it is not the shared `toBase64`.
+ *
+ * That one turns a `Uint8Array` into base64 synchronously. This one reads a `Blob` through a
+ * `FileReader`, which is asynchronous and never materialises the bytes — a five-minute recording
+ * is most of a megabyte and there is no reason to hold it twice. Two different operations sharing
+ * one name is how somebody comes to call the wrong one; the guard in `repo_test.ts` reads the name
+ * and would have had to be taught an exception rather than the name being made true.
+ */
+function base64OfBlob(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     // `result` is a data URL, and only the part after the comma is the payload.
