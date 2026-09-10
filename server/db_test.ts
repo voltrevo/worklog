@@ -1,6 +1,9 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import { appliedMigrations, type Db, migrate, open, transact } from "./db.ts";
 import { MIGRATIONS } from "./migrations.ts";
+import { getConfig } from "./config.ts";
+import { entriesInMonth } from "./work.ts";
+import { frozenConfigFor, getInvoice } from "./invoices.ts";
 
 function fresh(): Db {
   return open({ path: ":memory:" });
@@ -273,4 +276,77 @@ Deno.test({
 
     await Deno.remove(dir, { recursive: true });
   },
+});
+
+Deno.test("27.52 -- a database from an older build keeps its data across an upgrade", () => {
+  /*
+   * Every other migration test here runs against an empty database, which is the one case that
+   * cannot go wrong: a migration that trips over existing rows — a NOT NULL with no default, a
+   * unique index over data that is not unique yet, a rewrite that drops a column — passes all of
+   * them and fails on the only database anybody cares about.
+   *
+   * This is a self-hosted product. An upgrade meets somebody's real file, once, unattended, and
+   * there is no second copy. So: open at the first schema version, put a row in every table that
+   * has one, then migrate to head and read it all back through the accessors the app uses rather
+   * than by looking at the tables.
+   *
+   * The two migrations that exist are nullable `ADD COLUMN`s and could not fail this. It is the
+   * next one this is for.
+   */
+  const first = MIGRATIONS.filter((m) => m.id === 1);
+  const db = open({ path: ":memory:", migrations: first });
+  assertEquals(appliedMigrations(db), [1]);
+
+  /*
+   * Written the way the old build wrote it — raw SQL against the v1 columns — because today's
+   * accessors name columns that do not exist yet. The first version of this test called
+   * `createDraft`, which selects `override_secrets_json`, and failed in its own setup: a fair
+   * reminder that "a database from an older build" means old-shaped rows, not new code pointed at
+   * an old schema.
+   */
+  const snapshot = JSON.stringify({
+    number: "INV-2026-08",
+    invoiceDate: "2026-09-01",
+    dueDate: "2026-09-28",
+    period: "2026-08",
+    lines: [],
+    workHours: 1,
+    totalMinor: 12_000,
+    currency: "AUD",
+    issuedAt: 1_788_000_000_000,
+  });
+  db.exec(`
+    INSERT INTO config (key, value_json, updated_at)
+      VALUES ('invoice', '{"fromName":"Wren & Co","clientName":"Kestrel Labs Pty Ltd"}', 1);
+    INSERT INTO work_entry (id, date, duration_ms, billing_tag, started_at, ended_at, created_at,
+      updated_at)
+      VALUES ('e1', '2026-08-03', 3600000, 'Product Development', 1785000000000, 1785003600000,
+        1, 1);
+    INSERT INTO invoice (id, period, number, status, draft_json, snapshot_json, issued_at,
+      created_at, updated_at)
+      VALUES ('i1', '2026-08', 'INV-2026-08', 'issued', '${snapshot}', '${snapshot}',
+        1788000000000, 1, 1);
+    INSERT INTO work_note (id, created_at, body, audio_path, audio_ms, prompted)
+      VALUES ('n1', 1, 'a note from before', NULL, NULL, 0);
+  `);
+
+  // The upgrade.
+  const ran = migrate(db);
+  assertEquals(ran, MIGRATIONS.filter((m) => m.id !== 1).map((m) => m.id));
+  assertEquals(appliedMigrations(db), MIGRATIONS.map((m) => m.id));
+
+  // And everything is still there, read the way the product reads it.
+  assertEquals(entriesInMonth(db, "2026-08").map((e) => e.id), ["e1"]);
+  assertEquals(entriesInMonth(db, "2026-08")[0]?.timing?.startedAt, 1_785_000_000_000);
+  assertEquals(getInvoice(db, "i1")?.status, "issued");
+  assertEquals(getInvoice(db, "i1")?.snapshot?.invoiceDate, "2026-09-01");
+  assertEquals(getConfig(db, "invoice").fromName, "Wren & Co");
+  assertEquals(
+    (db.prepare("SELECT body FROM work_note WHERE id = 'n1'").get() as { body: string }).body,
+    "a note from before",
+  );
+
+  // The columns the upgrade added are readable and empty, rather than absent.
+  assertEquals(frozenConfigFor(db, "i1"), undefined);
+  db.close();
 });
