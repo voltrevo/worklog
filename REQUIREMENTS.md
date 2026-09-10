@@ -836,3 +836,5 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 27.38. An editor whose subject has been deleted elsewhere MUST say so and MUST NOT silently become an editor for something else. Absence of a record is not the same fact as a request to create one, and a screen that conflates them turns a correction into a duplicate. Adding the typed values back MAY be offered, as a stated choice.
 27.39. A refusal a person reads MUST describe the situation rather than name a record. "no work entry 3f8a2b91-…" is true and useless; the identifier belongs in the log, which already has it.
+
+27.40. The same as 27.38, of the editor that holds invoice lines: it MUST NOT be owned by the row it edits, because a row keyed by record id unmounts when that record is deleted elsewhere and takes an open editor, and everything typed into it, off the screen without a word.

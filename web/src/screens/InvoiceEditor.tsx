@@ -155,10 +155,17 @@ function placeholderFor(
 }
 
 export function InvoiceEditor(
-  { invoice, busy, config, onSave, onCancel }: {
+  { invoice, busy, config, vanished, onSave, onCancel }: {
     invoice: StoredInvoiceWire;
     busy: boolean;
     config: PublicInvoiceConfig | undefined;
+    /**
+     * 27.40 — the invoice has left the list since this opened, which is a deletion elsewhere.
+     *
+     * The lines typed in here are still on screen and still somebody's work, so this says what
+     * happened rather than closing; there is simply nothing left to save them into.
+     */
+    vanished?: boolean;
     onSave: (
       lines: InvoiceLine[],
       number: string,
@@ -511,10 +518,17 @@ export function InvoiceEditor(
         {problem && <div className="notice bad">{problem}</div>}
 
         <div className="row">
+          {vanished && (
+            <div className="notice warn" style={{ flexBasis: "100%" }}>
+              This invoice was deleted, probably on another device, so there is nothing left to save
+              these lines into. They are still here if you want to copy them.
+            </div>
+          )}
           <button
             className="btn primary"
             type="button"
-            disabled={busy}
+            disabled={busy || vanished}
+            title={vanished ? "There is no longer an invoice to save this into." : undefined}
             onClick={() => void save()}
           >
             Save the draft

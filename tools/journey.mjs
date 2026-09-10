@@ -1136,11 +1136,68 @@ async function main() {
     ),
   );
 
+  /*
+   * 27.40 — and the same question as 27.38, of the editor that holds invoice lines.
+   *
+   * It lived inside its row and a row is keyed by invoice id, so deleting the invoice on another
+   * device unmounted the row, the editor and everything typed into it, with no word about any of
+   * it. Mounted by the screen it keeps its state and can say what happened.
+   *
+   * The phone does the deleting, because one page cannot both hold the editor open and delete the
+   * thing it is editing.
+   */
+  await draftRow.getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.locator(".linetable").waitFor({ timeout: 15_000 });
+  await desktop.page.getByLabel("Description on line 1", { exact: true })
+    .fill("Typed while it was deleted");
+
+  await nav(mobile.page, "Invoices");
+  const doomedInvoice = mobile.page.locator(".stacked-row").filter({ hasText: "Revised scope" })
+    .first();
+  const anyDraft = (await doomedInvoice.count()) === 1
+    ? doomedInvoice
+    : mobile.page.locator(".stacked-row").filter({ hasText: preparing }).last();
+  await anyDraft.getByRole("button", { name: "Delete" }).click();
+  await mobile.page.getByRole("button", { name: "Delete it" }).click();
+  await mobile.page.waitForTimeout(1_000);
+
+  /*
+   * Scoped to the dialog, and matched on the words.
+   *
+   * This asked whether *any* `.notice.warn` was visible, and the invoices screen behind the dialog
+   * carries several of its own — 11.24's uninvoiced month, 11.27's changed work. So it passed with
+   * the fix disabled, which mutation showed and reading did not.
+   */
+  const editorNotice = () =>
+    desktop.page.getByRole("dialog").locator(".notice.warn").filter({ hasText: /deleted/i });
+  check(
+    "27.40 — an invoice editor whose invoice was deleted elsewhere says so",
+    await until(
+      "the editor says the invoice has gone",
+      desktop.page,
+      async () => (await editorNotice().count()) > 0,
+      20_000,
+    ),
+    await visibleText(desktop.page),
+  );
+  check(
+    "27.40 — and keeps what was typed rather than taking it off the screen",
+    (await desktop.page.getByLabel("Description on line 1", { exact: true }).inputValue()) ===
+      "Typed while it was deleted",
+    await desktop.page.getByLabel("Description on line 1", { exact: true }).inputValue()
+      .catch(() => "the field is gone"),
+  );
+  check(
+    "27.40 — and does not offer to save into it",
+    await desktop.page.getByRole("button", { name: "Save the draft" }).isDisabled(),
+  );
+  await desktop.page.getByRole("button", { name: "Discard these changes" }).click();
+  await desktop.page.getByRole("button", { name: "Throw them away" }).click().catch(() => {});
+
   // Scoped to the row this block created. `getByRole("button", {name: "Delete"}).first()` picks
   // the first Delete *on the page*, and with two August rows in the list that is a coin flip
   // between the draft and the issued invoice the checks below still need.
-  await draftRow.getByRole("button", { name: "Delete" }).click();
-  await desktop.page.getByRole("button", { name: "Delete it" }).click();
+  // Already deleted, from the phone, by the 27.40 block above.
   // Checked, not merely awaited: everything below addresses `invoiceRow()`, which is `.first()`
   // of the rows for this month. While the deleted draft is still there that is a coin flip
   // between two rows in different states, and the failure surfaces as a confusing one further on.
@@ -1448,13 +1505,16 @@ async function main() {
    * meant "adding one", so the button that said Save said Add and would have made a second entry
    * out of the values of the one just removed.
    */
+  // Inside the dialog: the history screen behind it carries a holiday warning of its own, and
+  // "some warning is visible somewhere" is not the claim being made.
+  const entryNotice = () => desktop.page.getByRole("dialog").locator(".notice.warn");
   const gone = await until(
       "the editor says the entry has gone",
       desktop.page,
-      async (p) => (await p.locator(".notice.warn:visible").count()) > 0,
+      async () => (await entryNotice().count()) > 0,
       20_000,
     )
-    ? (await desktop.page.locator(".notice.warn:visible").first().innerText()).trim()
+    ? (await entryNotice().first().innerText()).trim()
     : `(nothing said; the dialog shows ${await visibleText(desktop.page)})`;
   check(
     "27.38 — an editor whose entry was deleted elsewhere says so",

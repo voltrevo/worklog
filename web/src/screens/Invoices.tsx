@@ -68,6 +68,18 @@ export function Invoices() {
   const needs = config ? invoiceNeeds(config) : [];
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
+  /*
+   * 27.40 — the invoice whose lines are being edited, held here rather than in its row.
+   *
+   * The row owned this, and a row is keyed by invoice id: delete the invoice on another device and
+   * the row unmounts, taking an open editor and everything typed into it off the screen without a
+   * word. Held here the editor keeps its place in the tree, so its state survives the invoice
+   * going away and it can say what happened instead of vanishing.
+   *
+   * By value, not by id: the editor seeds itself from `invoice.draft` at mount, and after the
+   * deletion there is no id to look up.
+   */
+  const [editing, setEditing] = useState<StoredInvoiceWire>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   const load = async () => {
@@ -188,15 +200,49 @@ export function Invoices() {
                 <InvoiceRow
                   key={i.id}
                   invoice={i}
-                  config={config}
                   canWrite={canWrite}
                   busy={busy}
                   act={act}
+                  onEdit={() => setEditing(i)}
                 />
               ))}
             </div>
           )}
       </div>
+
+      {
+        /*
+         * 27.40 — the line editor, mounted by the screen so it outlives its row.
+         *
+         * `vanished` is the invoice having left the list while this was open, which is a deletion
+         * somewhere else. The editor keeps everything typed into it — it is the same component
+         * instance, and its state was seeded at mount — so the choice of what to do with that work
+         * stays with the person who did it.
+         */
+      }
+      {editing && (
+        <InvoiceEditor
+          invoice={editing}
+          config={config}
+          busy={busy}
+          vanished={invoices !== undefined && !invoices.some((i) => i.id === editing.id)}
+          onCancel={() => setEditing(undefined)}
+          onSave={async (lines, number, override, taxRate, paymentOverride) => {
+            await act(() =>
+              call({
+                t: "invoice-update",
+                id: editing.id,
+                lines,
+                number,
+                config: override,
+                taxRate,
+                paymentOverride,
+              })
+            );
+            setEditing(undefined);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -209,12 +255,13 @@ function StatusPill({ status }: { status: StoredInvoiceWire["status"] }) {
 }
 
 function InvoiceRow(
-  { invoice, config, canWrite, busy, act }: {
+  { invoice, canWrite, busy, act, onEdit }: {
     invoice: StoredInvoiceWire;
-    config: PublicInvoiceConfig | undefined;
     canWrite: boolean;
     busy: boolean;
     act: (body: () => Promise<unknown>) => Promise<void>;
+    /** 27.40 — the editor is mounted by the screen, not by this row. */
+    onEdit: () => void;
   },
 ) {
   const { call } = useStore();
@@ -223,7 +270,6 @@ function InvoiceRow(
   const [confirm, setConfirm] = useState<"delete">();
   /** Where the desktop shell put it, when there was nowhere to show it. */
   const [saved, setSaved] = useState<string>();
-  const [editing, setEditing] = useState(false);
   const shown = invoice.snapshot ?? invoice.draft;
 
   /**
@@ -343,7 +389,7 @@ function InvoiceRow(
 
         {canWrite && invoice.status === "draft" && (
           /* 25.11 — the draft's own rows, not the work's. */
-          <button className="btn" type="button" onClick={() => setEditing(true)}>
+          <button className="btn" type="button" onClick={onEdit}>
             Edit lines
           </button>
         )}
@@ -359,29 +405,6 @@ function InvoiceRow(
           </>
         )}
       </div>
-
-      {editing && (
-        <InvoiceEditor
-          invoice={invoice}
-          config={config}
-          busy={busy}
-          onCancel={() => setEditing(false)}
-          onSave={async (lines, number, override, taxRate, paymentOverride) => {
-            await act(() =>
-              call({
-                t: "invoice-update",
-                id: invoice.id,
-                lines,
-                number,
-                config: override,
-                taxRate,
-                paymentOverride,
-              })
-            );
-            setEditing(false);
-          }}
-        />
-      )}
 
       {
         /*
