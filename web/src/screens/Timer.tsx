@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { useStore } from "../state.tsx";
+import { useCanWrite, useStore } from "../state.tsx";
 import {
   clock,
   dateValue,
@@ -25,7 +25,7 @@ import { today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
 export function Timer() {
-  const { snapshot, call, refresh, phase, lastError, clearError } = useStore();
+  const { snapshot, call, refresh, lastError, clearError } = useStore();
   const [tag, setTag] = useState("");
   const [tagProblem, setTagProblem] = useState<string>();
   /**
@@ -54,7 +54,7 @@ export function Timer() {
    */
   const [startEdit, setStartEdit] = useState<string | undefined>(undefined);
   const [startProblem, setStartProblem] = useState<string>();
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const canWrite = useCanWrite();
 
   if (!snapshot) return <p className="muted">Loading…</p>;
 

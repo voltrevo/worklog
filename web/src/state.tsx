@@ -142,6 +142,23 @@ export function useStore(): Store {
   return store;
 }
 
+/**
+ * Whether this device may change anything (27.43).
+ *
+ * Five screens wrote `phase.k === "ready" && phase.role !== "read"` out for themselves. All five
+ * agreed, which is the state a copied rule is in right up until it is not — and this is the rule
+ * that decides whether Start, Save, Delete and the invoice editor are offered at all. The server
+ * refuses a read device regardless (`authorize`), so a divergence would show a control that then
+ * fails rather than one that works; showing it is still a lie about what this key can do.
+ *
+ * A hook rather than a field on the store: it is derived from `phase`, and a derived value that
+ * lives beside the thing it is derived from cannot fall out of step with it.
+ */
+export function useCanWrite(): boolean {
+  const { phase } = useStore();
+  return phase.k === "ready" && phase.role !== "read";
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   /*
    * 27.23 — an invitation in the URL counts as an address, from the first render.

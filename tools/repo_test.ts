@@ -333,3 +333,39 @@ Deno.test({
     assertEquals(problems, [], "the requirements document contradicts itself");
   },
 });
+
+Deno.test({
+  name: "27.43 -- no screen works out for itself whether it may write",
+  // `trackedFiles` shells out to git, like the other walks over the repo in this file.
+  permissions: { read: ["."], run: ["git"] },
+  async fn() {
+    /*
+     * Five screens held their own copy of `phase.role !== "read"`, and all five agreed — which is
+     * the state a copied rule is in right up until it is not. This is the rule that decides
+     * whether Start, Save, Delete and the invoice editor are offered, so a divergence shows a
+     * control that a read-only device cannot actually use.
+     *
+     * A guard rather than a note, because the copy is the easy thing to write: `phase` is already
+     * destructured for other reasons, and the expression is one line.
+     */
+    const root = new URL("../web/src/", import.meta.url).pathname;
+    const offenders: string[] = [];
+    for (const file of (await trackedFiles()).filter((f) => f.startsWith("web/src/"))) {
+      if (file.endsWith("state.tsx")) continue; // where the rule lives
+      const text = await Deno.readTextFile(`${root}${file.slice("web/src/".length)}`);
+      for (const [i, line] of text.split("\n").entries()) {
+        if (/^\s*(\*|\/\/)/.test(line)) continue;
+        /*
+         * `!== "read"` only, which is the *permission* form. Naming the role is a different act
+         * and a legitimate one: the header says "Connected · read-only access" and the Users
+         * screen says which key this device holds, both with `=== "read"`, and neither decides
+         * whether a control appears.
+         */
+        if (/role\s*!==\s*"read"/.test(line)) {
+          offenders.push(`${file}:${i + 1} ${line.trim()}`);
+        }
+      }
+    }
+    assertEquals(offenders, [], "a screen decided for itself whether it may write (27.43)");
+  },
+});

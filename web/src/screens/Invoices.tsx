@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useStore } from "../state.tsx";
+import { useCanWrite, useStore } from "../state.tsx";
 import { hours, longDate, money, monthName, shortDate } from "../format.ts";
 import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, saveFile } from "../download.ts";
@@ -61,7 +61,7 @@ function ordered(invoices: StoredInvoiceWire[]): StoredInvoiceWire[] {
 }
 
 export function Invoices() {
-  const { snapshot, call, refresh, phase } = useStore();
+  const { snapshot, call, refresh } = useStore();
   const [invoices, setInvoices] = useState<StoredInvoiceWire[]>();
   // 25.12 — what a blank override falls through to, shown in the editor as placeholder text.
   const [config, setConfig] = useState<PublicInvoiceConfig>();
@@ -81,7 +81,7 @@ export function Invoices() {
    * deletion there is no id to look up.
    */
   const [editing, setEditing] = useState<StoredInvoiceWire>();
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const canWrite = useCanWrite();
 
   const load = async () => {
     setInvoices(await call<StoredInvoiceWire[]>({ t: "invoices" }));

@@ -9,7 +9,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { today } from "@worklog/shared/dates";
 import { INVOICE_LABELS, invoiceCssVars } from "@worklog/shared/invoiceLook";
-import { useStore } from "../state.tsx";
+import { useCanWrite, useStore } from "../state.tsx";
 import { hours, parseNumber } from "../format.ts";
 import { AlwaysOnTopCard } from "./AlwaysOnTop.tsx";
 import { LocalAudioCard } from "./LocalAudio.tsx";
@@ -29,7 +29,7 @@ interface ConfigWire {
 export function Settings() {
   const { call, refresh, phase, forget, snapshot } = useStore();
   const [cfg, setCfg] = useState<ConfigWire>();
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const canWrite = useCanWrite();
 
   /**
    * 27.29 — follows the store's snapshot, like History, Invoices and Users.

@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { useStore } from "../state.tsx";
+import { useCanWrite, useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
 import { duration, hours, longDate, monthName, timeOfDay } from "../format.ts";
 import { addDays } from "@worklog/shared/dates";
@@ -20,9 +20,9 @@ import type { StoredInvoiceWire } from "@worklog/shared/protocol";
 import type { WorkEntry } from "@worklog/shared/types";
 
 export function History() {
-  const { snapshot, month, setMonth, refresh, phase } = useStore();
+  const { snapshot, month, setMonth, refresh } = useStore();
   const presentation = usePresentation();
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const canWrite = useCanWrite();
   /**
    * 25.30 — one editor, and what it is editing.
    *

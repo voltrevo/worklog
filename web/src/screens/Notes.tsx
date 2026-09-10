@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useStore } from "../state.tsx";
+import { useCanWrite, useStore } from "../state.tsx";
 import { WorkNote } from "./WorkNote.tsx";
 import type { WorkNoteWire as NoteWire } from "@worklog/shared/protocol";
 import { Listing } from "./Listing.tsx";
@@ -21,11 +21,11 @@ import { dateTime } from "../format.ts";
 const NOTE_LIMIT = 200;
 
 export function Notes() {
-  const { call, snapshot, phase, refresh } = useStore();
+  const { call, snapshot, refresh } = useStore();
   // 25.1 — `undefined` until the first answer. `[]` would say "no notes" before asking.
   const [notes, setNotes] = useState<NoteWire[]>();
   const [open, setOpen] = useState(false);
-  const canWrite = phase.k === "ready" && phase.role !== "read";
+  const canWrite = useCanWrite();
 
   const load = () =>
     void call<NoteWire[]>({ t: "notes", limit: NOTE_LIMIT }).then(setNotes).catch(() => {});
