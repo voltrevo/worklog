@@ -27,24 +27,29 @@ interface ConfigWire {
 }
 
 export function Settings() {
-  const { call, refresh, phase, forget } = useStore();
+  const { call, refresh, phase, forget, snapshot } = useStore();
   const [cfg, setCfg] = useState<ConfigWire>();
   const canWrite = phase.k === "ready" && phase.role !== "read";
 
   /**
-   * Loaded once, unlike History, Invoices and Admin, which follow the store's snapshot.
+   * 27.29 — follows the store's snapshot, like History, Invoices and Users.
    *
-   * This is the exception on purpose. Each card below seeds `useState` from what it is handed, so
-   * re-fetching on every event would either leave the fields showing the old values while the
-   * pills showed the new ones, or — if the cards were keyed to force a remount — throw away what
-   * somebody was halfway through typing. An editing surface that is a minute stale is better than
-   * one that overwrites the person using it.
+   * **This used to load once, deliberately**, and the reasoning was: the cards copy the config
+   * into their own state, so re-fetching would either show old values beside new pills or — if the
+   * cards were remounted to force it — throw away what somebody was halfway through typing.
    *
-   * Saving reloads (see `save`), so this device is never wrong about its own edits.
+   * That was true of cards that hold a copy. They hold *edits* now (`useEdits`), so a new config
+   * arriving updates every field nobody has touched and leaves the touched ones exactly as they
+   * are. The objection went away with the copy, and what it was protecting — a screen that does
+   * not overwrite the person using it — is what edits-only state gives directly.
+   *
+   * The signal is the snapshot, which the store replaces for every event the server pushes,
+   * including the `config` one that `config-set` broadcasts. So changing the prompt interval on a
+   * phone now changes the number on a laptop looking at the same screen.
    */
   useEffect(() => {
     void call<ConfigWire>({ t: "config-get" }).then(setCfg);
-  }, [call]);
+  }, [call, snapshot]);
 
   /**
    * 25.41 — what happened, and to which card.
@@ -70,7 +75,7 @@ export function Settings() {
   const save = async (
     section: "pacing" | "invoice" | "prompt",
     value: Record<string, unknown>,
-  ) => {
+  ): Promise<boolean> => {
     setResult(undefined);
     try {
       await call({
@@ -82,8 +87,13 @@ export function Settings() {
       setCfg(await call<ConfigWire>({ t: "config-get" }));
       await refresh();
       setResult({ section });
+      // 27.29 — the answer matters to the caller now: a card drops its edits when the server has
+      // taken them, and holds on to them when it has not, so a refusal does not also lose the
+      // typing that caused it.
+      return true;
     } catch (err) {
       setResult({ section, problem: (err as Error).message });
+      return false;
     }
   };
 
@@ -188,22 +198,70 @@ function SaveProblem({ result }: { result?: { problem?: string } }) {
   return <div className="notice bad" style={{ marginTop: 10 }}>{result.problem}</div>;
 }
 
+/**
+ * What somebody has changed on a card, over whatever the server currently says (27.29).
+ *
+ * **Every card here used to copy the config into `useState` at mount** and edit the copy. Two
+ * things follow from that, and the second is much worse than the first.
+ *
+ * A `useState` initialiser runs once, so the copy never caught up: change the prompt interval on a
+ * phone and a laptop with this screen open kept showing the old number for as long as it stayed
+ * open. That is the nuisance, and it is how this was reported.
+ *
+ * Then Save sent *the whole card* from that copy. So a screen that had been sitting open since
+ * before a change was a legitimate writer of every value it had been holding — press Save on it for
+ * any reason and the server took the old numbers, because `{meanIntervalMs: 2700000}` from "I have
+ * just set 45" and from "I never touched this and it was 45 an hour ago" are the same request. A
+ * lost update, with the losing value being whatever the screen was opened with — which, for a
+ * setting nobody had configured yet, is the server's own default. That is where a 45 that nobody
+ * typed came back from.
+ *
+ * So a card holds only the fields somebody has actually changed. Untouched fields read straight
+ * from the server and follow it; Save sends the edits and nothing else, and is not offered when
+ * there are none. Two people editing the same field at the same moment is still last-writer-wins,
+ * which is a race between two intentions rather than one intention against an old screen.
+ */
+function useEdits<T extends object>(stored: T) {
+  const [edits, setEdits] = useState<Partial<T>>({});
+  return {
+    /** The server's values with this sitting's changes on top: what the fields show. */
+    value: { ...stored, ...edits } as T,
+    /** Only what changed. What Save sends. */
+    edits,
+    set: <K extends keyof T>(k: K, v: T[K]) => setEdits((e) => ({ ...e, [k]: v })),
+    touched: Object.keys(edits).length > 0,
+    /** After a successful save: the card goes back to following the server. */
+    clear: () => setEdits({}),
+  };
+}
+
 function ScheduleCard(
   { cfg, canWrite, save, result }: {
     cfg: PacingConfig;
     canWrite: boolean;
-    save: (s: "pacing", v: Record<string, unknown>) => Promise<void>;
+    save: (s: "pacing", v: Record<string, unknown>) => Promise<boolean>;
     result?: { problem?: string };
   },
 ) {
-  const [schedule, setSchedule] = useState(cfg.schedule);
-  // The text is `Num`'s; what this holds is the number behind it, and `undefined` when the field
-  // says something a number cannot be read out of (25.3).
-  const [targetHours, setTargetHours] = useState<number | undefined>(
-    cfg.monthlyTargetHours,
-  );
-  const target = String(targetHours ?? cfg.monthlyTargetHours);
-  const [region, setRegion] = useState(cfg.region);
+  /*
+   * 27.29 — three fields, held as edits over the server's values rather than copied at mount.
+   *
+   * The lost update this closes is the widest on the screen: a week of working hours, a monthly
+   * target and a holiday region all went in one request, so an untouched card that had been open
+   * across somebody else's change put all three back.
+   *
+   * `monthlyTargetHours` is `undefined` while the box says something a number cannot be read out
+   * of (25.3) — an edit that exists and is not yet a value.
+   */
+  const { value, edits, set, touched, clear } = useEdits({
+    schedule: cfg.schedule,
+    monthlyTargetHours: cfg.monthlyTargetHours as number | undefined,
+    region: cfg.region,
+  });
+  const schedule = value.schedule;
+  const region = value.region;
+  const targetHours = value.monthlyTargetHours;
+  const target = targetHours === undefined ? "" : String(targetHours);
 
   const total = (Object.values(schedule) as DayInterval[]).reduce((t, i) => {
     if (!i) return t;
@@ -212,7 +270,7 @@ function ScheduleCard(
   }, 0);
 
   const setDay = (day: Weekday, interval: DayInterval) =>
-    setSchedule({ ...schedule, [day]: interval });
+    set("schedule", { ...schedule, [day]: interval });
 
   return (
     <div className="card">
@@ -285,7 +343,7 @@ function ScheduleCard(
         <Num
           label="Monthly target (hours)"
           value={target}
-          set={setTargetHours}
+          set={(n) => set("monthlyTargetHours", n)}
           can={canWrite}
           width={130}
         />
@@ -293,7 +351,7 @@ function ScheduleCard(
           Holiday region
           <input
             value={region}
-            onChange={(e) => setRegion(e.target.value)}
+            onChange={(e) => set("region", e.target.value)}
             disabled={!canWrite}
             style={{ width: 130 }}
           />
@@ -308,14 +366,20 @@ function ScheduleCard(
           <button
             className="btn primary"
             type="button"
-            disabled={targetHours === undefined}
-            title={targetHours === undefined ? "The monthly target is not a number." : undefined}
+            disabled={!touched || targetHours === undefined}
+            title={!touched
+              ? "Nothing has changed."
+              : targetHours === undefined
+              ? "The monthly target is not a number."
+              : undefined}
             onClick={() =>
               void save("pacing", {
-                schedule,
-                monthlyTargetHours: targetHours!,
-                region: region.trim().toUpperCase(),
-              })}
+                // Only what was changed. A card that was opened before somebody else's edit has
+                // nothing to say about the fields it was not used on.
+                ...("schedule" in edits ? { schedule } : {}),
+                ...("monthlyTargetHours" in edits ? { monthlyTargetHours: targetHours! } : {}),
+                ...("region" in edits ? { region: region.trim().toUpperCase() } : {}),
+              }).then((ok) => ok && clear())}
           >
             Save
           </button>
@@ -336,7 +400,7 @@ function InvoiceCard(
   { cfg, canWrite, save, result }: {
     cfg: PublicInvoiceConfig;
     canWrite: boolean;
-    save: (s: "invoice", v: Record<string, unknown>) => Promise<void>;
+    save: (s: "invoice", v: Record<string, unknown>) => Promise<boolean>;
     result?: { problem?: string };
   },
 ) {
@@ -348,7 +412,15 @@ function InvoiceCard(
    * saving something unrelated cannot blank an address nobody touched.
    */
   type Draft = PublicInvoiceConfig & { fromAddress?: string };
-  const [draft, setDraft] = useState<Draft>(cfg);
+  /*
+   * 27.29 — and this card is where the same fault was worst.
+   *
+   * It sent `{...draft}`: every invoice field, from a copy taken at mount. So a Settings screen
+   * left open on a second device, used later for nothing but the tax label, wrote back the client
+   * name, the address, the rate and the currency as they had been when it was opened — over
+   * whatever had been set since. Nothing said so, and the next invoice was rendered from it.
+   */
+  const { value: draft, edits, set, touched, clear } = useEdits<Draft>(cfg);
   const [pay, setPay] = useState({
     payMethod: "",
     payName: "",
@@ -356,8 +428,6 @@ function InvoiceCard(
     payAccountNumber: "",
     payBank: "",
   });
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-
   /**
    * 25.43 — which hidden groups have been cleared for re-entry, in this sitting.
    *
@@ -713,11 +783,16 @@ function InvoiceCard(
           style={{ marginTop: 14 }}
           // 25.2 -- the button stays, and says why it will not go. Removing it would leave the
           // screen looking read-only for what is really one mistyped character.
-          disabled={unreadable.length > 0}
-          title={unreadable.length > 0 ? `Fix ${unreadable.join(" and ")} first.` : undefined}
+          disabled={unreadable.length > 0 || !(touched || !paymentHidden)}
+          title={unreadable.length > 0
+            ? `Fix ${unreadable.join(" and ")} first.`
+            : !(touched || !paymentHidden)
+            ? "Nothing has changed."
+            : undefined}
           onClick={() =>
             void save("invoice", {
-              ...draft,
+              // 27.29 — the fields this sitting changed, and no others.
+              ...edits,
               /*
                * The payment block goes as a block, whenever it is editable.
                *
@@ -737,7 +812,7 @@ function InvoiceCard(
               // are derived flags from the read path and `setConfig` merged whatever it was given.
               // The server drops unknown keys now, which is where that belonged: one place, rather
               // than every caller remembering.
-            })}
+            }).then((ok) => ok && clear())}
         >
           Save invoice details
         </button>
@@ -776,12 +851,22 @@ function PromptCard(
   { cfg, canWrite, save, result }: {
     cfg: { meanIntervalMs: number; enabled: boolean };
     canWrite: boolean;
-    save: (s: "prompt", v: Record<string, unknown>) => Promise<void>;
+    save: (s: "prompt", v: Record<string, unknown>) => Promise<boolean>;
     result?: { problem?: string };
   },
 ) {
-  const stored = Math.round(cfg.meanIntervalMs / 60_000);
-  const [minutes, setMinutes] = useState<number | undefined>(stored);
+  /*
+   * 27.29 — minutes, as an edit over what the server says, not a copy of it.
+   *
+   * This held `useState(stored)`, seeded at mount and never reconciled, and the field read
+   * `minutes ?? stored` — a fallback that could only ever hide the disagreement, because `minutes`
+   * was set from `stored` on the way in and so was never `undefined` to fall back from. Change the
+   * interval anywhere else and this screen went on showing, and on offering to save, the number it
+   * had been opened with.
+   */
+  const { value, edits, set, touched, clear } = useEdits({
+    minutes: Math.round(cfg.meanIntervalMs / 60_000),
+  });
   return (
     <div className="card">
       <h3>Work-detail prompts</h3>
@@ -802,8 +887,8 @@ function PromptCard(
         </label>
         <Num
           label="About every (minutes)"
-          value={String(minutes ?? stored)}
-          set={setMinutes}
+          value={value.minutes === undefined ? "" : String(value.minutes)}
+          set={(n) => set("minutes", n as number)}
           can={canWrite}
           width={110}
         />
@@ -812,13 +897,17 @@ function PromptCard(
             className="btn"
             type="button"
             // It used to fall back to 45 when this did not parse, which is a number nobody chose
-            // arriving on the server as though they had.
-            disabled={minutes === undefined}
-            title={minutes === undefined ? "The interval is not a number." : undefined}
+            // arriving on the server as though they had. Nothing changed is its own reason not to
+            // write: an untouched card has nothing to say about a value it may not have seen.
+            disabled={!touched || value.minutes === undefined}
+            title={!touched
+              ? "Nothing has changed."
+              : value.minutes === undefined
+              ? "The interval is not a number."
+              : undefined}
             onClick={() =>
-              void save("prompt", {
-                meanIntervalMs: minutes! * 60_000,
-              })}
+              void save("prompt", { meanIntervalMs: edits.minutes! * 60_000 })
+                .then((ok) => ok && clear())}
           >
             Save
           </button>

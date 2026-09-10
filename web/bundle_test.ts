@@ -144,3 +144,74 @@ Deno.test({
     assertEquals(found, [], "seed data reached the published bundle");
   },
 });
+
+Deno.test({
+  name: "27.24 -- the published site carries what a phone needs to install it",
+  ...READS_DIST,
+  async fn() {
+    if (!await present()) return;
+    const manifest = JSON.parse(await Deno.readTextFile(`${DIST}manifest.webmanifest`));
+
+    /*
+     * Relative, and it has to be. The site is served from a GitHub Pages subpath
+     * (`/<repo>/`), and an absolute `start_url: "/"` sends an installed app to the root of
+     * github.io — someone else's page. `scope` the same, or the installed window opens every
+     * in-app link in a browser tab instead.
+     */
+    assertEquals(manifest.start_url, "./");
+    assertEquals(manifest.scope, "./");
+    assertEquals(manifest.display, "standalone");
+
+    // Chrome's installability floor: an icon of at least 192 and one of at least 512, and a
+    // maskable one so Android does not letterbox it inside a white circle.
+    const sizes = (manifest.icons as { sizes: string; purpose: string }[]).map((i) => i.sizes);
+    assertEquals(sizes.includes("192x192"), true, "no 192 icon");
+    assertEquals(sizes.includes("512x512"), true, "no 512 icon");
+    assertEquals(
+      (manifest.icons as { purpose: string }[]).some((i) => i.purpose === "maskable"),
+      true,
+      "no maskable icon",
+    );
+
+    // Every file the manifest names is actually shipped. A manifest naming an icon that 404s is
+    // not installable and reports nothing about why.
+    for (const icon of manifest.icons as { src: string }[]) {
+      await Deno.stat(`${DIST}${icon.src.replace(/^\.\//, "")}`);
+    }
+    await Deno.stat(`${DIST}sw.js`);
+
+    const html = await Deno.readTextFile(`${DIST}index.html`);
+    assertEquals(html.includes('rel="manifest"'), true, "index.html does not link the manifest");
+
+    /*
+     * And the desktop page does not. It is loaded from `file://` as one self-contained document,
+     * so a manifest link and three icon links are four requests that cannot succeed — and there is
+     * nothing to install there, it being an installed application already.
+     */
+    const desktop = await Deno.readTextFile(`${DIST}desktop.html`);
+    assertEquals(
+      /<link[^>]+rel="(?:manifest|icon|apple-touch-icon)"/.test(desktop),
+      false,
+      "desktop.html still links install metadata it cannot fetch",
+    );
+  },
+});
+
+Deno.test({
+  name: "27.24 -- and the service worker stays a pass-through",
+  ...READS_DIST,
+  async fn() {
+    if (!await present()) return;
+    const sw = await Deno.readTextFile(`${DIST}sw.js`);
+    /*
+     * A guard rather than a test, because the failure is silent and slow: the obvious improvement
+     * to a do-nothing worker is a cache, and a cached bundle outlives a deploy on a device that
+     * never happens to look. Nothing this app fetches is stale-tolerant.
+     */
+    assertEquals(
+      /caches\s*[.[]|CacheStorage|cache\.match/.test(sw),
+      false,
+      "the service worker has grown a cache (27.24 says it must not)",
+    );
+  },
+});

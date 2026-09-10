@@ -34,6 +34,27 @@ function recordBoot(where: string, error: unknown): void {
   boot.react = `${where}: ${err}`;
 }
 
+/**
+ * 27.24 — register the worker that makes this installable, where there is one to register.
+ *
+ * Not in the desktop window: a `file://` document has no secure origin, `navigator.serviceWorker`
+ * is undefined there, and reaching for it throws before anything renders. Not on plain HTTP over a
+ * LAN either — the browser refuses, and the rejection would be reported to the server as an app
+ * error (12.6). So this asks first and stays quiet when the answer is no; nothing in the app
+ * depends on the worker existing, because the worker does nothing.
+ */
+function registerWorker(): void {
+  if (!("serviceWorker" in navigator) || !globalThis.isSecureContext) return;
+  globalThis.addEventListener("load", () => {
+    void navigator.serviceWorker.register("./sw.js").catch((err: Error) => {
+      // Worth a console line and nothing more: an uninstallable page still works.
+      console.warn(`the service worker did not register: ${err.message}`);
+    });
+  });
+}
+
+registerWorker();
+
 const root = document.getElementById("root");
 if (!root) throw new Error("no #root to mount into");
 

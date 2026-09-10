@@ -4,6 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <!--
+      27.24 — what a phone needs to install this.
+
+      Relative hrefs, like `base: "./"` in the vite config: this is served from a GitHub Pages
+      subpath and from the desktop shell's own file server, and an absolute `/manifest.webmanifest`
+      is a 404 in both. `theme-color` matches the manifest's, which is what colours the status bar
+      once it is installed.
+    -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Worklog" />
     <title>Worklog</title>
   </head>
   <body>

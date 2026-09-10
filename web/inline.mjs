@@ -89,9 +89,20 @@ addEventListener("unhandledrejection", (e) => {
 
 html = html.replace('<script type="module">', () => `${PRELUDE}\n<script type="module">`);
 
+/*
+ * 27.24 — the install metadata comes out again for the desktop window.
+ *
+ * This document is loaded from `file://` as a single self-contained page: the manifest, the icons
+ * and the favicon are separate files that are not shipped beside it, so every one of these links
+ * is a request that cannot succeed. There is nothing to install here either — it is already an
+ * installed application — so they are removed rather than made to work.
+ */
+const dropped = [...html.matchAll(/<link[^>]+rel="(?:manifest|icon|apple-touch-icon)"[^>]*>\s*/g)];
+for (const link of dropped) html = html.replace(link[0], () => "");
+
 const out = join(dist, "desktop.html");
 await writeFile(out, html);
 console.log(
   `desktop.html: ${styles} stylesheet(s) and ${scripts} script(s) inlined, ` +
-    `${(html.length / 1024).toFixed(0)} kB`,
+    `${(html.length / 1024).toFixed(0)} kB, ${dropped.length} install link(s) dropped`,
 );

@@ -862,6 +862,78 @@ async function main() {
   await desktop.page.getByRole("button", { name: "Save invoice details" }).click();
   await desktop.page.waitForTimeout(600);
 
+  /*
+   * ------------------------------------------------------- a settings screen that was left open
+   *
+   * 27.29. Reported as "the prompt interval keeps reverting to 45 and I don't know whether that is
+   * a stale field or the server". It was both, and they are the same fault: every card copied the
+   * config into `useState` at mount, so it never followed a later change, *and* Save sent the whole
+   * card from that copy. A screen open since before a change was a legitimate writer of the values
+   * it had been holding — and for a setting nobody had configured yet, the value it had been
+   * holding was the server's own default of 45 minutes.
+   *
+   * Two devices, because one device cannot be stale about itself. The phone's Settings screen stays
+   * open across the desktop's change, which is exactly the situation the bug needed.
+   */
+  console.log("\nsettings left open:");
+  await nav(desktop.page, "Settings");
+  const interval = desktop.page.getByLabel("About every (minutes)");
+  const promptCard = (page) => page.locator(".card").filter({ hasText: "Work-detail prompts" });
+  await interval.fill("60");
+  await promptCard(desktop.page).getByRole("button", { name: "Save" }).click();
+  await desktop.page.waitForTimeout(600);
+
+  await nav(mobile.page, "Settings");
+  const phoneInterval = mobile.page.getByLabel("About every (minutes)");
+  check(
+    "27.29 — a second device reads the stored interval, not a default",
+    await until(
+      "phone reads 60",
+      mobile.page,
+      async () => (await phoneInterval.inputValue()) === "60",
+    ),
+    await phoneInterval.inputValue(),
+  );
+
+  // The phone stays on this screen. The desktop changes the value underneath it.
+  await nav(desktop.page, "Settings");
+  await interval.fill("5");
+  await promptCard(desktop.page).getByRole("button", { name: "Save" }).click();
+  await desktop.page.waitForTimeout(600);
+  check(
+    "27.29 — and an open screen follows the change instead of showing what it opened with",
+    await until(
+      "phone follows to 5",
+      mobile.page,
+      async () => (await phoneInterval.inputValue()) === "5",
+      20_000,
+    ),
+    await phoneInterval.inputValue(),
+  );
+
+  check(
+    "27.29 — an untouched card cannot write anything back",
+    await promptCard(mobile.page).getByRole("button", { name: "Save" }).isDisabled(),
+  );
+
+  /*
+   * And the checkbox, which saves its section on its own, must not take the interval with it.
+   * `setConfig` merges server-side, so this is a guard on the client sending only what it means:
+   * a payload of `{enabled}` and `{enabled, meanIntervalMs}` are indistinguishable afterwards.
+   */
+  await mobile.page.getByLabel("Ask me sometimes").click();
+  await mobile.page.waitForTimeout(800);
+  await nav(desktop.page, "Timer");
+  await nav(desktop.page, "Settings");
+  check(
+    "27.29 — and toggling the prompts on does not carry an interval with it",
+    (await interval.inputValue()) === "5",
+    await interval.inputValue(),
+  );
+  await mobile.page.getByLabel("Ask me sometimes").click();
+  await mobile.page.waitForTimeout(400);
+  await nav(mobile.page, "Timer");
+
   // ---------------------------------------------------------------- invoicing, and the PDF
   //
   // 24.25–24.31. One list, actions on the rows, dialogs for the two that cannot be undone by
@@ -2280,6 +2352,24 @@ async function main() {
    * such thing" from "you may not see it" — and the one thing on that screen every role can do,
    * inviting another device, was hidden with it.
    */
+  /*
+   * 27.24 — the frontend registers its worker where a browser will have one.
+   *
+   * The manifest and the icons are checked in `web/bundle_test.ts`, which reads the files. What
+   * that cannot see is whether the page actually registers: `isSecureContext` is true on
+   * 127.0.0.1, so this browser is in the same position as a phone on HTTPS, and a registration
+   * that throws would otherwise only show up as a page that never offers to install.
+   */
+  check(
+    "27.24 — the service worker registers",
+    await until(
+      "worker registered",
+      desktop.page,
+      (p) => p.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => !!r)),
+      20_000,
+    ),
+  );
+
   await nav(reader.page, "Users");
   const readerUsers = await visibleText(reader.page);
   check(
