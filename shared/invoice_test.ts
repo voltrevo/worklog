@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertAlmostEquals, assertEquals } from "jsr:@std/assert@^1";
 import type { WorkEntry } from "./types.ts";
 import {
   buildDraft,
@@ -10,6 +10,7 @@ import {
   type InvoiceRecord,
   invoiceWarnings,
   previousInvoice,
+  recomputeDraft,
   totalsFor,
 } from "./invoice.ts";
 
@@ -497,4 +498,113 @@ Deno.test("27.42 -- what an invoice says now, in each state it can be in", () =>
     false,
     "the two drafts must differ or this test cannot fail",
   );
+});
+
+Deno.test("27.59 -- whatever the hours, the printed columns add to the printed totals", () => {
+  /*
+   * 25.7 is tested with the case that caused it — three lots of 2h30m30s — and that case states
+   * the property at the end. This states it over a few hundred, because the failure it guards
+   * against is arithmetic and arithmetic fails on inputs nobody picked: hours that land on a
+   * rounding boundary, rates that make a line a fraction of a cent, a tax rate that turns a whole
+   * sub-total into a repeating decimal.
+   *
+   * The four invariants are what a client can check with a calculator and the page in front of
+   * them, which is the only definition of "adds up" that matters:
+   *
+   *   1. every line's amount is its *printed* hours times the rate;
+   *   2. the work total is the sum of the printed hours, not a re-rounded sum of the real ones;
+   *   3. the sub-total is the sum of the line amounts;
+   *   4. the total is the sub-total plus the tax on it, and every figure is whole minor units.
+   *
+   * Seeded, so a failure is a case somebody can re-run rather than a story about one afternoon.
+   */
+  let seed = 20260910;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+
+  for (let round = 0; round < 300; round++) {
+    // Durations in whole seconds, which is what a stopwatch produces and where the awkward ones
+    // live; rates and tax across the range the config permits.
+    const entries = Array.from(
+      { length: 1 + Math.floor(next() * 6) },
+      (_, i) =>
+        entry(
+          `e${i}`,
+          `2026-09-${String(1 + i).padStart(2, "0")}`,
+          Math.floor(next() * 36000) / 3600,
+        ),
+    );
+    const rateMinor = 1 + Math.floor(next() * 50_000);
+    const taxRate = Math.floor(next() * 4000) / 10_000;
+
+    const draft = buildDraft({ ...BASE, rateMinor, taxRate, period: "2026-09", entries });
+
+    for (const line of draft.lines) {
+      if (line.hours === null || line.rateMinor === null) continue;
+      assertEquals(
+        line.amountMinor,
+        Math.round(line.hours * line.rateMinor),
+        `line amount is not its printed hours times the rate (round ${round})`,
+      );
+      assertEquals(Number.isInteger(line.amountMinor), true, `fractional minor units`);
+      // The printed column carries one decimal; anything else cannot be read off the page.
+      assertEquals(
+        Math.round(line.hours * 10) / 10,
+        line.hours,
+        `a line's hours are not printable to a tenth (round ${round})`,
+      );
+    }
+
+    const summedHours = draft.lines.reduce((t, l) => t + (l.hours ?? 0), 0);
+    assertAlmostEquals(
+      draft.workHours,
+      Math.round(summedHours * 10) / 10,
+      1e-9,
+      `the work total is not the sum of the printed hours (round ${round})`,
+    );
+
+    const summedAmounts = draft.lines.reduce((t, l) => t + l.amountMinor, 0) +
+      (draft.bonusLine?.amountMinor ?? 0);
+    assertEquals(
+      draft.subtotalMinor,
+      summedAmounts,
+      `the sub-total is not the sum of the lines (round ${round})`,
+    );
+    assertEquals(
+      draft.totalMinor,
+      draft.subtotalMinor + draft.taxMinor,
+      `the total is not the sub-total plus the tax (round ${round})`,
+    );
+    assertEquals(Number.isInteger(draft.taxMinor), true, `fractional tax (round ${round})`);
+    assertEquals(Number.isInteger(draft.totalMinor), true, `fractional total (round ${round})`);
+  }
+});
+
+Deno.test("27.59 -- and a draft edited with unrounded hours is made printable", () => {
+  /*
+   * `recomputeDraft` re-rounds the hours on the way through, and its comment says why: they
+   * arrive rounded from `buildLines` and from the client's own field, so it normally changes
+   * nothing and exists for a value that reached the server by some other path.
+   *
+   * Which means the property test above cannot see it. I mutated that re-round to use the
+   * unrounded value and watched three hundred randomised invoices pass, because every one of them
+   * came through `buildLines` with the rounding already done. A defence against "some other path"
+   * has to be tested by taking that path.
+   */
+  const draft = buildDraft({ ...BASE, period: "2026-09", entries: [entry("a", "2026-09-01", 1)] });
+  const awkward = (2 * 3600 + 30 * 60 + 30) / 3600; // 2.508333…, prints as 2.5
+  const edited = recomputeDraft(draft, {
+    lines: [{ ...draft.lines[0]!, hours: awkward, rateMinor: 7_500 }],
+  });
+
+  assertEquals(edited.lines[0]?.hours, 2.5, "the hours were not made printable");
+  assertEquals(
+    edited.lines[0]?.amountMinor,
+    18_750,
+    "the amount came from the unrounded hours, so the page does not add up",
+  );
+  assertEquals(edited.workHours, 2.5);
+  assertEquals(edited.subtotalMinor, 18_750);
 });
