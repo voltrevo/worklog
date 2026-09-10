@@ -524,7 +524,7 @@ async function main() {
     ),
   );
   /*
-   * 27.17 — the spacing on this screen says something.
+   * 27.18 — the spacing on this screen says something.
    *
    * One gap for everything put the month's totals, the control that adds to it, and every day at
    * the same distance apart, so the page read as a pile of cards rather than a summary and a list.
@@ -551,7 +551,7 @@ async function main() {
   const together = dayGaps.filter((g) => g.consecutive).map((g) => g.gap);
   const apart = dayGaps.filter((g) => !g.consecutive).map((g) => g.gap);
   check(
-    "27.17 — a run of consecutive days is one group, and a missing day breaks it",
+    "27.18 — a run of consecutive days is one group, and a missing day breaks it",
     together.length > 1 && apart.length > 0 &&
       new Set(together).size === 1 && Math.min(...apart) > Math.max(...together),
     JSON.stringify(dayGaps),
@@ -1868,6 +1868,35 @@ async function main() {
     ),
     `was ${capacityBefore}h`,
   );
+
+  /*
+   * 27.17 — a holiday, distinct from a Sunday, and named underneath.
+   *
+   * It rendered as "not a workday", indistinguishable from a weekend, so a month with four fewer
+   * working hours in it looked exactly like one without — and the reason the capacity had moved
+   * was nowhere on the screen that shows the capacity. October is the month to look at: the
+   * shipped snapshot has Labour Day on the fifth, and a wrong region is the most likely thing to
+   * be wrong here, which is what the list underneath is for.
+   */
+  await desktop.page.getByRole("button", { name: /^Go to October/ }).click();
+  await desktop.page.waitForTimeout(700);
+  check(
+    "27.17 — a public holiday is drawn as one, not as a day off",
+    await until(
+      "holiday day",
+      desktop.page,
+      async (p) => (await p.locator(".day.holiday").count()) === 1,
+    ),
+    `${await desktop.page.locator(".day.holiday").count()} days styled as holidays`,
+  );
+  check(
+    "and the month's holidays are named below the days",
+    (await desktop.page.getByText("Labour Day").count()) > 0 &&
+      (await desktop.page.getByText("05 Oct 2026").count()) > 0,
+    await visibleText(desktop.page),
+  );
+  await desktop.page.getByRole("button", { name: /^Go to September/ }).click();
+  await desktop.page.waitForTimeout(700);
 
   // 24.41 — the two bars, which are the pacing screen's whole answer now. Checked as *fills*
   // rather than as text: the claim is that being ahead is visible as an offset between them, and a

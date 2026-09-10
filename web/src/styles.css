@@ -1953,7 +1953,7 @@ button.maskfield:disabled {
 }
 
 /*
- * 27.17 — the history screen's two spacings.
+ * 27.18 — the history screen's two spacings.
  *
  * Everything on it used to sit `--s-4` apart, so the month's totals, the control that adds to
  * them and every day of the month were equally related to each other, which is to say not
@@ -1988,4 +1988,24 @@ button.maskfield:disabled {
 /* The first day card, whose predecessor is the button row rather than a card. */
 .historystack > .groupstart {
   margin-top: var(--s-6);
+}
+
+/* 27.17 — a holiday among the days, and the list of them under it. */
+.day.holiday {
+  background: var(--warn-wash);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.swatch.holiday {
+  background: var(--warn);
+}
+
+.holidaylist {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
 }

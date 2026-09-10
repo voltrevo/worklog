@@ -11,6 +11,7 @@
 
 import { useStore } from "../state.tsx";
 import { hours, pace } from "../format.ts";
+import { formatDay } from "@worklog/shared/dates";
 import { MonthNav } from "./MonthNav.tsx";
 
 export function Pacing() {
@@ -116,8 +117,19 @@ export function Pacing() {
              * needing today's date: a future day has all its hours left, this afternoon has some,
              * and a day that has ended has none.
              */
+            /*
+             * 27.17 — a holiday is its own thing, not merely a day that is not a workday.
+             *
+             * It came out as "not a workday", indistinguishable from a Sunday, so a month with
+             * four fewer working hours in it looked exactly like one without — and the reason the
+             * capacity had moved was nowhere on the screen that shows the capacity. Above
+             * `scheduled === 0` because that is what a holiday makes it: the more specific answer
+             * to the same question.
+             */
             const state = d.actual > 0
               ? "worked"
+              : d.holiday
+              ? "holiday"
               : d.scheduled === 0
               ? "off"
               : d.remaining > 0
@@ -152,7 +164,33 @@ export function Pacing() {
           <span>
             <i className="swatch off" /> not a workday
           </span>
+          <span>
+            <i className="swatch holiday" /> a public holiday
+          </span>
         </div>
+
+        {
+          /*
+           * 27.17, 6.37 — and which ones they were.
+           *
+           * The capacity on this screen is workdays minus holidays, and until now the holidays
+           * were only a subtraction: no way to see whether the region is right, whether the day
+           * you were thinking of is in the list, or why a month is short. A wrong region is the
+           * most likely thing to be wrong here, and this is the one place it shows.
+           */
+        }
+        {p.holidays.length > 0 && (
+          <div className="holidaylist">
+            {p.holidays.map((h) => (
+              <div key={h.date} className="row" style={{ gap: 10 }}>
+                <span className="tabular faint" style={{ minWidth: "6.5rem" }}>
+                  {formatDay(h.date)}
+                </span>
+                <span>{h.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

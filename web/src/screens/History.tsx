@@ -43,7 +43,7 @@ export function History() {
 
   return (
     /*
-     * 27.17 — two spacings, and they mean something.
+     * 27.18 — two spacings, and they mean something.
      *
      * One gap for everything put the month's totals, the control that adds to it, and every day
      * of the month at the same distance from each other — so the page read as nine unrelated
