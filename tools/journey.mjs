@@ -1070,6 +1070,37 @@ async function main() {
       Buffer.compare(frozenBytes, again) === 0,
   );
 
+  /*
+   * 27.41 — reverted to draft, then edited, and the row must show what it now says.
+   *
+   * `revertIssue` clears the status and leaves `snapshot_json`, and the row renders
+   * `invoice.snapshot ?? invoice.draft` — so a reverted invoice went on showing the numbers it was
+   * issued with, while the PDF (which checks the status, not the snapshot) rendered the edited
+   * draft. The list and the document disagreed, and the list was the one that was wrong.
+   */
+  await setStateTo(invoiceRow(), "draft");
+  const frozenTotal = (await invoiceRow().innerText()).replace(/\s+/g, " ");
+  await invoiceRow().getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.locator(".linetable").waitFor({ timeout: 15_000 });
+  await desktop.page.getByLabel("Hours on line 1", { exact: true }).fill("0.25");
+  await desktop.page.getByRole("button", { name: "Save the draft" }).click();
+  await until(
+    "the editor closed",
+    desktop.page,
+    async (p) => (await p.locator(".linetable").count()) === 0,
+  );
+  check(
+    "27.41 — a reverted invoice's row shows the draft it now is, not the issue it was",
+    await until(
+      "the row followed the edit",
+      desktop.page,
+      async () => (await invoiceRow().innerText()).replace(/\s+/g, " ") !== frozenTotal,
+      15_000,
+    ),
+    `still says: ${(await invoiceRow().innerText()).replace(/\s+/g, " ")}`,
+  );
+  await setStateTo(invoiceRow(), "issued");
+
   // 25.10 — the reverse of what this used to assert. The month being spoken for used to remove
   // the control; now a second draft for an issued month can be made freely, because preparing a
   // replacement while the wrong one is still out is the ordinary way to correct one. 11.19 bites

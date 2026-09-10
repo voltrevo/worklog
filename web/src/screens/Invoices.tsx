@@ -270,7 +270,17 @@ function InvoiceRow(
   const [confirm, setConfirm] = useState<"delete">();
   /** Where the desktop shell put it, when there was nowhere to show it. */
   const [saved, setSaved] = useState<string>();
-  const shown = invoice.snapshot ?? invoice.draft;
+  /*
+   * 27.41 — which figures this row shows, decided by the status rather than by what exists.
+   *
+   * This was `invoice.snapshot ?? invoice.draft`, which is right for two of the three states and
+   * wrong for the one that can go backwards. Reverting an issue leaves the snapshot in place — it
+   * is the record of what was sent — and makes the invoice a draft again, so the row went on
+   * showing the hours and total it had been issued with while the editor changed the draft
+   * underneath and the PDF, which asks the *status*, rendered the new one. The list and the
+   * document disagreed, and the list was the one that was wrong.
+   */
+  const shown = invoice.status === "draft" ? invoice.draft : invoice.snapshot ?? invoice.draft;
 
   /**
    * 26.11, 27.15 — read it here, or take it away, and both wherever they work.

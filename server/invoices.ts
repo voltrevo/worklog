@@ -423,6 +423,19 @@ export function revertIssue(db: Db, id: string, now: Instant = Date.now()): Stor
         : `invoice ${current.number} has not been issued`,
     );
   }
+  /*
+   * The snapshot survives, deliberately (27.41).
+   *
+   * It is the record of what was actually sent, and reverting says the issuance was a mistake —
+   * not that it never happened. Clearing it would make a later re-issue silently produce a
+   * different document from the one somebody has already received, with nothing left to compare.
+   *
+   * **It is not what the invoice currently says**, and that distinction has already caught one
+   * reader out: the invoices list rendered `snapshot ?? draft` and so showed a reverted invoice's
+   * issued figures while the draft changed underneath it. Anything reading a snapshot has to ask
+   * the status first. `pdf_path` survives for the same reason and is not served while the status
+   * is draft; a re-issue overwrites that file.
+   */
   db.prepare("UPDATE invoice SET status = 'draft', issued_at = NULL, updated_at = ? WHERE id = ?")
     .run(now, id);
   return getInvoice(db, id)!;
