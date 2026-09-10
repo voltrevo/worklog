@@ -15,6 +15,7 @@ import { WorkNote } from "./WorkNote.tsx";
 import type { WorkNoteWire as NoteWire } from "@worklog/shared/protocol";
 import { Listing } from "./Listing.tsx";
 import { Dialog } from "./Dialog.tsx";
+import { dateTime } from "../format.ts";
 
 /** How many the list asks for, and the number it admits to when it has that many. */
 const NOTE_LIMIT = 200;
@@ -161,14 +162,14 @@ function NoteRow(
   };
 
   const spoken = note.audioMs !== undefined;
-  const when = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(note.createdAt));
+  /*
+   * 27.21 — `dateTime`, like everywhere else.
+   *
+   * This was its own `Intl.DateTimeFormat` and the sweep that unified the dates missed it, because
+   * it is the one date in the app built from an instant rather than a `DateString`. It printed
+   * "Thu, 10 Sept, 10:12" — a locale's abbreviation, four letters wide, and no year at all.
+   */
+  const when = dateTime(note.createdAt);
 
   return (
     <div className="stacked-row">

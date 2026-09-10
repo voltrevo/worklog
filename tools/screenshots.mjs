@@ -95,6 +95,25 @@ async function main() {
   }
 
   /*
+   * 27.5 — the note, with the microphone picker open.
+   *
+   * Another dialog `capture` cannot reach, and the one place in the app with a disclosure inside a
+   * sheet: a card of radios opening inside a card inside an overlay is exactly the nesting that
+   * looks fine in the markup and like a mistake on screen.
+   */
+  await desktop.page.getByRole("button", { name: "Notes", exact: true }).click();
+  await desktop.page.getByRole("button", { name: "New work note" }).click();
+  await desktop.page.getByRole("dialog").waitFor({ timeout: 20_000 });
+  const cog = desktop.page.getByRole("button", { name: "Choose a microphone" });
+  if (await cog.count()) {
+    await cog.click();
+    await desktop.page.getByRole("radio").first().waitFor({ timeout: 10_000 });
+  }
+  await shot(desktop.page, "work-note-desktop");
+  await desktop.page.keyboard.press("Escape");
+  await desktop.page.getByRole("button", { name: "Throw it away" }).click().catch(() => {});
+
+  /*
    * 19.17 — and the other half of the CSS.
    *
    * The dark palette is a second set of every colour in this app and went unlooked-at for its

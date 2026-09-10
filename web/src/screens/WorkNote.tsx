@@ -17,6 +17,8 @@ import { useStore } from "../state.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { clock } from "../format.ts";
 import { Sheet } from "./Sheet.tsx";
+import { MicPicker } from "./MicPicker.tsx";
+import { chooseMic, micConstraints } from "../microphone.ts";
 
 /** 5.27 — enough for intelligible speech and nothing more. */
 const BITS_PER_SECOND = 20_000;
@@ -224,18 +226,22 @@ export function WorkNote({ prompted, onClose }: WorkNoteProps) {
               </div>
             )
             : (
-              <div className="row">
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => void recorder.start()}
-                >
-                  ● Record
-                </button>
-                <span className="faint" style={{ fontSize: 12 }}>
-                  Mono Opus, about {Math.round(BITS_PER_SECOND / 1000)}{" "}
-                  kbit/s — small enough to keep forever.
-                </span>
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="row">
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => void recorder.start()}
+                  >
+                    ● Record
+                  </button>
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    Mono Opus, about {Math.round(BITS_PER_SECOND / 1000)}{" "}
+                    kbit/s — small enough to keep forever.
+                  </span>
+                </div>
+                {/* 27.5 — which microphone, and the cog for choosing another. */}
+                <MicPicker />
               </div>
             )}
           {recorder.problem && <div className="notice warn">{recorder.problem}</div>}
@@ -338,14 +344,27 @@ function useRecorder() {
   const start = async () => {
     setProblem(undefined);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        // 5.26 — mono, and with the processing that makes speech intelligible rather than pretty.
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
+      /*
+       * 27.5 — through the microphone this device chose, when it chose one.
+       *
+       * The constraint is `exact`, so a stale choice fails loudly rather than recording through
+       * the laptop lid while the screen names a headset. Failing loudly is not the same as
+       * refusing to record: the choice is forgotten, the default is used, and the note says which.
+       */
+      let usedDefault = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() })
+        .catch((err: Error) => {
+          if (err.name !== "OverconstrainedError" && err.name !== "NotFoundError") throw err;
+          chooseMic(undefined);
+          usedDefault = true;
+          return navigator.mediaDevices.getUserMedia({ audio: micConstraints(undefined) });
+        });
+      if (usedDefault) {
+        setProblem(
+          "The microphone you chose is not available, so this is recording through the default " +
+            "one.",
+        );
+      }
       streamRef.current = stream;
       // 24.5 — something that moves when you speak. Started from the same stream the recorder
       // uses, so a trace that stays flat means the recording is flat too.

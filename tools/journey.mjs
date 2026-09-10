@@ -1352,6 +1352,53 @@ async function main() {
   if (await record.count() === 0) {
     check("the browser offers recording", false, await visibleText(desktop.page));
   } else {
+    /*
+     * 27.5 — which microphone, and the cog that changes it.
+     *
+     * The names are only readable once the origin has been granted the microphone, which the
+     * harness does at the context, so this browser sees Chromium's synthetic device by name. A
+     * grant is also what makes the check meaningful: without one the line would read "not named
+     * until you have allowed recording once" and pass for the wrong reason.
+     */
+    const micLine = desktop.page.getByText(/^Microphone:/);
+    check(
+      "27.5 — the microphone a recording will use is named",
+      // `until`, because `enumerateDevices` is a promise and the line says "not named" for the
+      // frame or two before it resolves. Asserting on the first read tests the render order.
+      await until(
+        "microphone named",
+        desktop.page,
+        async () => /^Microphone: (?!not named).+/.test((await micLine.textContent()) ?? ""),
+      ),
+      (await micLine.textContent()) ?? "no microphone line",
+    );
+
+    const cog = desktop.page.getByRole("button", { name: "Choose a microphone" });
+    await cog.click();
+    const options = desktop.page.getByRole("radio");
+    const optionCount = await options.count();
+    check(
+      "27.5 — and the cog offers the others",
+      optionCount >= 2,
+      `${optionCount} microphones offered`,
+    );
+    /*
+     * The choice is real: pick the last one and the line above changes to name it.
+     *
+     * `.locator("label").last()` rather than `filter({ has: options.last() })` — `has` resolves its
+     * argument relative to each candidate, so "the label containing the last radio" is every label
+     * containing a radio, and the assertion dies of a strict-mode violation rather than failing.
+     */
+    const lastOption = desktop.page.locator("label").filter({ has: options.first() }).last();
+    const lastLabel = (await lastOption.textContent())?.trim();
+    await lastOption.getByRole("radio").check();
+    check(
+      "27.5 — choosing one names it",
+      (await micLine.textContent()) === `Microphone: ${lastLabel}`,
+      `${await micLine.textContent()} vs ${lastLabel}`,
+    );
+    await desktop.page.getByRole("button", { name: "Done" }).click();
+
     await record.click();
     check(
       "recording starts",
