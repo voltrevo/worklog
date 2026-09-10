@@ -2859,18 +2859,6 @@ async function main() {
     await desktop.page.waitForTimeout(300);
     nameless.push(...await unnamed(desktop.page, screen));
   }
-  await nav(desktop.page, "Invoices");
-  await desktop.page.getByRole("button", { name: "Edit lines" }).first().click();
-  await desktop.page.getByRole("button", { name: "Add a line" }).waitFor({ timeout: 15_000 });
-  nameless.push(...await unnamed(desktop.page, "the invoice editor"));
-  await desktop.page.getByRole("button", { name: "Discard these changes" }).click();
-
-  check("every field has a name to be announced by", nameless.length === 0, nameless.join("; "));
-
-  // And the same question of the controls. A button whose whole label is a glyph is announced as
-  // that glyph: the month arrows said "‹" and "›", which is exactly what they say and nothing
-  // about what they do. `MonthNav` had gone to some trouble to stop them *moving* and none at all
-  // to make them nameable.
   const mute = (page, where) =>
     page.evaluate((where) => {
       const out = [];
@@ -2883,7 +2871,82 @@ async function main() {
       return out;
     }, where);
 
-  const glyphs = [];
+  /*
+   * 27.48 — and the dialogs, which no navigation reaches.
+   *
+   * Both audits walked the seven screens and one dialog, the invoice editor. Everything else that
+   * asks for input in this app is a sheet opened from a control — the entry editor, the work note
+   * and its microphone picker, the invitation — and none of them had ever been asked either
+   * question. That is where most of the recent work went, which is exactly the pattern that left
+   * the invoice editor unphotographed until 27.34 went looking.
+   *
+   * One list, both audits, because opening a dialog twice to ask two questions is how the second
+   * list quietly stops matching the first.
+   */
+  const DIALOGS = [
+    {
+      what: "the invoice editor",
+      open: async () => {
+        await nav(desktop.page, "Invoices");
+        await desktop.page.getByRole("button", { name: "Edit lines" }).first().click();
+        await desktop.page.getByRole("button", { name: "Add a line" }).waitFor({ timeout: 15_000 });
+      },
+      close: () => desktop.page.getByRole("button", { name: "Discard these changes" }).click(),
+    },
+    {
+      what: "the entry editor",
+      open: async () => {
+        await nav(desktop.page, "History");
+        await desktop.page.getByRole("button", { name: "Add past time" }).click();
+        await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+      },
+      close: () => desktop.page.getByRole("button", { name: "Cancel" }).click(),
+    },
+    {
+      what: "a work note, with the microphone picker open",
+      open: async () => {
+        await nav(desktop.page, "Notes");
+        await desktop.page.getByRole("button", { name: "New work note" }).click();
+        await desktop.page.getByRole("dialog").waitFor({ timeout: 15_000 });
+        const cog = desktop.page.getByRole("button", { name: "Choose a microphone" });
+        await cog.waitFor({ timeout: 15_000 }).catch(() => {});
+        if (await cog.count()) {
+          await cog.click();
+          await desktop.page.getByRole("radio").first().waitFor({ timeout: 10_000 });
+        }
+      },
+      close: async () => {
+        await desktop.page.keyboard.press("Escape");
+        await desktop.page.getByRole("button", { name: "Throw it away" }).click().catch(() => {});
+      },
+    },
+    {
+      what: "the invitation",
+      open: async () => {
+        await nav(desktop.page, "Users");
+        await desktop.page.getByRole("button", { name: "Invite a device" }).click();
+        await desktop.page.locator(".qr img").waitFor({ timeout: 20_000 });
+      },
+      close: () => desktop.page.getByRole("button", { name: "Done" }).click(),
+    },
+  ];
+
+  const dialogGlyphs = [];
+  for (const dialog of DIALOGS) {
+    await dialog.open();
+    nameless.push(...await unnamed(desktop.page, dialog.what));
+    dialogGlyphs.push(...await mute(desktop.page, dialog.what));
+    await dialog.close();
+    await desktop.page.waitForTimeout(200);
+  }
+
+  check("every field has a name to be announced by", nameless.length === 0, nameless.join("; "));
+
+  // And the same question of the controls. A button whose whole label is a glyph is announced as
+  // that glyph: the month arrows said "‹" and "›", which is exactly what they say and nothing
+  // about what they do. `MonthNav` had gone to some trouble to stop them *moving* and none at all
+  // to make them nameable.
+  const glyphs = [...dialogGlyphs];
   for (const screen of ["Timer", "Notes", "History", "Pacing", "Invoices", "Users", "Settings"]) {
     await nav(desktop.page, screen);
     await desktop.page.waitForTimeout(250);
