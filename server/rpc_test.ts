@@ -501,6 +501,21 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
   );
 });
 
+/**
+ * A nine-to-five week, set explicitly (27.32).
+ *
+ * The product ships an empty schedule now, because Mon–Fri 09:00–17:00 was a guess about the
+ * person using it. These two tests are about reading a *scheduled* day back, so they need a week
+ * with something in it, and saying so here is the point: they used to be passing on the strength
+ * of a default, which meant they were also asserting that the default existed.
+ */
+function nineToFive(db: Parameters<typeof setConfig>[0]): void {
+  const day = { start: "09:00", end: "17:00" };
+  setConfig(db, "pacing", {
+    schedule: { 1: day, 2: day, 3: day, 4: day, 5: day, 6: null, 7: null },
+  }, NOW);
+}
+
 Deno.test("25.24 -- today's scheduled hours do not depend on which month is being viewed", async () => {
   // The month is one shared value in the store, set by the arrows on History and Pacing. Looking
   // at another month used to make the timer screen's lookup miss and fall through `?? 0`, so a
@@ -508,6 +523,7 @@ Deno.test("25.24 -- today's scheduled hours do not depend on which month is bein
   const ctx = context();
   const s = session(ctx, "a");
   await signedCall(ctx, s, await device(), "claim");
+  nineToFive(ctx.db);
 
   const wednesday = "2026-09-09";
   const forMonth = async (month: string) =>
@@ -527,6 +543,9 @@ Deno.test("a weekend is nought hours, so the figure is not merely always eight",
   const ctx = context();
   const s = session(ctx, "a");
   await signedCall(ctx, s, await device(), "claim");
+  // With the week set, so "nought" is a fact about Sunday rather than about an empty schedule —
+  // otherwise this check cannot fail and the test beside it is the only one doing any work.
+  nineToFive(ctx.db);
   const sunday = await call(ctx, s, {
     t: "snapshot",
     month: "2026-09",

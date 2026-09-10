@@ -9,7 +9,7 @@
  */
 
 import type { Instant, PacingConfig } from "@worklog/shared/types";
-import { defaultSchedule } from "@worklog/shared/schedule";
+import { emptySchedule } from "@worklog/shared/schedule";
 import type { Db } from "./db.ts";
 import { Refused } from "./work.ts";
 
@@ -112,7 +112,9 @@ export const DEFAULTS: Config = {
      * carried to one decimal place.
      */
     monthlyTargetHours: null,
-    schedule: defaultSchedule(),
+    // 27.32 — an empty week. See `emptySchedule`: Mon–Fri 09:00–17:00 was a guess about somebody's
+    // life, and the pacing screen spent it on twenty-two workdays they never claimed.
+    schedule: emptySchedule(),
     // 24.33 — no default. Mon–Fri 09:00–17:00 and 160 hours are sensible for anyone; a *place*
     // is not, and AU-NSW was a guess that silently decided which public holidays applied.
     region: "",

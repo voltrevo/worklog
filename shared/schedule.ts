@@ -19,9 +19,27 @@ import type {
 import { datesInMonth, minutesOf, weekdayOf } from "./dates.ts";
 
 /** Monday to Friday, nine to five; Saturday and Sunday empty (6.23). */
-export function defaultSchedule(): WeeklySchedule {
-  const day: DayInterval = { start: "09:00", end: "17:00" };
-  return { 1: day, 2: day, 3: day, 4: day, 5: day, 6: null, 7: null };
+/**
+ * A week with nothing scheduled in it (27.32).
+ *
+ * **It was Mon–Fri 09:00–17:00**, and that is a guess about somebody's life dressed as their
+ * settings: the pacing screen read it back as 176 hours of capacity, twenty-two workdays and a row
+ * of red squares for days a stranger had "missed" against hours they had never claimed to work.
+ * The same fault as the 45-minute prompt interval (27.30) and the 160-hour target (27.31).
+ *
+ * An empty week is not the same kind of thing as a made-up interval, which is why this is a value
+ * and those are `null`. Zero scheduled hours is a real, coherent state that asserts nothing: no
+ * capacity, no expectation, nothing behind. A screen rendering it says "nothing is scheduled",
+ * which is true both of somebody who has not set their hours and of somebody who keeps none —
+ * and where the difference matters, the screen asks for the hours rather than inventing them.
+ */
+export function emptySchedule(): WeeklySchedule {
+  return { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null, 7: null };
+}
+
+/** True when nothing at all is scheduled, which is what a server nobody has configured looks like. */
+export function scheduleIsEmpty(schedule: WeeklySchedule): boolean {
+  return Object.values(schedule).every((interval) => interval === null);
 }
 
 /** How the effective interval for one date was arrived at, so the UI can say why (6.18, 6.37). */
@@ -43,7 +61,15 @@ export interface Calendar {
   overrides: ReadonlyMap<DateString, PacingOverride>;
 }
 
-export function emptyCalendar(schedule: WeeklySchedule = defaultSchedule()): Calendar {
+/**
+ * A calendar with no holidays and no overrides — but a schedule you have to name.
+ *
+ * The schedule used to default to a nine-to-five week, so "empty" quietly meant two different
+ * things and every caller that wanted "no holidays" also got a working week it had not asked for.
+ * 27.32 changed what the product's default week is, and this is where that change would have gone
+ * unnoticed: the tests would have kept passing against a week the product no longer ships.
+ */
+export function emptyCalendar(schedule: WeeklySchedule): Calendar {
   return { schedule, holidays: new Map(), overrides: new Map() };
 }
 

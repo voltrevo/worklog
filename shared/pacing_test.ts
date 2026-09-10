@@ -1,6 +1,6 @@
 import { assertAlmostEquals, assertEquals } from "jsr:@std/assert@^1";
-import type { Holiday, PacingOverride, WorkEntry } from "./types.ts";
-import { type Calendar, defaultSchedule, emptyCalendar } from "./schedule.ts";
+import type { Holiday, PacingOverride, WeeklySchedule, WorkEntry } from "./types.ts";
+import { type Calendar, emptyCalendar } from "./schedule.ts";
 import { project, workedToday } from "./pacing.ts";
 
 const HOUR = 3_600_000;
@@ -9,12 +9,29 @@ function entry(date: string, hours: number, billingTag = "Product Development"):
   return { id: `${date}-${hours}`, date, durationMs: hours * HOUR, billingTag };
 }
 
+/**
+ * A nine-to-five week, written here rather than taken from the config's defaults (27.32).
+ *
+ * These tests are about the pacing arithmetic, which needs a schedule with something in it. It
+ * used to be `defaultSchedule()`, so every one of them was also, silently, a test that the product
+ * ships with this week — which it no longer does, and should not have.
+ */
+const NINE_TO_FIVE: WeeklySchedule = {
+  1: { start: "09:00", end: "17:00" },
+  2: { start: "09:00", end: "17:00" },
+  3: { start: "09:00", end: "17:00" },
+  4: { start: "09:00", end: "17:00" },
+  5: { start: "09:00", end: "17:00" },
+  6: null,
+  7: null,
+};
+
 function calendar(
   holidays: Holiday[] = [],
   overrides: PacingOverride[] = [],
 ): Calendar {
   return {
-    schedule: defaultSchedule(),
+    schedule: NINE_TO_FIVE,
     holidays: new Map(holidays.map((h) => [h.date, h])),
     overrides: new Map(overrides.map((o) => [o.date, o])),
   };
@@ -35,7 +52,7 @@ const AFTER_8TH = 16 * 8;
 Deno.test("capacity is the sum of the month's scheduled hours", () => {
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [],
     today: "2026-08-31",
@@ -48,7 +65,7 @@ Deno.test("capacity is the sum of the month's scheduled hours", () => {
 Deno.test("a month entirely in the future projects its whole capacity", () => {
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [],
     today: "2026-08-31",
@@ -63,7 +80,7 @@ Deno.test("a month entirely in the past projects exactly what was worked", () =>
   const entries = [entry("2026-09-01", 8), entry("2026-09-02", 6)];
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries,
     today: "2026-10-15",
@@ -78,7 +95,7 @@ Deno.test("the projection moves as the scheduled day elapses, with no work at al
   const at = (nowMinutes: number) =>
     project({
       month: SEP,
-      cal: emptyCalendar(),
+      cal: emptyCalendar(NINE_TO_FIVE),
       monthlyTargetHours: 160,
       entries: [],
       today: "2026-09-08", // a Tuesday
@@ -99,7 +116,7 @@ Deno.test("the projection moves as the scheduled day elapses, with no work at al
 Deno.test("work recorded today replaces what the elapsed interval gave up", () => {
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [entry("2026-09-08", 4)],
     today: "2026-09-08",
@@ -114,7 +131,7 @@ Deno.test("work recorded today replaces what the elapsed interval gave up", () =
 Deno.test("6.28 -- work before the interval starts reads as ahead, not absorbed", () => {
   const early = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [entry("2026-09-08", 2)],
     today: "2026-09-08",
@@ -128,7 +145,7 @@ Deno.test("6.28 -- work before the interval starts reads as ahead, not absorbed"
 Deno.test("work after the interval ends also reads as ahead", () => {
   const late = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [entry("2026-09-08", 10)],
     today: "2026-09-08",
@@ -144,7 +161,7 @@ Deno.test("a weekend worked counts in full, because the weekend was scheduled as
   // work, and it lands whole, because a day with no interval had nothing to absorb it.
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [entry("2026-09-12", 5)], // a Saturday
     today: "2026-09-14",
@@ -205,7 +222,7 @@ Deno.test("an override can also take a workday off, which is what leave is", () 
 Deno.test("entries outside the month are ignored rather than counted", () => {
   const p = project({
     month: SEP,
-    cal: emptyCalendar(),
+    cal: emptyCalendar(NINE_TO_FIVE),
     monthlyTargetHours: 160,
     entries: [entry("2026-08-31", 8), entry("2026-10-01", 8), entry("2026-09-01", 3)],
     today: "2026-09-30",
@@ -233,7 +250,7 @@ Deno.test("the parts add up to the whole, on every day of a worked month", () =>
     for (const now of [0, 8 * 60, 12 * 60, 17 * 60, 23 * 60 + 59]) {
       const p = project({
         month: SEP,
-        cal: emptyCalendar(),
+        cal: emptyCalendar(NINE_TO_FIVE),
         monthlyTargetHours: 160,
         entries,
         today: day,
@@ -257,7 +274,7 @@ Deno.test("the projection never rises as the clock advances on an idle day", () 
   for (let m = 0; m <= 24 * 60; m += 15) {
     const p = project({
       month: SEP,
-      cal: emptyCalendar(),
+      cal: emptyCalendar(NINE_TO_FIVE),
       monthlyTargetHours: 160,
       entries: [],
       today: "2026-09-08",
@@ -279,7 +296,7 @@ Deno.test("24.41 -- elapsed scheduled hours is the month's working time already 
   const of = (today: string, nowMinutes: number) =>
     project({
       month: SEP,
-      cal: emptyCalendar(),
+      cal: emptyCalendar(NINE_TO_FIVE),
       monthlyTargetHours: 160,
       entries: [],
       today,
@@ -307,7 +324,7 @@ Deno.test("elapsed and remaining are the two halves of capacity", () => {
   for (const nowMinutes of [0, 9 * 60, 12 * 60 + 37, 17 * 60, 23 * 60 + 59]) {
     const p = project({
       month: SEP,
-      cal: emptyCalendar(),
+      cal: emptyCalendar(NINE_TO_FIVE),
       monthlyTargetHours: 160,
       entries: [],
       today: "2026-09-08",

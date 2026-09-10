@@ -184,18 +184,32 @@ export function Timer() {
           <div className="today-figure">
             <h3>Today</h3>
             <div className="huge">{duration(todayMs)}</div>
+            {
+              /*
+               * 27.32 — "not a scheduled workday" is a claim about the week, so it is only made
+               * when there is a week. With none set, every day would carry it, and it would read
+               * as a decision somebody had made rather than one nobody has.
+               */
+            }
             <div className="muted today-sub" style={{ marginTop: 4 }}>
-              {targetMs > 0 ? `of ${duration(targetMs)} scheduled` : "not a scheduled workday"}
+              {targetMs > 0
+                ? `of ${duration(targetMs)} scheduled`
+                : snapshot.pacing.scheduleSet
+                ? "not a scheduled workday"
+                : "no working hours set"}
             </div>
           </div>
           <div className="stack" style={{ gap: 6, alignItems: "flex-end" }}>
-            <span className={`pill ${remainingMs > 0 ? "" : "good"}`}>
-              {targetMs === 0
-                ? "anything today is extra"
-                : remainingMs > 0
-                ? `${duration(remainingMs)} left today`
-                : `${duration(-remainingMs)} over`}
-            </span>
+            {/* Nothing to be left of, and nothing extra to be extra to, without a week. */}
+            {(targetMs > 0 || snapshot.pacing.scheduleSet) && (
+              <span className={`pill ${remainingMs > 0 ? "" : "good"}`}>
+                {targetMs === 0
+                  ? "anything today is extra"
+                  : remainingMs > 0
+                  ? `${duration(remainingMs)} left today`
+                  : `${duration(-remainingMs)} over`}
+              </span>
+            )}
             {/* 3.8 — the monthly pace, beside today's, answering a different question. */}
             {paced && (
               <span

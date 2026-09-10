@@ -240,11 +240,13 @@ async function main() {
    * number in it that nobody chose.
    */
   /*
-   * 27.31 — and the pacing screen with no target, which is the state that used to say "12h behind"
-   * against 160 hours nobody had chosen.
+   * 27.31, 27.32 — the pacing screen before anything is configured, which is the state that used
+   * to say "12h behind" against 160 hours and 22 workdays nobody had chosen.
+   *
+   * With no schedule the projection card is not drawn at all, so the notice is what to wait for.
    */
   await fresh.page.getByRole("button", { name: "Pacing", exact: true }).click();
-  await fresh.page.getByText(/no monthly target/).waitFor({ timeout: 20_000 });
+  await fresh.page.getByText(/No working hours are set/).waitFor({ timeout: 20_000 });
   await shot(fresh.page, "pacing-firstrun");
 
   await fresh.page.getByRole("button", { name: "Settings", exact: true }).click();

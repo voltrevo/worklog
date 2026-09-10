@@ -47,7 +47,27 @@ setConfig(db, "invoice", {
   note: "",
 }, now);
 
-setConfig(db, "pacing", { monthlyTargetHours: 160, region: "AU-NSW" }, now);
+/*
+ * 27.32 — the week is part of the fixture now, because the product no longer ships one.
+ *
+ * A seeded database represents somebody who has set this up, and Mon–Fri 09:00–17:00 is what they
+ * set. It used to come from `DEFAULTS`, which meant every screenshot and every journey check was
+ * quietly also asserting that a brand-new server had a working week in it.
+ */
+const nineToFive = { start: "09:00", end: "17:00" };
+setConfig(db, "pacing", {
+  monthlyTargetHours: 160,
+  region: "AU-NSW",
+  schedule: {
+    1: nineToFive,
+    2: nineToFive,
+    3: nineToFive,
+    4: nineToFive,
+    5: nineToFive,
+    6: null,
+    7: null,
+  },
+}, now);
 /**
  * 45 minutes is the realistic figure; `WORKLOG_SEED_PROMPT_MS` shortens it for the journey.
  *

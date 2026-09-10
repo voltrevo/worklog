@@ -22,7 +22,13 @@
  */
 
 import type { DateString, Holiday, WorkEntry } from "./types.ts";
-import { type Calendar, holidaysUsed, remainingHours, shapeMonth } from "./schedule.ts";
+import {
+  type Calendar,
+  holidaysUsed,
+  remainingHours,
+  scheduleIsEmpty,
+  shapeMonth,
+} from "./schedule.ts";
 import { capacityHours } from "./schedule.ts";
 
 const MS_PER_HOUR = 3_600_000;
@@ -106,6 +112,14 @@ export interface Pacing {
   elapsedScheduledHours: number;
   /** 6.17 — and `null` with no target, for the same reason as `paceHours`. */
   slackHours: number | null;
+  /**
+   * 27.32 — whether a working week has been set at all.
+   *
+   * Not derivable from the numbers: every figure here reads zero both for a month of holidays and
+   * for a server nobody has configured, and the two want different sentences on screen. Carried
+   * rather than recomputed on the device, because the schedule itself is not on the wire.
+   */
+  scheduleSet: boolean;
   /** 6.37 — which holidays shaped this month. */
   holidays: Holiday[];
   days: DayPacing[];
@@ -172,6 +186,7 @@ export function project(input: PacingInput): Pacing {
     capacityHours: capacity,
     elapsedScheduledHours,
     slackHours: monthlyTargetHours === null ? null : capacity - monthlyTargetHours,
+    scheduleSet: !scheduleIsEmpty(cal.schedule),
     holidays: holidaysUsed(month, cal),
     days,
   };
