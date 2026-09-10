@@ -50,13 +50,42 @@ export async function listMics(): Promise<Microphone[]> {
 }
 
 /**
- * The one that will be used, as far as can be told without opening a stream.
+ * The one that will be used — only when that is actually known (27.33).
  *
- * The stored choice when it is still present; otherwise the first entry, which is what every
- * engine puts its default at and what `getUserMedia` with no `deviceId` will pick.
+ * `undefined` means "this device's default, whichever that is", and the picker says exactly that
+ * rather than naming a microphone.
+ *
+ * **It used to return `mics[0]`**, on the reasoning that every engine lists its default first.
+ * Chromium does; the order is not specified and Firefox does not promise it. So the line under the
+ * Record button read "Microphone: Yeti Stereo" with confidence, about a device the browser had
+ * never said it would use — the same shape of fault as a default interval, arrived at from a
+ * plausible assumption rather than an invented number.
+ *
+ * Once a recording has run there is no guessing left: `noteUsedMic` records what the track
+ * actually opened, and that is a fact.
  */
 export function activeMic(mics: Microphone[], chosen = chosenMic()): Microphone | undefined {
-  return mics.find((m) => m.deviceId === chosen) ?? mics[0];
+  return mics.find((m) => m.deviceId === chosen);
+}
+
+/**
+ * The device a stream actually opened, remembered for the rest of this sitting.
+ *
+ * `getUserMedia` resolves the default for us, and the track it hands back says which one it
+ * picked. That answer costs nothing — the microphone is already open — and it is the only way to
+ * name the default without either asking for the microphone on sight or guessing.
+ *
+ * Deliberately not stored: it is an observation about now, not a preference, and writing it down
+ * would turn "whatever this device defaults to" into a choice nobody made.
+ */
+let observed: string | undefined;
+
+export function noteUsedMic(stream: MediaStream): void {
+  observed = stream.getAudioTracks()[0]?.getSettings().deviceId ?? undefined;
+}
+
+export function usedMic(): string | undefined {
+  return observed;
 }
 
 /**

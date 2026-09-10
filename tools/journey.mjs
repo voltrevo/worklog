@@ -1434,13 +1434,17 @@ async function main() {
      */
     const micLine = desktop.page.getByText(/^Microphone:/);
     check(
-      "27.5 — the microphone a recording will use is named",
+      "27.33 — with nothing chosen, it says the default rather than naming one",
       // `until`, because `enumerateDevices` is a promise and the line says "not named" for the
       // frame or two before it resolves. Asserting on the first read tests the render order.
+      //
+      // The assertion is that it does *not* name a device: nobody has chosen one and no recording
+      // has run, so which one `getUserMedia` will pick is genuinely unknown. It used to name the
+      // first in the list, which is Chromium's ordering and nobody's promise.
       await until(
-        "microphone named",
+        "microphone said to be the default",
         desktop.page,
-        async () => /^Microphone: (?!not named).+/.test((await micLine.textContent()) ?? ""),
+        async () => (await micLine.textContent()) === "Microphone: this device's default",
       ),
       (await micLine.textContent()) ?? "no microphone line",
     );
@@ -1469,6 +1473,12 @@ async function main() {
       (await micLine.textContent()) === `Microphone: ${lastLabel}`,
       `${await micLine.textContent()} vs ${lastLabel}`,
     );
+    /*
+     * Back to the default, so the check after the recording is about the *observed* device rather
+     * than about the one just chosen — those are two different claims and only one of them was
+     * ever in doubt.
+     */
+    await desktop.page.getByRole("radio").first().check();
     await desktop.page.getByRole("button", { name: "Done" }).click();
 
     await record.click();
@@ -1641,6 +1651,20 @@ async function main() {
 
     // And again, the ordinary way, for the checks below that read a stopped take back.
     await desktop.page.getByRole("button", { name: "New work note" }).click();
+    check(
+      "27.33 — and once a recording has run, the default has a name",
+      // No longer a guess: `getUserMedia` resolved the default and the track said which device it
+      // opened. This is the difference between "I do not know" and "I looked".
+      await until(
+        "the observed microphone is named",
+        desktop.page,
+        async () =>
+          /^Microphone: (?!this device's default|not named).+/.test(
+            (await desktop.page.getByText(/^Microphone:/).textContent()) ?? "",
+          ),
+      ),
+      (await desktop.page.getByText(/^Microphone:/).textContent()) ?? "no line",
+    );
     await desktop.page.getByRole("button", { name: /Record$/ }).click();
     await desktop.page.waitForTimeout(1_500);
     await desktop.page.getByRole("button", { name: "Stop", exact: true }).click();

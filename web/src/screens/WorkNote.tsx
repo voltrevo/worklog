@@ -18,7 +18,7 @@ import { Dialog } from "./Dialog.tsx";
 import { clock } from "../format.ts";
 import { Sheet } from "./Sheet.tsx";
 import { MicPicker } from "./MicPicker.tsx";
-import { chooseMic, micConstraints } from "../microphone.ts";
+import { chooseMic, micConstraints, noteUsedMic } from "../microphone.ts";
 
 /** 5.27 — enough for intelligible speech and nothing more. */
 const BITS_PER_SECOND = 20_000;
@@ -366,6 +366,9 @@ function useRecorder() {
         );
       }
       streamRef.current = stream;
+      // 27.33 — which device this actually opened, so the picker can name the default instead of
+      // guessing at it. Free: the track is already here and it knows.
+      noteUsedMic(stream);
       // 24.5 — something that moves when you speak. Started from the same stream the recorder
       // uses, so a trace that stays flat means the recording is flat too.
       stopMeterRef.current = meterStream(stream, setTrace);

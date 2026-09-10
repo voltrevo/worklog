@@ -122,7 +122,19 @@ function NoteRow(
         id: note.id,
       });
       const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
-      setUrl(URL.createObjectURL(new Blob([bytes], { type: note.audioType ?? "audio/webm" })));
+      /*
+       * 27.33 — the type the server knows, or none at all.
+       *
+       * This said `?? "audio/webm"`, and the server's own fallback for the same unknown said
+       * `audio/ogg`: two different guesses about one file, neither of them knowledge. A blob with
+       * no type is the honest version and the more useful one — the browser sniffs the container,
+       * which it is good at, and a wrong type is the one thing that stops it.
+       */
+      setUrl(
+        URL.createObjectURL(
+          new Blob([bytes], ...(note.audioType ? [{ type: note.audioType }] : [])),
+        ),
+      );
       setShouldPlay(true);
     } catch (err) {
       // A fetch that fails silently leaves a button that looks like it did nothing.

@@ -926,13 +926,23 @@ function notifyDevice(ctx: ServerContext, publicKey: Uint8Array, event: Event): 
  * The extension is derived from the reported MIME type rather than assumed: a browser may hand
  * back `audio/webm;codecs=opus` or `audio/ogg;codecs=opus`, and writing `.opus` over a WebM
  * container would make the file unplayable by name alone.
+ *
+ * **27.33 — an unrecognised container is refused, not filed as `.opus`.** That fallback existed
+ * for a case the recorder cannot produce (it offers four types, and all four map), and it did the
+ * one thing worse than failing: it named the file after a codec, `typeOf` below then read that
+ * name back as `audio/ogg`, and the device was handed a confident MIME type for a container
+ * nobody had identified. Three guesses in a row, the last of which the player believes.
  */
 function extensionFor(mime?: string): string {
   const type = (mime ?? "").toLowerCase();
   if (type.includes("ogg")) return "ogg";
   if (type.includes("mp4") || type.includes("m4a")) return "m4a";
   if (type.includes("webm")) return "webm";
-  return "opus";
+  throw new Refused(
+    "bad-audio-type",
+    `this server does not store ${mime ? `"${mime}"` : "audio with no type"}; ` +
+      "it keeps Opus in a WebM, Ogg or MP4 container",
+  );
 }
 
 interface NoteRow {
@@ -955,17 +965,29 @@ function listNotes(db: Db, limit: number): WorkNoteWire[] {
       createdAt: Number(row.created_at),
       ...(row.body ? { body: row.body } : {}),
       ...(row.audio_ms === null ? {} : { audioMs: Number(row.audio_ms) }),
-      ...(row.audio_path ? { audioType: typeOf(row.audio_path) } : {}),
+      // Spread twice over, so an unknown container leaves the field *absent* rather than present
+      // and undefined — the wire type says optional, and `"audioType" in note` is a question the
+      // device is entitled to ask.
+      ...(row.audio_path && typeOf(row.audio_path) ? { audioType: typeOf(row.audio_path) } : {}),
       prompted: row.prompted === 1,
     };
   });
 }
 
-function typeOf(path: string): string {
+/**
+ * The container a stored note is in, or `undefined` when the name does not say.
+ *
+ * 27.33 — this returned `"audio/ogg"` for anything it did not recognise. Every file this server
+ * writes is named by `extensionFor`, which now refuses what it cannot name, so the only way here
+ * is a file from an older build or one somebody put there — and for those, "I do not know" is the
+ * true answer. The device leaves the type off the blob and lets the browser sniff it, which is
+ * what a browser is good at and what a wrong type prevents.
+ */
+function typeOf(path: string): string | undefined {
   if (path.endsWith(".ogg")) return "audio/ogg";
   if (path.endsWith(".m4a")) return "audio/mp4";
   if (path.endsWith(".webm")) return "audio/webm";
-  return "audio/ogg";
+  return undefined;
 }
 
 function allEntries(db: Db) {

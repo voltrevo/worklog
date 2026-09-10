@@ -16,6 +16,7 @@ import {
   listMics,
   type Microphone,
   reveal,
+  usedMic,
 } from "../microphone.ts";
 
 export function MicPicker() {
@@ -43,7 +44,14 @@ export function MicPicker() {
 
   if (!mics) return null;
 
-  const active = activeMic(mics, chosen);
+  /*
+   * 27.33 — the device this will use, when that is known.
+   *
+   * Two ways to know it: somebody chose one, or a recording has already run and the track said
+   * which device it opened. With neither, the line says "this device's default" rather than
+   * naming the first entry in the list — that is Chromium's ordering and nobody's promise.
+   */
+  const active = activeMic(mics, chosen) ?? mics.find((m) => m.deviceId === usedMic());
   const named = active?.label.trim();
   // A microphone with a stored id that is no longer in the list: the picker is the place to say so,
   // because `getUserMedia` will not fail until the moment somebody presses Record.
@@ -58,10 +66,17 @@ export function MicPicker() {
     <div className="stack" style={{ gap: 6 }}>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
         <span className="faint" style={{ fontSize: 12 }}>
-          {missing ? "The microphone you chose is not plugged in" : named
+          {missing
+            ? "The microphone you chose is not plugged in"
+            : named
             ? `Microphone: ${named}`
+            : mics.some((m) => m.label.trim())
+            /* Named only when it is known — see `activeMic`. Nobody has chosen one and no
+               recording has run, so the true answer is the default, whichever that turns out
+               to be. Naming the first in the list was Chromium's ordering and nobody's promise. */
+            ? "Microphone: this device's default"
             /* 27.5 says "when that is known", and until this origin has recorded once it is
-                 not: the browser lists the microphones and withholds their names. */
+               not: the browser lists the microphones and withholds their names. */
             : "Microphone: not named until you have allowed recording once"}
         </span>
         <button
