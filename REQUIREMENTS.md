@@ -53,6 +53,10 @@ This document is **append-only**. Sections are append-only, and so is the list i
 - **A superseded item is struck through, never deleted or renumbered.** ~~Like this.~~ The item that
   replaces it is appended to the same section with the next free number, and names what it
   supersedes.
+- **An item that was never a requirement is struck as `withdrawn`**, naming no replacement, because
+  there is none — see **What belongs here**. Striking rather than deleting keeps the number stable
+  for the citations already pointing at it, and leaves the text readable for anybody wondering
+  where a rule went.
 - **New items continue the section's own sequence**, even when they supersede an earlier item in
   that section. Numbers are therefore not in logical order, only in the order they were written.
 - **A genuinely new area gets a new section** rather than being appended to an existing one.
@@ -261,7 +265,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 8.22. MUST end the work table with a Total row carrying the summed hours and the summed amount.
 8.23. MUST show the sender's name, postal address, telephone number and email address in the header.
 8.24. MUST show the invoice number and the invoice date at the top right, as labelled fields.
-8.25. MUST show the bill-to block as a distinct, visually set-apart block.
+8.25. ~~MUST show the bill-to block as a distinct, visually set-apart block.~~ (withdrawn: not a requirement — see "What belongs here")
 8.26. MUST show the invoiced time period as a labelled field of its own.
 8.27. MUST head the table section "Description of work performed".
 8.28. MUST show the currency the hourly rate is in, and the work approver, below the tables.
@@ -270,7 +274,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 8.31. MUST show the payment due date as a labelled field at the foot.
 8.32. MAY include a note beneath the totals, such as one about currency conversion, when configured.
 8.33. MUST deliver a generated PDF to the frontend that requested it, not only to the server's data directory — the requester is frequently a device with no access to that directory.
-8.34. MUST let the desktop shell write a delivered file itself, because a `file://` page has no dependable download destination.
+8.34. ~~MUST let the desktop shell write a delivered file itself, because a `file://` page has no dependable download destination.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ## 9. Invoice configuration
 
@@ -557,7 +561,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 23.4. MUST select the presentation from the viewport rather than from the runtime, so the desktop app and the web app each reach both.
 23.5. MUST validate both presentations with Playwright screenshots.
 23.6. SHOULD keep every v1 capability reachable in the mobile presentation, except where a section explicitly excludes it, as 14.25 does.
-23.7. MUST validate the write path end to end from two concurrent devices, because a screenshot proves a screen renders and not that pressing anything on it works.
+23.7. ~~MUST validate the write path end to end from two concurrent devices, because a screenshot proves a screen renders and not that pressing anything on it works.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ## 24. Review feedback, first pass
 
@@ -567,19 +571,19 @@ supersede the struck items they name.
 ### Principles
 
 24.1. MUST NOT substitute a default for a missing required value; the action MUST be rejected instead, naming the field that is missing.
-24.2. MUST reduce the timer screen to two boxes: today's total against the day's scheduled hours with its progress bar, and the current session with its start/stop control and billing tag.
+24.2. ~~MUST reduce the timer screen to two boxes: today's total against the day's scheduled hours with its progress bar, and the current session with its start/stop control and billing tag.~~ (withdrawn: not a requirement — see "What belongs here")
 24.3. MUST make destructive and state-changing actions reversible from the UI wherever the record is not inherently append-only; server logs are append-only, invoices are not.
 
 ### Work notes
 
-24.4. MUST give work notes their own tab rather than a card on the timer screen.
+24.4. ~~MUST give work notes their own tab rather than a card on the timer screen.~~ (withdrawn: not a requirement — see "What belongs here")
 24.5. MUST show live capture feedback — a waveform or level meter — while a voice note is recording, so silence or a dead microphone is visible before five minutes have been spoken into it.
 24.6. MUST allow a work note to be deleted.
 24.7. MUST render a voice-only note as something better than the words "a recording"; the note list must read as a list of notes whether they are spoken or written.
 
 ### The timer screen
 
-24.8. MUST remove "Today's entries" from the timer screen outright; History already shows them, and shows them editable.
+24.8. ~~MUST remove "Today's entries" from the timer screen outright; History already shows them, and shows them editable.~~ (withdrawn: not a requirement — see "What belongs here")
 24.9. MUST reject starting a timer with no billing tag rather than defaulting it to "Work".
 24.10. MUST allow the billing tag of a *running* timer to be corrected without stopping it.
 
@@ -590,26 +594,26 @@ supersede the struck items they name.
 24.13. MUST confirm before deleting a work entry.
 24.14. MUST keep the month navigation controls in fixed positions, so a control does not move out from under the pointer when a neighbouring one appears.
 24.15. MUST show the month summary for an empty month as zeros rather than hiding it, so an empty month reads as the same screen with nothing in it.
-24.16. MUST NOT show invoice state on the History screen; invoicing belongs to the invoices screen.
+24.16. ~~MUST NOT show invoice state on the History screen; invoicing belongs to the invoices screen.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Pacing
 
-24.17. MUST reduce the pacing headline to two figures: how far ahead or behind, prominently, and the projected month total beside it. No title, no explanatory paragraph, no target comparison in that box.
-24.18. MUST move the explanation of how the projection is computed out of the screen and into help or documentation.
-24.19. MUST remove the "How the projection adds up" breakdown and the "Public holidays used" box.
+24.17. ~~MUST reduce the pacing headline to two figures: how far ahead or behind, prominently, and the projected month total beside it. No title, no explanatory paragraph, no target comparison in that box.~~ (withdrawn: not a requirement — see "What belongs here")
+24.18. ~~MUST move the explanation of how the projection is computed out of the screen and into help or documentation.~~ (withdrawn: not a requirement — see "What belongs here")
+24.19. ~~MUST remove the "How the projection adds up" breakdown and the "Public holidays used" box.~~ (withdrawn: not a requirement — see "What belongs here")
 24.20. MUST remove the pacing-day override editor; the idea is worth revisiting, but it was not asked for and it crowds the screen.
-24.21. MUST NOT show the configured monthly target on the pacing screen; it is configuration and it does not change.
+24.21. ~~MUST NOT show the configured monthly target on the pacing screen; it is configuration and it does not change.~~ (withdrawn: not a requirement — see "What belongs here")
 24.22. ~~MUST keep "Worked so far", and MUST compare it against where the month should be by now — the pro-rated target for the scheduled time already elapsed.~~ (superseded: 24.40)
 24.23. ~~MUST make that "actual against expected so far" comparison the more prominent of the two readings, ahead of the end-of-month projection.~~ (superseded: 24.41)
-24.24. MUST keep the per-day calendar at the foot of the pacing screen.
+24.24. ~~MUST keep the per-day calendar at the foot of the pacing screen.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Invoices
 
 24.25. MUST present invoices as a single list with no notion of a "current" invoice: drafts and issued-but-unpaid first, paid ones below.
-24.26. MUST remove the inline invoice preview; the list carries the number, the period, the status, the hours and the amount, and the PDF carries the rest.
+24.26. ~~MUST remove the inline invoice preview; the list carries the number, the period, the status, the hours and the amount, and the PDF carries the rest.~~ (withdrawn: not a requirement — see "What belongs here")
 24.27. MUST offer every lifecycle action — issue, mark paid, revert, delete — per row from that list.
 24.28. MUST allow an invoice to be deleted.
-24.29. MUST present the issuance warning as a dialog rather than inline.
+24.29. ~~MUST present the issuance warning as a dialog rather than inline.~~ (withdrawn: not a requirement — see "What belongs here")
 24.30. MUST freeze the rendered PDF when an invoice is issued, and serve that stored file thereafter rather than re-rendering from data.
 24.31. MUST refuse to generate an invoice while required invoice configuration is missing, naming what is missing, rather than rendering a document with blanks in it.
 
@@ -625,7 +629,7 @@ supersede the struck items they name.
 ### Serving the frontend
 
 24.38. MUST detect that `crypto.subtle` is unavailable — a page served over plain HTTP from anything but localhost is not a secure context — and say so, rather than failing inside the first signature.
-24.39. SHOULD document that the static frontend needs HTTPS or localhost, and SHOULD serve the development build accordingly.
+24.39. ~~SHOULD document that the static frontend needs HTTPS or localhost, and SHOULD serve the development build accordingly.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Pacing, corrected
 
@@ -635,7 +639,7 @@ staying on track means "should be" opens the month at −16 hours and only becom
 through. That is a worse thing to read than the projection it was meant to replace.
 
 24.40. MUST keep the ahead/behind figure as it is: projected month total against the monthly target.
-24.41. MUST show the same comparison as two bars instead of as a second number — one for progress through the month's available scheduled hours, one for hours worked against the target — so being ahead or behind is the offset between them and no negative quantity has to be explained.
+24.41. ~~MUST show the same comparison as two bars instead of as a second number — one for progress through the month's available scheduled hours, one for hours worked against the target — so being ahead or behind is the offset between them and no negative quantity has to be explained.~~ (withdrawn: not a requirement — see "What belongs here")
 24.42. MUST validate the holiday region by asking the holiday source whether it yields any holidays, and MUST reject a region that yields none; 24.32's picker is declined — the field stays free text, because the country list needs the network and the subdivision codes are only discoverable by fetching a year of a country's holidays anyway.
 
 ## 25. Review feedback, second pass
@@ -649,7 +653,7 @@ names this.
 25.2. MUST render an unavailable or unsupported control as disabled, with a reason, rather than omitting it.
 25.3. MUST NOT accept an invalid value into a field and silently keep or ignore it; either reject it visibly or make the field not editable.
 25.4. MUST confirm destructive or hard-to-reverse actions in a dialog rather than inline in the row.
-25.5. MUST look at the rendered screen before treating a change as finished; a screenshot run that does not throw is not evidence that the screen is right.
+25.5. ~~MUST look at the rendered screen before treating a change as finished; a screenshot run that does not throw is not evidence that the screen is right.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Durations
 
@@ -658,19 +662,19 @@ names this.
 
 ### Invoices
 
-25.8. MUST keep the invoice list permanently on screen, with an explicit control for adding to it rather than a per-month button that appears and disappears.
+25.8. ~~MUST keep the invoice list permanently on screen, with an explicit control for adding to it rather than a per-month button that appears and disappears.~~ (withdrawn: not a requirement — see "What belongs here")
 25.9. MUST offer a month to invoice when adding, prefilled sensibly, and MUST NOT refuse or hide the option because a draft already exists for that month.
 25.10. MUST allow any number of overlapping drafts; 11.19's refusal applies at issuance and nowhere earlier.
 25.11. MUST detach a draft from the work entries when it is created: its lines are copied once and are then editable, addable and removable on the draft alone, leaving History untouched.
 25.12. MUST allow a draft to carry its own configuration, overriding the global invoice settings for that draft only.
 25.13. ~~MUST label the download control "Download" rather than "PDF"; the invoice is a PDF.~~ (superseded: 26.11)
-25.14. MUST give the invoice list a consistent row height and put separating rules only between rows, never above the first.
-25.15. MUST show the invoice configuration as an approximation of the rendered invoice, with each field positioned where its value appears on the document. Per-invoice content may be abbreviated.
+25.14. ~~MUST give the invoice list a consistent row height and put separating rules only between rows, never above the first.~~ (withdrawn: not a requirement — see "What belongs here")
+25.15. ~~MUST show the invoice configuration as an approximation of the rendered invoice, with each field positioned where its value appears on the document. Per-invoice content may be abbreviated.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### The invoice document
 
-25.16. MUST increase the vertical gap between "BILL TO" and the block beneath it.
-25.17. MUST reduce the horizontal gap between a label and its value for "Time period", "Hourly rate in" and "Work Approver".
+25.16. ~~MUST increase the vertical gap between "BILL TO" and the block beneath it.~~ (withdrawn: not a requirement — see "What belongs here")
+25.17. ~~MUST reduce the horizontal gap between a label and its value for "Time period", "Hourly rate in" and "Work Approver".~~ (withdrawn: not a requirement — see "What belongs here")
 25.18. MUST print the configured payment method verbatim, not as "{currency} ({value})".
 
 ### Audio
@@ -685,7 +689,7 @@ names this.
 
 25.24. MUST default to Monday–Friday being workdays when no holiday region is configured, rather than treating a weekday as unscheduled.
 25.25. MUST align the pacing bars with each other, so their fills can be compared; differing label widths must not change where a bar starts or ends.
-25.26. MUST draw today's progress bar as one segment per entry, each with its own rounded ends, so the total reads as something assembled from parts.
+25.26. ~~MUST draw today's progress bar as one segment per entry, each with its own rounded ends, so the total reads as something assembled from parts.~~ (withdrawn: not a requirement — see "What belongs here")
 25.27. MUST allow the start time of a running timer to be edited.
 
 ### Entries
@@ -696,16 +700,16 @@ names this.
 
 ### Access
 
-25.31. MUST offer the requested role as a dropdown with a single request button, not one button per role.
+25.31. ~~MUST offer the requested role as a dropdown with a single request button, not one button per role.~~ (withdrawn: not a requirement — see "What belongs here")
 25.32. MUST reduce the pending-request actions to approve and deny; approving grants the role that was asked for, and a wrong request is denied and resubmitted.
 25.33. MUST show a device whose request was approved that it has been, with a primary control to continue into the app.
-25.34. MUST indicate which of the admin screen's tabs is active.
+25.34. ~~MUST indicate which of the admin screen's tabs is active.~~ (withdrawn: not a requirement — see "What belongs here")
 25.35. MUST confirm revoking access, and changing a device's role, in a dialog.
 
 ### Notes
 
 25.36. MUST update the recording waveform continuously; a trace that is mostly flat with occasional static is not showing the input.
-25.37. MUST present one control for playing a voice note, which shows that it is loading and then plays, rather than a button that becomes a player which must be pressed again.
+25.37. ~~MUST present one control for playing a voice note, which shows that it is loading and then plays, rather than a button that becomes a player which must be pressed again.~~ (withdrawn: not a requirement — see "What belongs here")
 25.38. ~~SHOULD stream a voice note into the player rather than downloading it whole before anything can start.~~ (declined: 26.29)
 
 ### Prompts
@@ -716,15 +720,15 @@ names this.
 
 ### Settings
 
-25.42. MUST show a saved-but-hidden value as a disabled field containing a mask, rather than a chip elsewhere on the screen saying it is set.
+25.42. ~~MUST show a saved-but-hidden value as a disabled field containing a mask, rather than a chip elsewhere on the screen saying it is set.~~ (withdrawn: not a requirement — see "What belongs here")
 25.43. MUST explain, when such a field is clicked, that the value is stored and hidden, and offer to clear the group for re-entry. The payment block and the address are separate groups.
 25.44. MUST NOT reformat a numeric field while it is being typed into; entering "5" must not become "5.00" with the cursor moved.
 
 ### Presentation
 
-25.45. MUST give buttons a hover state that works in dark mode.
+25.45. ~~MUST give buttons a hover state that works in dark mode.~~ (withdrawn: not a requirement — see "What belongs here")
 25.46. MUST keep the month label a fixed width, so neither arrow moves as the month changes.
-25.47. MUST set `user-select: none` on buttons.
+25.47. ~~MUST set `user-select: none` on buttons.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ## 26. Third review
 
@@ -734,12 +738,12 @@ read together.
 
 ### Audio
 
-26.1. MUST make the looping background audio start reliably when a timer starts; 25.19's detection is not enough on its own, because in practice it neither plays nor reports anything.
+26.1. ~~MUST make the looping background audio start reliably when a timer starts; 25.19's detection is not enough on its own, because in practice it neither plays nor reports anything.~~ (withdrawn: not a requirement — see "What belongs here")
 26.2. MUST surface a control for unblocking playback wherever the failure is observable, not only on the settings card.
 26.3. MUST NOT stop the loop when the settings screen is opened or left.
 26.4. MUST apply the configured volume to playback in every case, including a loop that was already playing when the volume changed.
-26.5. MUST disable the Preview control while the loop is supposed to be playing.
-26.6. MUST explain, when a disabled Preview is pressed, that audio is believed to be playing, and offer a link to report an issue if it is not.
+26.5. ~~MUST disable the Preview control while the loop is supposed to be playing.~~ (withdrawn: not a requirement — see "What belongs here")
+26.6. ~~MUST explain, when a disabled Preview is pressed, that audio is believed to be playing, and offer a link to report an issue if it is not.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Prompts
 
@@ -753,10 +757,10 @@ read together.
 ### Invoices
 
 26.10. ~~MUST NOT offer a download control on the invoice list; see 26.11.~~ (superseded: 27.15)
-26.11. MUST label the control "View" and open the document in a large dialog, in an iframe over the blob URL. ~~The browser's own controls are how it is saved; the app does not need to offer that.~~ (superseded: 27.15)
-26.12. MUST set an invoice's state from a dropdown rather than from a button per transition.
-26.13. MUST NOT warn that issuing freezes the PDF. That is the sensible behaviour and needs no warning; the reverse would.
-26.14. MUST NOT describe the per-invoice overrides as what the invoice "says differently": it is not different until it has been made so, which is usually never, and the phrasing is slack. Say what the control is.
+26.11. ~~MUST label the control "View" and open the document in a large dialog, in an iframe over the blob URL. ~~The browser's own controls are how it is saved; the app does not need to offer that.~~ (superseded: 27.15)~~ (withdrawn: not a requirement — see "What belongs here")
+26.12. ~~MUST set an invoice's state from a dropdown rather than from a button per transition.~~ (withdrawn: not a requirement — see "What belongs here")
+26.13. ~~MUST NOT warn that issuing freezes the PDF. That is the sensible behaviour and needs no warning; the reverse would.~~ (withdrawn: not a requirement — see "What belongs here")
+26.14. ~~MUST NOT describe the per-invoice overrides as what the invoice "says differently": it is not different until it has been made so, which is usually never, and the phrasing is slack. Say what the control is.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Access
 
@@ -764,17 +768,17 @@ read together.
 
 ### Settings
 
-26.16. MUST make the invoice configuration resemble the rendered invoice much more closely than it does. The absence of line items is the one difference that is justified; effort is not. Refines 25.15.
-26.17. MUST align the "Ask me sometimes" control with the other controls on its line.
+26.16. ~~MUST make the invoice configuration resemble the rendered invoice much more closely than it does. The absence of line items is the one difference that is justified; effort is not. Refines 25.15.~~ (withdrawn: not a requirement — see "What belongs here")
+26.17. ~~MUST align the "Ask me sometimes" control with the other controls on its line.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Notes
 
-26.18. MUST animate the recording waveform continuously. 25.36's fix did not work.
+26.18. ~~MUST animate the recording waveform continuously. 25.36's fix did not work.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### The timer screen
 
 26.19. MUST size each segment of today's progress bar exactly, with no per-segment minimum. A minimum overall width for the whole bar is acceptable; a minimum per segment is not, because it makes the total wrong. Refines 25.26.
-26.20. MUST use the whole screen on the timer page.
+26.20. ~~MUST use the whole screen on the timer page.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Fourth pass — found while checking the third
 
@@ -786,7 +790,7 @@ read together.
 26.26. MUST confirm before a dismissal throws away unsaved work, on every way out of the panel that holds it: a work note still recording, and an invoice with edited lines. `Sheet` already makes backdrop dismissal opt-in for this reason; Escape is the same act.
 26.27. MUST say when a list is showing only part of what there is. A screen holding exactly its limit looks like a screen holding everything, so the notes list and the log viewer each say which part they are showing rather than letting a reader conclude the rest is gone.
 26.28. MUST refuse to proceed when the frontend and the server disagree about the protocol version, saying which of the two is behind. `hello` has carried the number since there was a protocol and nothing read it; the frontend is a static site, so a browser holding yesterday's build against a server updated this morning is the ordinary case.
-26.29. MAY deliver a voice note whole rather than streaming it, declining 25.38. 26.25 bounds a note at what one request carries — about five minutes of speech, some 750 kB — and the server is on the same network as the device asking, so the wait streaming would remove is a fraction of a second. The cost is a second delivery path for audio, with its own ordering and failure cases, for a gain nobody can perceive. If 26.25's bound is ever lifted this should be reconsidered with it.
+26.29. ~~MAY deliver a voice note whole rather than streaming it, declining 25.38. 26.25 bounds a note at what one request carries — about five minutes of speech, some 750 kB — and the server is on the same network as the device asking, so the wait streaming would remove is a fraction of a second. The cost is a second delivery path for audio, with its own ordering and failure cases, for a gain nobody can perceive. If 26.25's bound is ever lifted this should be reconsidered with it.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ## 27. Fourth review
 
@@ -800,15 +804,15 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 27.2. MUST start the loop again when the setting is re-enabled after being turned off, and after a reload in that state. Stopping and starting the timer recovers it, so nothing is broken but the path back.
 27.3. MUST show the control for unblocking playback whenever the app believes the loop should be playing and it is not, rather than leaving that state silent. Refines 26.2.
-27.4. MUST NOT reach a state where Preview is offered *because* nothing is playing while the timer is running — pressing it starts the loop and then disables itself, which is the app repairing a state it should never have been in. The availability of Preview is evidence the app already knows; 27.3 is what it should do with that.
+27.4. ~~MUST NOT reach a state where Preview is offered *because* nothing is playing while the timer is running — pressing it starts the loop and then disables itself, which is the app repairing a state it should never have been in. The availability of Preview is evidence the app already knows; 27.3 is what it should do with that.~~ (withdrawn: not a requirement — see "What belongs here")
 27.5. MUST name the microphone a recording will use, when that is known, and offer a control — a cog, no words — to inspect it and choose another. Device-local like everything else in section 16.
 
 ### Work notes
 
 27.6. MUST let Save stop a running recording and keep it, rather than refusing with "there is nothing here". An explicit Stop stays.
 27.7. MUST allow another take after one is finished; "Record again" is offered and there is no way to record another.
-27.8. MUST draw the waveform's bars at a uniform width. They vary by a pixel in places, which reads as a fault in the drawing rather than in the sound.
-27.9. MUST stop the prompt tune on any interaction with the prompt, not only on the parts of it that happen to take focus. Refines 26.7.
+27.8. ~~MUST draw the waveform's bars at a uniform width. They vary by a pixel in places, which reads as a fault in the drawing rather than in the sound.~~ (withdrawn: not a requirement — see "What belongs here")
+27.9. ~~MUST stop the prompt tune on any interaction with the prompt, not only on the parts of it that happen to take focus. Refines 26.7.~~ (withdrawn: not a requirement — see "What belongs here")
 27.10. MUST leave the work-note field empty rather than showing an example of what somebody might write.
 
 ### Invoices
@@ -823,11 +827,11 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 27.16. MUST include the running timer in the pacing figures, not only completed entries.
 27.17. MUST show a holiday distinctly among the days of the month, and MUST list that month's holidays below them.
-27.18. MUST use two spacings on the history screen and mean something by them: the smaller within a group, the larger between. The month's totals and "Add past time" are one group; each run of consecutive days with work is a group.
+27.18. ~~MUST use two spacings on the history screen and mean something by them: the smaller within a group, the larger between. The month's totals and "Add past time" are one group; each run of consecutive days with work is a group.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Editing an entry
 
-27.19. MUST lay out a timed entry's start and end on one line, and MUST use one component for adding and for editing, since the two disagree today.
+27.19. ~~MUST lay out a timed entry's start and end on one line, and MUST use one component for adding and for editing, since the two disagree today.~~ (withdrawn: not a requirement — see "What belongs here")
 27.20. MUST switch between a timed entry and a duration-only one with the same control that chooses the shape when adding, rather than a separate button, and MUST remember the times while the other shape is showing so that switching back restores them. No warning is needed for a change nothing has saved.
 
 ### Everywhere
@@ -845,13 +849,13 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 ### Permissions
 
-27.25. MUST run the server and the desktop app with the narrowest Deno permissions that work, rather than with `-A`. Read and write MUST name the directories actually used, and every other permission MUST be justified by something the process does.
+27.25. ~~MUST run the server and the desktop app with the narrowest Deno permissions that work, rather than with `-A`. Read and write MUST name the directories actually used, and every other permission MUST be justified by something the process does.~~ (withdrawn: not a requirement — see "What belongs here")
 27.26. MUST fail visibly rather than silently when a permission is missing: a process that cannot read its data directory should say which permission it needed, since a denied read surfaces as an unrelated error otherwise.
 
 ### The dev server
 
-27.27. MUST let the development frontend be served over HTTPS when a certificate has been generated for it, and MUST leave a clone with none behaving exactly as it does now. 24.38 tells somebody on a LAN address to serve over HTTPS or open 127.0.0.1, and on a phone neither was available — so section 23's mobile presentation could only ever be exercised by a narrow viewport rather than by a phone.
-27.28. MUST NOT bind the development server to anything but the loopback address by default; exposing it on every interface is a decision for the run, made by forwarding vite's own `--host`.
+27.27. ~~MUST let the development frontend be served over HTTPS when a certificate has been generated for it, and MUST leave a clone with none behaving exactly as it does now. 24.38 tells somebody on a LAN address to serve over HTTPS or open 127.0.0.1, and on a phone neither was available — so section 23's mobile presentation could only ever be exercised by a narrow viewport rather than by a phone.~~ (withdrawn: not a requirement — see "What belongs here")
+27.28. ~~MUST NOT bind the development server to anything but the loopback address by default; exposing it on every interface is a decision for the run, made by forwarding vite's own `--host`.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Settings that are the person's, not the code's
 
@@ -863,15 +867,15 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 ### Rules that match nothing
 
-27.34. Every rule in the stylesheet MUST match something on some screen of the screenshot walk, or MUST be named as a state that walk does not enter, with the reason written down. A rule that has stopped matching looks exactly like a rule for an unphotographed state, and only one of them is a bug: `.bar > span` matched nothing for several commits after 26.19 moved the segments inside `.bar-fill`, while a check measuring the bar's width stayed green.
+27.34. ~~Every rule in the stylesheet MUST match something on some screen of the screenshot walk, or MUST be named as a state that walk does not enter, with the reason written down. A rule that has stopped matching looks exactly like a rule for an unphotographed state, and only one of them is a bug: `.bar > span` matched nothing for several commits after 26.19 moved the segments inside `.bar-fill`, while a check measuring the bar's width stayed green.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### The document about the document
 
-27.35. A struck requirement MUST say what replaced it, an item claiming to supersede another MUST leave that other one struck, and an item announcing its own supersession MUST itself be struck. The strike-through convention is the only record of why the product does something an earlier line forbids, and it is maintained by hand.
+27.35. ~~A struck requirement MUST say what replaced it, an item claiming to supersede another MUST leave that other one struck, and an item announcing its own supersession MUST itself be struck. The strike-through convention is the only record of why the product does something an earlier line forbids, and it is maintained by hand.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Cost on the hot path
 
-27.36. Work done on every snapshot MUST NOT grow with the product of two things that both grow. A snapshot is rebuilt for every event the server pushes to every connected device, so a pass over the whole history is affordable and a pass over the history once per invoice is not.
+27.36. ~~Work done on every snapshot MUST NOT grow with the product of two things that both grow. A snapshot is rebuilt for every event the server pushes to every connected device, so a pass over the whole history is affordable and a pass over the history once per invoice is not.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### What an unauthenticated caller can grow
 
@@ -882,42 +886,42 @@ From a session driving the built app. Several items are two ends of one fault; t
 27.38. An editor whose subject has been deleted elsewhere MUST say so and MUST NOT silently become an editor for something else. Absence of a record is not the same fact as a request to create one, and a screen that conflates them turns a correction into a duplicate. Adding the typed values back MAY be offered, as a stated choice.
 27.39. A refusal a person reads MUST describe the situation rather than name a record. "no work entry 3f8a2b91-…" is true and useless; the identifier belongs in the log, which already has it.
 
-27.40. The same as 27.38, of the editor that holds invoice lines: it MUST NOT be owned by the row it edits, because a row keyed by record id unmounts when that record is deleted elsewhere and takes an open editor, and everything typed into it, off the screen without a word.
+27.40. ~~The same as 27.38, of the editor that holds invoice lines: it MUST NOT be owned by the row it edits, because a row keyed by record id unmounts when that record is deleted elsewhere and takes an open editor, and everything typed into it, off the screen without a word.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.41. A record that can move backwards MUST be read by its current state, not by which of its fields happen to be filled in. Reverting an issuance leaves the snapshot in place, because that is the record of what was sent; a reader that takes `snapshot ?? draft` therefore shows a reverted invoice the figures it was issued with while the draft changes underneath it.
+27.41. ~~A record that can move backwards MUST be read by its current state, not by which of its fields happen to be filled in. Reverting an issuance leaves the snapshot in place, because that is the record of what was sent; a reader that takes `snapshot ?? draft` therefore shows a reverted invoice the figures it was issued with while the draft changes underneath it.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.42. "What does this record say now" MUST be asked in one place. The rule was written out at three call sites — the list, the PDF re-render, and the render at issuance — and two of the three were wrong in the same way, which is what a rule copied rather than shared does.
+27.42. ~~"What does this record say now" MUST be asked in one place. The rule was written out at three call sites — the list, the PDF re-render, and the render at issuance — and two of the three were wrong in the same way, which is what a rule copied rather than shared does.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.43. Whether a device may write MUST be asked in one place. Five screens each derived it from `phase`, all agreeing, which is the state a copied rule is in until it is not — and this rule decides whether Start, Save, Delete and the invoice editor are offered at all.
+27.43. ~~Whether a device may write MUST be asked in one place. Five screens each derived it from `phase`, all agreeing, which is the state a copied rule is in until it is not — and this rule decides whether Start, Save, Delete and the invoice editor are offered at all.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.44. A flag on the wire MUST answer one question. `paymentDetailsSet` was written for masking — is there anything stored here — and reused to decide whether an invoice could be made, so a lone account name reported a complete payment block and the render then refused for the BSB, the account number and the bank. Where two questions are asked of one field, there MUST be two fields, and the derived one MUST come from the authority rather than from a second list of the same names.
-27.45. The shape that crosses to a device MUST be declared once, and what crosses MUST be pinned by a test. `PublicInvoiceConfig` was declared twice — derived on the server, written out in the protocol — and a spread into a typed return is not checked for excess properties, so a column added to the invoice config would be published to every device by default.
+27.44. ~~A flag on the wire MUST answer one question. `paymentDetailsSet` was written for masking — is there anything stored here — and reused to decide whether an invoice could be made, so a lone account name reported a complete payment block and the render then refused for the BSB, the account number and the bank. Where two questions are asked of one field, there MUST be two fields, and the derived one MUST come from the authority rather than from a second list of the same names.~~ (withdrawn: not a requirement — see "What belongs here")
+27.45. ~~The shape that crosses to a device MUST be declared once, and what crosses MUST be pinned by a test. `PublicInvoiceConfig` was declared twice — derived on the server, written out in the protocol — and a spread into a typed return is not checked for excess properties, so a column added to the invoice config would be published to every device by default.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.46. An algorithm or a shape MUST be declared once. `toBase64`/`fromBase64` existed four times — device private keys, note audio and invoice PDFs all pass through them, and a divergence corrupts binary data in silence; `MS_PER_HOUR` three times; the timed-entry `{ startedAt, endedAt }` shape five times. Two functions MUST NOT share a name while taking different things, since the reader picks by name.
+27.46. ~~An algorithm or a shape MUST be declared once. `toBase64`/`fromBase64` existed four times — device private keys, note audio and invoice PDFs all pass through them, and a divergence corrupts binary data in silence; `MS_PER_HOUR` three times; the timed-entry `{ startedAt, endedAt }` shape five times. Two functions MUST NOT share a name while taking different things, since the reader picks by name.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.47. A shape crossing the wire MUST be named once and forwarded whole. The invoice edit existed three times — the request, the server function's parameter, and the handler's field-by-field forwarding — and the third is the dangerous one: a field added to the first two and forgotten there is accepted and dropped, so the device believes it saved. Likewise a row must be mapped to a domain object in one place; the second mapper dropped `timing`, whose absence *means* duration-only.
+27.47. ~~A shape crossing the wire MUST be named once and forwarded whole. The invoice edit existed three times — the request, the server function's parameter, and the handler's field-by-field forwarding — and the third is the dangerous one: a field added to the first two and forgotten there is accepted and dropped, so the device believes it saved. Likewise a row must be mapped to a domain object in one place; the second mapper dropped `timing`, whose absence *means* duration-only.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.48. The screen audits MUST cover the dialogs. They walked navigation and one dialog, and every other place this app asks for input is a sheet opened from a control — the entry editor, the work note and its microphone picker, the invitation — which is where most recent work went and which neither audit had ever seen.
+27.48. ~~The screen audits MUST cover the dialogs. They walked navigation and one dialog, and every other place this app asks for input is a sheet opened from a control — the entry editor, the work note and its microphone picker, the invitation — which is where most recent work went and which neither audit had ever seen.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.49. The setup a clone is told to run MUST be the setup that is tested. CI installed the frontend's dependencies with a line of its own, so `deno task deps` was never enough on its own and nothing noticed: a fresh clone following the README reached `tsc: command not found` while CI stayed green.
+27.49. ~~The setup a clone is told to run MUST be the setup that is tested. CI installed the frontend's dependencies with a line of its own, so `deno task deps` was never enough on its own and nothing noticed: a fresh clone following the README reached `tsc: command not found` while CI stayed green.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.50. The published frontend MUST be verified where it is published: served from a repo subpath, not from the root of a host. An absolute base, an absolute manifest or icon reference, a `start_url` of `/`, or a service worker scoped to the whole origin all build cleanly and all work when the same files are served from `/` — so every existing check passes and only the deployed copy is broken.
+27.50. ~~The published frontend MUST be verified where it is published: served from a repo subpath, not from the root of a host. An absolute base, an absolute manifest or icon reference, a `start_url` of `/`, or a service worker scoped to the whole origin all build cleanly and all work when the same files are served from `/` — so every existing check passes and only the deployed copy is broken.~~ (withdrawn: not a requirement — see "What belongs here")
 
 27.51. A date stamped onto a document MUST come from the person stamping it. `issue()` read the server's calendar day for `invoiceDate` and the due date derived from it, and 10.8 freezes both at that moment — so a container in UTC and somebody east of it meant every invoice issued before mid-morning carried yesterday's date. The device's day is already on the wire and `invoice-create` already used it.
 
-27.52. Migrations MUST be tested against a database that has data in it, from an older schema version. An empty database is the one case that cannot go wrong: a NOT NULL with no default, a unique index over data that is not unique yet, a rewrite that drops a column — all pass a fresh-database test and fail on the only file anybody has. This is self-hosted, so an upgrade meets that file once, unattended, and there is no second copy.
+27.52. ~~Migrations MUST be tested against a database that has data in it, from an older schema version. An empty database is the one case that cannot go wrong: a NOT NULL with no default, a unique index over data that is not unique yet, a rewrite that drops a column — all pass a fresh-database test and fail on the only file anybody has. This is self-hosted, so an upgrade meets that file once, unattended, and there is no second copy.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.53. What the documentation says about copying the data MUST be true of the data as it is stored. WAL mode means the main database file can be a header while every recent entry sits beside it, so a copy of that one file opens cleanly and is empty — a backup that fails only when it is needed, and reports nothing at either end.
+27.53. ~~What the documentation says about copying the data MUST be true of the data as it is stored. WAL mode means the main database file can be a header while every recent entry sits beside it, so a copy of that one file opens cleanly and is empty — a backup that fails only when it is needed, and reports nothing at either end.~~ (withdrawn: not a requirement — see "What belongs here")
 
 27.54. The server's data directory MUST NOT be readable by other accounts on the machine. It holds the payment block that section 20 keeps off the wire, PDFs with those details printed on them, and recordings of somebody's voice; SQLite and `Deno.writeFile` create files at 0666 less the umask. Every write under it MUST go through one writer, so the mode is set in one place and a new write path cannot forget it.
 
 27.55. A failure the server fully understands MUST be refused with a sentence, not left to the generic reply. `main.ts` turns an unanticipated error into "the server could not complete that request" and keeps the detail in the log, which is right for the unanticipated; a note whose recording is missing from disk is not that — it is the documented consequence of restoring a database without the files beside it.
 
-27.56. A blob URL MUST be revoked when whatever made it goes away. It holds its bytes until then, and a leak of them shows nothing: no error, nothing rendered wrong, only a tab that grows — in megabyte steps, since these hold recordings. The note list made one per playback and revoked none, and a work note kept its take's URL after being saved.
-27.57. Disconnecting from a server MUST clear the stored address, not only the screen. 22.6 has always required it; `forget()` set the phase and left the address in device storage, and the boot effect reads that — so one reload put the app back on the server somebody had just left. An exported function nobody calls is a question about the caller that should exist: `clearAddress` had none.
+27.56. ~~A blob URL MUST be revoked when whatever made it goes away. It holds its bytes until then, and a leak of them shows nothing: no error, nothing rendered wrong, only a tab that grows — in megabyte steps, since these hold recordings. The note list made one per playback and revoked none, and a work note kept its take's URL after being saved.~~ (withdrawn: not a requirement — see "What belongs here")
+27.57. ~~Disconnecting from a server MUST clear the stored address, not only the screen. 22.6 has always required it; `forget()` set the phase and left the address in device storage, and the boot effect reads that — so one reload put the app back on the server somebody had just left. An exported function nobody calls is a question about the caller that should exist: `clearAddress` had none.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.58. An exported function MUST be called by something. Not a tidiness rule: `clearAddress` had no callers and that was a missing call (27.57), and `invoiceConfigGaps` had none because it was a fourth list of what an invoice is missing, disagreeing with the authority it duplicated. A reference from a test counts — exporting something so it can be tested is a decision.
+27.58. ~~An exported function MUST be called by something. Not a tidiness rule: `clearAddress` had no callers and that was a missing call (27.57), and `invoiceConfigGaps` had none because it was a fourth list of what an invoice is missing, disagreeing with the authority it duplicated. A reference from a test counts — exporting something so it can be tested is a decision.~~ (withdrawn: not a requirement — see "What belongs here")
 
-27.59. The invoice arithmetic MUST hold for hours nobody picked, not only for the case that caused the rule. 25.7 is right and is tested by its own example; the four things a client can check with a calculator — each amount is the printed hours times the rate, the work total is the sum of the printed hours, the sub-total is the sum of the amounts, the total is the sub-total plus its tax — MUST hold across a range of durations, rates and tax rates, in whole minor units throughout.
+27.59. ~~The invoice arithmetic MUST hold for hours nobody picked, not only for the case that caused the rule. 25.7 is right and is tested by its own example; the four things a client can check with a calculator — each amount is the printed hours times the rate, the work total is the sum of the printed hours, the sub-total is the sum of the amounts, the total is the sub-total plus its tax — MUST hold across a range of durations, rates and tax rates, in whole minor units throughout.~~ (withdrawn: not a requirement — see "What belongs here")
 
 27.60. A figure shown before saving MUST be the figure saving produces. The invoice editor summed `hours × rate` from the values on screen while the server rounds each line's hours to a tenth first (25.7), so a precise duration typed into it showed a total a dollar from the one it wrote. `recomputeDraft` is pure and shared and already says a client computing its own totals will disagree; the running total asks it.

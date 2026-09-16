@@ -106,10 +106,10 @@ Deno.test({
  *
  * **A ratchet rather than a limit, because the document does not pass yet.** It opened at 387 items
  * with a median of 67 characters, none longer than 172, and not one naming a source file. Eight days
- * later it held 598, of which 52 run past 250 characters and one names a `.ts` file — almost all of
- * them requirements with the story of a bug still attached. Failing outright would mean either
- * fixing 52 items in the commit that adds the check, or not adding the check; a ceiling that can
- * only fall lets the cleanup happen in its own time and stops the number climbing meanwhile.
+ * later it held 598, of which 52 ran past 250 characters — almost all of them requirements with the
+ * story of a bug still attached. Striking the misfiled ones brought that to 27; reducing the rest to
+ * their first sentence is what brings it to nought. A ceiling that can only fall lets that happen in
+ * its own time and stops the number climbing meanwhile.
  *
  * 250 rather than 172, which was the original document's true maximum: the point is to catch a
  * paragraph, not to relitigate items that are merely long. Lower it as the count comes down.
@@ -117,7 +117,7 @@ Deno.test({
  * Neither number is the real rule — a 240-character item prescribing a layout is just as misfiled.
  * These are the parts a test can see.
  */
-const LONG_ITEMS_CEILING = 52;
+const LONG_ITEMS_CEILING = 27;
 const FILE_NAMING_CEILING = 1;
 
 function specItems(): { id: string; body: string }[] {
@@ -126,7 +126,12 @@ function specItems(): { id: string; body: string }[] {
   for (const m of text.matchAll(/^(\d+)\.(\d+)\.\s+(.*?)(?=\n\d+\.\d+\.|\n## |(?![\s\S]))/gms)) {
     const [, section, item, body] = m;
     if (!section || !item || body === undefined) continue;
-    out.push({ id: `${section}.${item}`, body: body.replace(/\s+/g, " ").trim() });
+    const text = body.replace(/\s+/g, " ").trim();
+    // A struck item is history, not a requirement: it is exempt from both rules below. Striking
+    // also *adds* characters — the `~~` and the reason — so counting them would make a cleanup
+    // look like a regression, which is how this was found.
+    if (text.startsWith("~~")) continue;
+    out.push({ id: `${section}.${item}`, body: text });
   }
   return out;
 }

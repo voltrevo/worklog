@@ -222,7 +222,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.25 -- no task runs with -A",
+  name: "no task runs with -A",
   permissions: { read: ["."] },
   async fn() {
     /*
@@ -243,7 +243,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.25 -- the serve task is the shape the harness reads its flags from",
+  name: "the serve task is the shape the harness reads its flags from",
   permissions: { read: ["."] },
   async fn() {
     /*
@@ -272,7 +272,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.35 -- the requirements document's own bookkeeping holds together",
+  name: "the requirements document's own bookkeeping holds together",
   permissions: { read: ["."] },
   async fn() {
     /*
@@ -335,7 +335,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.43 -- no screen works out for itself whether it may write",
+  name: "no screen works out for itself whether it may write",
   // `trackedFiles` shells out to git, like the other walks over the repo in this file.
   permissions: { read: ["."], run: ["git"] },
   async fn() {
@@ -371,7 +371,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.46 -- a rule or an algorithm lives in one file",
+  name: "a rule or an algorithm lives in one file",
   permissions: { read: ["."], run: ["git"] },
   async fn() {
     /*
@@ -440,7 +440,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "27.58 -- an exported function is called by something",
+  name: "an exported function is called by something",
   permissions: { read: ["."], run: ["git"] },
   async fn() {
     /*
