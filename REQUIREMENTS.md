@@ -223,7 +223,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 6.36. MUST log a warning when holiday data falls back to cache or to the shipped snapshot.
 6.37. ~~SHOULD show which holidays a month's pacing used, so a wrong or missing one is visible rather than only shifting the pace.~~ (superseded: 24.19)
 6.38. MUST interpret the schedule's times as local to the viewing device.
-6.39. MUST NOT ask the holiday source anything when no region is configured, and MUST say that no region is set rather than reporting the source as unreachable. 24.33 forbids defaulting the region, so this is the state every new server starts in.
+6.39. MUST say that no region is set, rather than reporting the holiday source as unreachable.
 
 ## 7. Reports
 
@@ -341,7 +341,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 11.24. MUST warn when a month containing work has no issued or paid invoice while a later month does.
 11.25. MUST warn when a work entry's date falls inside an invoiced month but the entry is absent from that invoice's snapshot.
 11.26. MUST NOT block issuance on the warnings of 11.24 or 11.25.
-11.27. MUST warn when the work an issued invoice was built from no longer adds up to the hours that invoice states, whether because an entry was shortened or because it was deleted. 11.25 is a set difference over the snapshot's ids and cannot see either.
+11.27. MUST warn when the work an issued invoice was built from no longer adds up to the hours it states, whether an entry was shortened or deleted.
 11.28. MUST NOT block anything on the warning of 11.27, per 11.26; and MUST NOT report an addition under 11.27 as well as under 11.25, since one event should not arrive as two warnings.
 
 ## 12. Server logging & diagnostics
@@ -407,7 +407,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 13.39. MUST reject an admin claim once any device has been authorized, deciding the race on the server rather than in the frontend.
 13.40. MUST let a frontend whose claim was rejected fall back to “Request access” without losing what the user had already entered.
 13.41. MUST treat the KPS address of section 22 as the out-of-band capability that gates 13.6; no separate bootstrap code is required.
-13.42. MUST say when a device's access is read-only, once and somewhere every screen carries, rather than leaving disabled controls to explain themselves. A disabled control looks the same as a broken one.
+13.42. MUST say when a device's access is read-only, once and somewhere every screen carries.
 
 ## 14. Local looping audio
 
@@ -446,7 +446,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 15.5. MUST NOT expose Always on top in the GitHub Pages version.
 15.6. MUST NOT store Always on top state on the server.
 15.7. MUST NOT give the server awareness of Always on top state.
-15.8. MUST show the window's actual state rather than the request when Always on top is not honoured. 15.4's "where supported" is unmeetable unless the app finds out whether it is: a ticked box above a window sitting behind everything is a claim, not a setting.
+15.8. MUST show the window's actual always-on-top state rather than the request, when the request is not honoured.
 
 ## 16. Local-only boundary
 
@@ -577,9 +577,9 @@ supersede the struck items they name.
 ### Work notes
 
 24.4. ~~MUST give work notes their own tab rather than a card on the timer screen.~~ (withdrawn: not a requirement — see "What belongs here")
-24.5. MUST show live capture feedback — a waveform or level meter — while a voice note is recording, so silence or a dead microphone is visible before five minutes have been spoken into it.
+24.5. MUST show live capture feedback while a voice note is recording, so a dead microphone is visible before the note is finished.
 24.6. MUST allow a work note to be deleted.
-24.7. MUST render a voice-only note as something better than the words "a recording"; the note list must read as a list of notes whether they are spoken or written.
+24.7. MUST make a voice-only note legible in the note list as a note, rather than as the words "a recording".
 
 ### The timer screen
 
@@ -592,8 +592,8 @@ supersede the struck items they name.
 24.11. MUST allow a past entry to be added either as a duration on a date or with explicit start and end times; 2.9's duration-only form stays, and is no longer the only form.
 24.12. MUST allow the start and end times of an existing timed entry to be edited, rather than only dropped.
 24.13. MUST confirm before deleting a work entry.
-24.14. MUST keep the month navigation controls in fixed positions, so a control does not move out from under the pointer when a neighbouring one appears.
-24.15. MUST show the month summary for an empty month as zeros rather than hiding it, so an empty month reads as the same screen with nothing in it.
+24.14. MUST NOT move a navigation control out from under the pointer when a neighbouring one appears.
+24.15. MUST show an empty month's summary as zeros rather than hiding it.
 24.16. ~~MUST NOT show invoice state on the History screen; invoicing belongs to the invoices screen.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Pacing
@@ -601,7 +601,7 @@ supersede the struck items they name.
 24.17. ~~MUST reduce the pacing headline to two figures: how far ahead or behind, prominently, and the projected month total beside it. No title, no explanatory paragraph, no target comparison in that box.~~ (withdrawn: not a requirement — see "What belongs here")
 24.18. ~~MUST move the explanation of how the projection is computed out of the screen and into help or documentation.~~ (withdrawn: not a requirement — see "What belongs here")
 24.19. ~~MUST remove the "How the projection adds up" breakdown and the "Public holidays used" box.~~ (withdrawn: not a requirement — see "What belongs here")
-24.20. MUST remove the pacing-day override editor; the idea is worth revisiting, but it was not asked for and it crowds the screen.
+24.20. MUST NOT offer a pacing-day override editor.
 24.21. ~~MUST NOT show the configured monthly target on the pacing screen; it is configuration and it does not change.~~ (withdrawn: not a requirement — see "What belongs here")
 24.22. ~~MUST keep "Worked so far", and MUST compare it against where the month should be by now — the pro-rated target for the scheduled time already elapsed.~~ (superseded: 24.40)
 24.23. ~~MUST make that "actual against expected so far" comparison the more prominent of the two readings, ahead of the end-of-month projection.~~ (superseded: 24.41)
@@ -609,9 +609,9 @@ supersede the struck items they name.
 
 ### Invoices
 
-24.25. MUST present invoices as a single list with no notion of a "current" invoice: drafts and issued-but-unpaid first, paid ones below.
+24.25. MUST present invoices as one list, with no notion of a "current" invoice.
 24.26. ~~MUST remove the inline invoice preview; the list carries the number, the period, the status, the hours and the amount, and the PDF carries the rest.~~ (withdrawn: not a requirement — see "What belongs here")
-24.27. MUST offer every lifecycle action — issue, mark paid, revert, delete — per row from that list.
+24.27. MUST offer every invoice lifecycle action from the list: issue, mark paid, revert, delete.
 24.28. MUST allow an invoice to be deleted.
 24.29. ~~MUST present the issuance warning as a dialog rather than inline.~~ (withdrawn: not a requirement — see "What belongs here")
 24.30. MUST freeze the rendered PDF when an invoice is issued, and serve that stored file thereafter rather than re-rendering from data.
@@ -619,7 +619,7 @@ supersede the struck items they name.
 
 ### Settings
 
-24.32. MUST validate the holiday region before accepting it, and SHOULD offer a picker rather than a free-text field.
+24.32. MUST validate the holiday region before accepting it.
 24.33. MUST NOT default the holiday region; ~~Mon–Fri 09:00–17:00 and a 160-hour monthly target are good defaults and stay~~ — the second half is superseded by 27.31 and 27.32. It was wrong in the way 27.33 names: those two are good defaults for somebody, which is not the same as being right for the person in front of you, and the pacing screen spent both of them on confident sentences.
 24.34. MUST treat the ABN as optional; the supplied invoice format does not carry one.
 24.35. MUST NOT default the tax label to "GST", or to anything else.
@@ -628,7 +628,7 @@ supersede the struck items they name.
 
 ### Serving the frontend
 
-24.38. MUST detect that `crypto.subtle` is unavailable — a page served over plain HTTP from anything but localhost is not a secure context — and say so, rather than failing inside the first signature.
+24.38. MUST say that it cannot work when served from an insecure origin, rather than failing later without explanation.
 24.39. ~~SHOULD document that the static frontend needs HTTPS or localhost, and SHOULD serve the development build accordingly.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Pacing, corrected
@@ -640,7 +640,7 @@ through. That is a worse thing to read than the projection it was meant to repla
 
 24.40. MUST keep the ahead/behind figure as it is: projected month total against the monthly target.
 24.41. ~~MUST show the same comparison as two bars instead of as a second number — one for progress through the month's available scheduled hours, one for hours worked against the target — so being ahead or behind is the offset between them and no negative quantity has to be explained.~~ (withdrawn: not a requirement — see "What belongs here")
-24.42. MUST validate the holiday region by asking the holiday source whether it yields any holidays, and MUST reject a region that yields none; 24.32's picker is declined — the field stays free text, because the country list needs the network and the subdivision codes are only discoverable by fetching a year of a country's holidays anyway.
+24.42. MUST reject a holiday region that yields no holidays.
 
 ## 25. Review feedback, second pass
 
@@ -652,7 +652,7 @@ names this.
 25.1. MUST distinguish "not loaded yet" from "empty" everywhere; a list that says "nothing yet" while it is still fetching is telling the user something untrue.
 25.2. MUST render an unavailable or unsupported control as disabled, with a reason, rather than omitting it.
 25.3. MUST NOT accept an invalid value into a field and silently keep or ignore it; either reject it visibly or make the field not editable.
-25.4. MUST confirm destructive or hard-to-reverse actions in a dialog rather than inline in the row.
+25.4. MUST confirm destructive or hard-to-reverse actions.
 25.5. ~~MUST look at the rendered screen before treating a change as finished; a screenshot run that does not throw is not evidence that the screen is right.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Durations
@@ -679,7 +679,7 @@ names this.
 
 ### Audio
 
-25.19. MUST detect that playback was blocked — `play()` rejecting under an autoplay policy — and offer an explicit control to start it, rather than discarding the rejection.
+25.19. MUST detect that playback was blocked and offer an explicit control to start it.
 25.20. MUST make the looping-audio feature available in the mobile presentation, superseding 14.25.
 25.21. MUST apply a volume change to audio that is already playing.
 25.22. MUST apply removing the file, or disabling the feature, to audio that is already playing.
@@ -688,7 +688,7 @@ names this.
 ### Pacing and the timer
 
 25.24. MUST default to Monday–Friday being workdays when no holiday region is configured, rather than treating a weekday as unscheduled.
-25.25. MUST align the pacing bars with each other, so their fills can be compared; differing label widths must not change where a bar starts or ends.
+25.25. MUST present the two pacing readings so they can be compared directly.
 25.26. ~~MUST draw today's progress bar as one segment per entry, each with its own rounded ends, so the total reads as something assembled from parts.~~ (withdrawn: not a requirement — see "What belongs here")
 25.27. MUST allow the start time of a running timer to be edited.
 
@@ -696,7 +696,7 @@ names this.
 
 25.28. MUST NOT allow the duration of a timed entry to be edited directly; it is the interval. A control converts the entry to duration-only, after which the duration is editable.
 25.29. MUST recompute and show a timed entry's duration as its start and end are edited, before saving.
-25.30. MUST use one editor for adding a past entry and for editing an existing one, reached from a control within the list rather than a separate panel above it.
+25.30. MUST use one editor for adding a past entry and for editing an existing one.
 
 ### Access
 
@@ -704,11 +704,11 @@ names this.
 25.32. MUST reduce the pending-request actions to approve and deny; approving grants the role that was asked for, and a wrong request is denied and resubmitted.
 25.33. MUST show a device whose request was approved that it has been, with a primary control to continue into the app.
 25.34. ~~MUST indicate which of the admin screen's tabs is active.~~ (withdrawn: not a requirement — see "What belongs here")
-25.35. MUST confirm revoking access, and changing a device's role, in a dialog.
+25.35. MUST confirm revoking access, and changing a device's role.
 
 ### Notes
 
-25.36. MUST update the recording waveform continuously; a trace that is mostly flat with occasional static is not showing the input.
+25.36. MUST update the recording waveform continuously.
 25.37. ~~MUST present one control for playing a voice note, which shows that it is loading and then plays, rather than a button that becomes a player which must be pressed again.~~ (withdrawn: not a requirement — see "What belongs here")
 25.38. ~~SHOULD stream a voice note into the player rather than downloading it whole before anything can start.~~ (declined: 26.29)
 
@@ -716,18 +716,18 @@ names this.
 
 25.39. MUST play a simple tune, repeating for up to a minute, until the prompt is answered or dismissed, rather than a single short sound.
 25.40. MUST NOT depend on the window having focus to deliver a prompt; its purpose is to reach somebody who is looking at something else.
-25.41. MUST confirm a settings save inline, without moving the content already on screen.
+25.41. MUST confirm a settings save without moving the content already on screen.
 
 ### Settings
 
 25.42. ~~MUST show a saved-but-hidden value as a disabled field containing a mask, rather than a chip elsewhere on the screen saying it is set.~~ (withdrawn: not a requirement — see "What belongs here")
-25.43. MUST explain, when such a field is clicked, that the value is stored and hidden, and offer to clear the group for re-entry. The payment block and the address are separate groups.
+25.43. MUST let somebody learn that a hidden value is stored and replace it without revealing it; replacement applies to a whole group of fields, not to one.
 25.44. MUST NOT reformat a numeric field while it is being typed into; entering "5" must not become "5.00" with the cursor moved.
 
 ### Presentation
 
 25.45. ~~MUST give buttons a hover state that works in dark mode.~~ (withdrawn: not a requirement — see "What belongs here")
-25.46. MUST keep the month label a fixed width, so neither arrow moves as the month changes.
+25.46. MUST NOT move the month arrows as the month changes.
 25.47. ~~MUST set `user-select: none` on buttons.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ## 26. Third review
@@ -739,15 +739,15 @@ read together.
 ### Audio
 
 26.1. ~~MUST make the looping background audio start reliably when a timer starts; 25.19's detection is not enough on its own, because in practice it neither plays nor reports anything.~~ (withdrawn: not a requirement — see "What belongs here")
-26.2. MUST surface a control for unblocking playback wherever the failure is observable, not only on the settings card.
+26.2. MUST surface the control for unblocking playback wherever the failure is observable.
 26.3. MUST NOT stop the loop when the settings screen is opened or left.
-26.4. MUST apply the configured volume to playback in every case, including a loop that was already playing when the volume changed.
+26.4. MUST apply the configured volume to playback already in progress.
 26.5. ~~MUST disable the Preview control while the loop is supposed to be playing.~~ (withdrawn: not a requirement — see "What belongs here")
 26.6. ~~MUST explain, when a disabled Preview is pressed, that audio is believed to be playing, and offer a link to report an issue if it is not.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Prompts
 
-26.7. MUST stop the prompt tune as soon as the prompt is acknowledged — focusing or clicking the dialog counts — rather than only when a note is saved. Refines 25.39.
+26.7. MUST stop the prompt tune as soon as the prompt is acknowledged, not only when a note is saved.
 
 ### Dialogs
 
@@ -777,17 +777,17 @@ read together.
 
 ### The timer screen
 
-26.19. MUST size each segment of today's progress bar exactly, with no per-segment minimum. A minimum overall width for the whole bar is acceptable; a minimum per segment is not, because it makes the total wrong. Refines 25.26.
+26.19. MUST size each segment of today's progress bar exactly, with no per-segment minimum, so the total is not overstated.
 26.20. ~~MUST use the whole screen on the timer page.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Fourth pass — found while checking the third
 
-26.21. MUST save the invoice PDF and say where it went, in a presentation whose engine cannot display one inline. 26.11's iframe is blank in the desktop window: WebKitGTK draws nothing for a PDF from a blob URL or a data URL while reporting `navigator.pdfViewerEnabled` as true, and an HTML blob in the same iframe loads. Refines 26.11.
-26.22. MUST NOT offer a spoken note in a presentation that cannot record one. WebKitGTK has `MediaRecorder`, supports no container at all, and throws `NotSupportedError` from the constructor, so 5.25's "fall back to the browser's default" is the path that fails. Text notes are unaffected, and 5.3 is met by any device that can record.
-26.23. MUST check that a loop which was started actually began, and say so when it did not. `play()` resolving means the request was accepted: on WebKitGTK the element then reports `paused: false` with a context in state `running` and a clock that never moves, which is the shape every audio complaint against this app has had. A refusal offers a button; a stall has nothing to offer and must say the true thing instead.
+26.21. MUST save the invoice PDF and say where it went, where the engine cannot display one inline.
+26.22. MUST NOT offer a spoken note in a presentation that cannot record one.
+26.23. MUST check that a loop which was started actually began, and say so when it did not.
 26.24. MUST send a payment field that was emptied on purpose as empty. An untouched masked group is sent nothing and a group unlocked under 25.43 is sent whole, so a box left blank clears the stored value and 24.31 then names it — rather than the document printing a detail from a bank the person has left.
-26.25. MUST stop a recording at the length the server will accept and say so, keeping what has been recorded. A note travels as base64 inside a request the server bounds, so speech at 5.27's bitrate reaches the bound in about five minutes — and discovering that by being refused after five minutes of talking loses the recording.
-26.26. MUST confirm before a dismissal throws away unsaved work, on every way out of the panel that holds it: a work note still recording, and an invoice with edited lines. `Sheet` already makes backdrop dismissal opt-in for this reason; Escape is the same act.
+26.25. MUST stop a recording at the length the server will accept, say so, and keep what was recorded.
+26.26. MUST confirm before discarding unsaved work, by every route out of the screen holding it.
 26.27. MUST say when a list is showing only part of what there is. A screen holding exactly its limit looks like a screen holding everything, so the notes list and the log viewer each say which part they are showing rather than letting a reader conclude the rest is gone.
 26.28. MUST refuse to proceed when the frontend and the server disagree about the protocol version, saying which of the two is behind. `hello` has carried the number since there was a protocol and nothing read it; the frontend is a static site, so a browser holding yesterday's build against a server updated this morning is the ordinary case.
 26.29. ~~MAY deliver a voice note whole rather than streaming it, declining 25.38. 26.25 bounds a note at what one request carries — about five minutes of speech, some 750 kB — and the server is on the same network as the device asking, so the wait streaming would remove is a fraction of a second. The cost is a second delivery path for audio, with its own ordering and failure cases, for a gain nobody can perceive. If 26.25's bound is ever lifted this should be reconsidered with it.~~ (withdrawn: not a requirement — see "What belongs here")
@@ -798,19 +798,19 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 ### Connection
 
-27.1. MUST discard a previous server's failures once a different address has been entered. Reported as flakiness at startup: the app connects to the address it was given and then reports a disconnection belonging to the server it was pointed at before.
+27.1. MUST discard a previous server's failures once a different address has been entered.
 
 ### Audio
 
-27.2. MUST start the loop again when the setting is re-enabled after being turned off, and after a reload in that state. Stopping and starting the timer recovers it, so nothing is broken but the path back.
-27.3. MUST show the control for unblocking playback whenever the app believes the loop should be playing and it is not, rather than leaving that state silent. Refines 26.2.
+27.2. MUST start the loop again when the setting is re-enabled, and after a reload in that state.
+27.3. MUST show the control for unblocking playback whenever the app believes the loop should be playing and it is not.
 27.4. ~~MUST NOT reach a state where Preview is offered *because* nothing is playing while the timer is running — pressing it starts the loop and then disables itself, which is the app repairing a state it should never have been in. The availability of Preview is evidence the app already knows; 27.3 is what it should do with that.~~ (withdrawn: not a requirement — see "What belongs here")
-27.5. MUST name the microphone a recording will use, when that is known, and offer a control — a cog, no words — to inspect it and choose another. Device-local like everything else in section 16.
+27.5. MUST name the microphone a recording will use, when that is known, and allow another to be chosen.
 
 ### Work notes
 
 27.6. MUST let Save stop a running recording and keep it, rather than refusing with "there is nothing here". An explicit Stop stays.
-27.7. MUST allow another take after one is finished; "Record again" is offered and there is no way to record another.
+27.7. MUST allow another take after one is finished.
 27.8. ~~MUST draw the waveform's bars at a uniform width. They vary by a pixel in places, which reads as a fault in the drawing rather than in the sound.~~ (withdrawn: not a requirement — see "What belongs here")
 27.9. ~~MUST stop the prompt tune on any interaction with the prompt, not only on the parts of it that happen to take focus. Refines 26.7.~~ (withdrawn: not a requirement — see "What belongs here")
 27.10. MUST leave the work-note field empty rather than showing an example of what somebody might write.
@@ -826,13 +826,13 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### Pacing and history
 
 27.16. MUST include the running timer in the pacing figures, not only completed entries.
-27.17. MUST show a holiday distinctly among the days of the month, and MUST list that month's holidays below them.
+27.17. MUST show a holiday distinctly among the days of the month, and list that month's holidays.
 27.18. ~~MUST use two spacings on the history screen and mean something by them: the smaller within a group, the larger between. The month's totals and "Add past time" are one group; each run of consecutive days with work is a group.~~ (withdrawn: not a requirement — see "What belongs here")
 
 ### Editing an entry
 
 27.19. ~~MUST lay out a timed entry's start and end on one line, and MUST use one component for adding and for editing, since the two disagree today.~~ (withdrawn: not a requirement — see "What belongs here")
-27.20. MUST switch between a timed entry and a duration-only one with the same control that chooses the shape when adding, rather than a separate button, and MUST remember the times while the other shape is showing so that switching back restores them. No warning is needed for a change nothing has saved.
+27.20. MUST switch between a timed entry and a duration-only one with the control that chooses the shape when adding, remembering the times so that switching back restores them.
 
 ### Everywhere
 
@@ -840,8 +840,8 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 ### Users
 
-27.22. MUST rename the administration screen to "Users" and show it to every role, stating what a device may not see rather than omitting it silently.
-27.23. MUST offer an invite from that screen: a dialog explaining what it is, and a QR code carrying this app's own address with the server's KPS address in the URL hash, so that somebody scanning it needs nothing else. The app MUST consume that hash and remove it from the URL once the device is in. This is the one place URL state is wanted; it does not reopen 21.19.
+27.22. MUST show the Users screen to every role, stating what a device may not see rather than omitting it silently.
+27.23. MUST offer an invitation carrying the server's address, so that somebody scanning it needs nothing else, and MUST take it out of the URL once the device is in.
 
 ### Installing
 
@@ -850,7 +850,7 @@ From a session driving the built app. Several items are two ends of one fault; t
 ### Permissions
 
 27.25. ~~MUST run the server and the desktop app with the narrowest Deno permissions that work, rather than with `-A`. Read and write MUST name the directories actually used, and every other permission MUST be justified by something the process does.~~ (withdrawn: not a requirement — see "What belongs here")
-27.26. MUST fail visibly rather than silently when a permission is missing: a process that cannot read its data directory should say which permission it needed, since a denied read surfaces as an unrelated error otherwise.
+27.26. MUST say which permission was missing when one is, rather than failing as something unrelated.
 
 ### The dev server
 
@@ -859,8 +859,8 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 ### Settings that are the person's, not the code's
 
-27.29. A settings card MUST hold only what somebody has changed, over whatever the server currently says. Untouched fields MUST follow the server; a save MUST send the edited fields and nothing else, and MUST NOT be offered when there are none. Every card copied the config at mount and sent all of it back, so a screen left open since before a change was a legitimate writer of the values it had been holding, and reverted them without a word.
-27.30. MUST NOT default the work-detail prompt interval. There is no cadence of interruption that is right for a stranger; an unset one MUST read as unset. Prompts MUST NOT be switchable on without one, since a switch that says they are on while none can fire is a lie the code tells on the person's behalf.
+27.29. A settings card MUST hold only what somebody has changed; untouched fields follow the server, and a save sends the edited fields and nothing else.
+27.30. MUST NOT default the work-detail prompt interval, and MUST NOT allow prompts to be switched on without one.
 27.31. MUST NOT default the monthly target. Ahead and behind are statements about a target, so with none set they MUST NOT be shown at all rather than computed against a number nobody chose. What does not depend on a target — the projection, the hours worked — MUST still be shown.
 27.32. MUST NOT default the working week. Where a setting has a truthful neutral value it MAY use it rather than being absent — an empty week schedules nothing and asserts nothing — but the screens MUST distinguish "nothing is set" from "nothing is scheduled" wherever the difference changes what is true, and MUST NOT present a figure derived from a week nobody has declared.
 27.33. A default MUST NOT be a guess about the person using the product. This is the rule 24.33, 24.35, 24.36 and 24.37 each found separately, and 27.30–27.32 found three more of: a value that would be right for somebody is not a value that is right for this somebody, and a field holding one cannot say whether it was chosen or assumed. A blank asks.
@@ -915,7 +915,7 @@ From a session driving the built app. Several items are two ends of one fault; t
 
 27.54. The server's data directory MUST NOT be readable by other accounts on the machine. It holds the payment block that section 20 keeps off the wire, PDFs with those details printed on them, and recordings of somebody's voice; SQLite and `Deno.writeFile` create files at 0666 less the umask. Every write under it MUST go through one writer, so the mode is set in one place and a new write path cannot forget it.
 
-27.55. A failure the server fully understands MUST be refused with a sentence, not left to the generic reply. `main.ts` turns an unanticipated error into "the server could not complete that request" and keeps the detail in the log, which is right for the unanticipated; a note whose recording is missing from disk is not that — it is the documented consequence of restoring a database without the files beside it.
+27.55. A failure the server fully understands MUST be refused with a sentence, not left to the generic reply.
 
 27.56. ~~A blob URL MUST be revoked when whatever made it goes away. It holds its bytes until then, and a leak of them shows nothing: no error, nothing rendered wrong, only a tab that grows — in megabyte steps, since these hold recordings. The note list made one per playback and revoked none, and a work note kept its take's URL after being saved.~~ (withdrawn: not a requirement — see "What belongs here")
 27.57. ~~Disconnecting from a server MUST clear the stored address, not only the screen. 22.6 has always required it; `forget()` set the phase and left the address in device storage, and the boot effect reads that — so one reload put the app back on the server somebody had just left. An exported function nobody calls is a question about the caller that should exist: `clearAddress` had none.~~ (withdrawn: not a requirement — see "What belongs here")

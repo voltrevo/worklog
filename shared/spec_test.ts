@@ -107,9 +107,10 @@ Deno.test({
  * **A ratchet rather than a limit, because the document does not pass yet.** It opened at 387 items
  * with a median of 67 characters, none longer than 172, and not one naming a source file. Eight days
  * later it held 598, of which 52 ran past 250 characters — almost all of them requirements with the
- * story of a bug still attached. Striking the misfiled ones brought that to 27; reducing the rest to
- * their first sentence is what brings it to nought. A ceiling that can only fall lets that happen in
- * its own time and stops the number climbing meanwhile.
+ * story of a bug still attached. Withdrawing the misfiled ones brought that to 27 and reducing the
+ * rest to their first sentence brought it to 14; the remainder are items whose rule genuinely needs
+ * the words. No item names a source file any more, so that ceiling is nought and can only stay
+ * there. A ceiling that can only fall stops the number climbing back.
  *
  * 250 rather than 172, which was the original document's true maximum: the point is to catch a
  * paragraph, not to relitigate items that are merely long. Lower it as the count comes down.
@@ -117,8 +118,8 @@ Deno.test({
  * Neither number is the real rule — a 240-character item prescribing a layout is just as misfiled.
  * These are the parts a test can see.
  */
-const LONG_ITEMS_CEILING = 27;
-const FILE_NAMING_CEILING = 1;
+const LONG_ITEMS_CEILING = 14;
+const FILE_NAMING_CEILING = 0;
 
 function specItems(): { id: string; body: string }[] {
   const text = Deno.readTextFileSync(SPEC);
