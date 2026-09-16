@@ -16,6 +16,8 @@ import { setConfig } from "../server/config.ts";
 import { addEntry } from "../server/work.ts";
 import { createDraft } from "../server/invoices.ts";
 import { datesInMonth, monthOf, shiftMonth, today, weekdayOf } from "../shared/dates.ts";
+import type { Weekday } from "../shared/types.ts";
+import { fixtureSchedule, hoursFor, scheduledHours } from "./seedPlan.ts";
 
 const dataDir = Deno.args[0] ?? "./data";
 await Deno.mkdir(dataDir, { recursive: true });
@@ -54,19 +56,12 @@ setConfig(db, "invoice", {
  * set. It used to come from `DEFAULTS`, which meant every screenshot and every journey check was
  * quietly also asserting that a brand-new server had a working week in it.
  */
-const nineToFive = { start: "09:00", end: "17:00" };
+const schedule = fixtureSchedule(weekdayOf(today()) as Weekday);
+
 setConfig(db, "pacing", {
   monthlyTargetHours: 160,
   region: "AU-NSW",
-  schedule: {
-    1: nineToFive,
-    2: nineToFive,
-    3: nineToFive,
-    4: nineToFive,
-    5: nineToFive,
-    6: null,
-    7: null,
-  },
+  schedule,
 }, now);
 /**
  * 45 minutes is the realistic figure; `WORKLOG_SEED_PROMPT_MS` shortens it for the journey.
@@ -113,14 +108,17 @@ function fill(month: string, upTo?: string): number {
     if (upTo && date > upTo) break;
     const weekday = weekdayOf(date);
     // A weekend is worked about one time in ten, which is what makes the pacing screen interesting.
-    if (weekday >= 6 && random() > 0.1) continue;
-    if (weekday < 6 && random() > 0.92) continue; // the odd day off
+    // Today is always worked, because a timer screen showing a day with nothing on it is not the
+    // screen this fixture exists to photograph.
+    const isToday = date === today();
+    if (!isToday && weekday >= 6 && random() > 0.1) continue;
+    if (!isToday && weekday < 6 && random() > 0.92) continue; // the odd day off
 
     const tag = TAGS[Math.floor(random() * TAGS.length)] ?? TAGS[0]!;
     // Quarter hours, because that is how people actually record time -- and because an invoice
     // full of $1,060.03 lines reads as a bug even when the arithmetic is right.
     const raw = weekday >= 6 ? 2 + random() * 3 : 5 + random() * 4;
-    const hours = Math.round(raw * 4) / 4;
+    const hours = hoursFor(raw, isToday, scheduledHours(schedule, weekday as Weekday));
     // Padded rather than prefixed with "0": hour 10 built `T010:00:00`, which `Date` rejects, and
     // the resulting NaN reached the database as a NULL `created_at`. The schema caught it.
     const startHour = String(9 + Math.floor(random() * 2)).padStart(2, "0");
