@@ -89,19 +89,43 @@ export function usedMic(): string | undefined {
 }
 
 /**
- * 5.26 — mono, and with the processing that makes speech intelligible rather than pretty; plus
- * whichever device was chosen.
+ * 5.26 — mono; plus whichever device was chosen, and none of the browser's voice processing.
  *
  * `exact`, so a choice is a choice. `ideal` would fall back to the default when the chosen
  * microphone has been unplugged and record through it while the screen said otherwise, which is
  * the one outcome worse than an error. The caller handles `OverconstrainedError` by forgetting the
  * choice and saying so.
+ *
+ * **5.32 — the three processing flags are off, and the loop is why.** Reported as background audio
+ * destroying a voice note's quality *while the playback was in headphones and reaching the
+ * microphone not at all*, which is the detail that names the cause. Echo cancellation subtracts a
+ * filtered copy of what this page is **playing** from what the microphone hears: it keys off the
+ * render stream, not off any sound in the room. With headphones there is no echo path to model, so
+ * the adaptive filter converges on nothing and gouges the speech it was meant to be protecting.
+ * The loop is playing during exactly the recordings this feature exists for (14.12), so the one
+ * case AEC ruins is the common one.
+ *
+ * Noise suppression goes for a second reason and automatic gain control for a third, because
+ * turning off only the one that was named would have fixed a third of it: NS is tuned for
+ * *stationary* noise and music is the opposite of stationary, and AGC rides the level against the
+ * loop, which is what makes a recording pump. AGC was never set here at all — it was the browser's
+ * default, which on Chromium is on, so it was a value nobody in this codebase had chosen (27.33).
+ *
+ * **What this costs, stated rather than discovered**: recording on speakers rather than headphones
+ * now captures the loop as well as the voice. That is the case AEC was protecting and it is a real
+ * regression for it — but a note with the loop faintly under it is legible, and 14.18–14.23 mean
+ * the person chose that volume. A destroyed note is not legible at any volume.
+ *
+ * None of this was ever required. 5.26 asks for "low-bitrate mono audio sufficient for intelligible
+ * speech" — `channelCount: 1` and `BITS_PER_SECOND` are what answer it. The processing arrived with
+ * the feature under a comment citing 5.26 and was read as settled ever since.
  */
 export function micConstraints(chosen = chosenMic()): MediaTrackConstraints {
   return {
     channelCount: 1,
-    echoCancellation: true,
-    noiseSuppression: true,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
     ...(chosen ? { deviceId: { exact: chosen } } : {}),
   };
 }

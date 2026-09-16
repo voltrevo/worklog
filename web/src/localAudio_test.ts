@@ -22,7 +22,7 @@
 // production type-check is `tsc` through `web/tsconfig.json`, which has had DOM all along; this
 // line is what lets the same file be reached from the Deno side too.
 
-import { assertAlmostEquals, assertEquals } from "jsr:@std/assert@^1";
+import { assert, assertAlmostEquals, assertEquals } from "jsr:@std/assert@^1";
 import { gainFor } from "./gain.ts";
 import { LoopPlayer, type StoredLoop } from "./localAudio.ts";
 
@@ -530,4 +530,48 @@ Deno.test("27.3 -- a refused start leaves the asking standing, so the interface 
   } finally {
     restore();
   }
+});
+
+/**
+ * 14.15 — the loop restarts for a new session, not for an edit to the running one.
+ *
+ * `LoopPlayback`'s effect was keyed on `[active, startedAt, enabled]`, and `want(true)` calls
+ * `start()` unconditionally while `start()` rewinds to zero (14.15). `startedAt` reads as the
+ * session's identity and is not one — `ActiveTimer` carries no id, so the start time is the
+ * closest thing to it, and it is exactly the field 2.7 lets somebody correct while the timer runs.
+ * Correcting "I started at 9, not 9:15" restarted the music. GitHub #2.
+ *
+ * **A source check, and here is what it does and does not prove.** The element is made with
+ * `new Audio()` and is detached, so nothing outside the page can read its `currentTime` — the
+ * journey reads the settings card and Chromium's media pipeline, and neither reports a rewind on
+ * an element that was already playing. What is checkable is the shape that caused it: a dependency
+ * that no new session is needed to change. That is the regression somebody would actually
+ * reintroduce, because putting `startedAt` back looks like restoring 14.15.
+ */
+Deno.test({
+  name: "14.15 -- the loop effect does not depend on a field an edit can change",
+  async fn() {
+    const src = await Deno.readTextFile(
+      new URL("./screens/LocalAudio.tsx", import.meta.url).pathname,
+    );
+    const at = src.indexOf("p.want(");
+    assert(at >= 0, "the effect that drives playback is still recognisable");
+    const deps = src.slice(at, src.indexOf("]", at) + 1);
+    const tail = deps.slice(deps.lastIndexOf("}, ["));
+
+    assert(
+      !tail.includes("startedAt"),
+      `the playback effect depends on ${tail.trim()} — \`startedAt\` there means any edit to a ` +
+        `running timer rewinds the loop, which is GitHub #2. What 14.15 asks for is the ` +
+        `transition into an active timer, which no edit can produce.`,
+    );
+    assert(
+      tail.includes("active"),
+      "and it still depends on `active`, or nothing starts the loop at all (14.14)",
+    );
+    assert(
+      tail.includes("enabled"),
+      "and on `enabled`, or switching the setting back on does nothing (27.2)",
+    );
+  },
 });

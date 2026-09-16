@@ -133,6 +133,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 5.29. SHOULD preserve original audio if derived text is added later.
 5.30. MUST NOT require transcription in v1.
 5.31. MUST clamp the probability of 5.12 to at most 1, so that a delayed poll cannot exceed certainty.
+5.32. MUST NOT let the background loop of section 14 degrade a voice note recorded while it plays.
 
 ## 6. Monthly pacing
 

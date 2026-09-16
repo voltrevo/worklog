@@ -15,7 +15,7 @@
  * turned out to be real on the desktop too, and the answer to it is a button, not an absence.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useStore } from "../state.tsx";
 import { Dialog } from "./Dialog.tsx";
 
@@ -46,7 +46,6 @@ import {
 export function LoopPlayback() {
   const { snapshot } = useStore();
   const active = snapshot?.timer.active !== undefined;
-  const startedAt = snapshot?.timer.active?.startedAt;
 
   useEffect(() => {
     void loadLoop().then((loop) => player().load(loop)).catch(() => {});
@@ -63,14 +62,45 @@ export function LoopPlayback() {
    */
   const enabled = useSyncExternalStore(subscribeAudio, loadEnabled, () => false);
 
+  /*
+   * 14.15 — a *new session* restarts the loop; the same session edited does not.
+   *
+   * This was keyed on `startedAt`, which reads as session identity and is not: `ActiveTimer` is
+   * `{ startedAt, date, billingTag }` with no id, so the start time is the closest thing to one —
+   * and it is exactly the field 2.7 lets somebody edit while the timer runs. Correcting "I started
+   * at 9, not 9:15" re-ran this effect, `want(true)` calls `start()` unconditionally, and `start()`
+   * rewinds to zero (14.15). So a correction to a number silently restarted the music.
+   *
+   * What 14.15 actually asks for is the *transition*: playback restarts when a new work session
+   * starts. That is `active` going false→true, which no edit to a running timer can produce. A
+   * mount with a timer already running is a transition too (14.14) — `wasActive` starts false, so
+   * arriving into an active timer starts from the beginning, which is what somebody joining a
+   * session in progress should hear.
+   *
+   * `startedAt` stays out of the dependencies deliberately. It would have to come back if the
+   * timer ever gained an identity of its own, and then it would be the identity, not the time.
+   *
+   * **What this does not cover, said rather than left to be found**: if a stop and a start arrive
+   * close enough together to land in one render, `active` never appears false and the loop plays on
+   * across the two sessions instead of restarting. 14.15 is a SHOULD and the audible result is a
+   * loop that did not rewind, where the alternative — keying on a mutable field — silently rewound
+   * it on an edit, which is a MUST-shaped surprise about a correction somebody typed. Giving
+   * `ActiveTimer` an id would answer both, and is the change to make if this ever matters.
+   */
+  const wasActive = useRef(false);
   useEffect(() => {
     const p = player();
     p.setVolume(loadVolume());
-    // 14.15 — keyed on `startedAt`, so a *new* session restarts the loop rather than letting it
-    // run on from wherever the last one left it. What is asked for is the state, not the
-    // transition; the player reconciles, including when the file arrives after this runs.
-    void p.want(active && enabled).finally(notifyAudioChanged);
-  }, [active, startedAt, enabled]);
+    const on = active && enabled;
+    const restarting = on && !wasActive.current;
+    wasActive.current = on;
+    // Already playing this same session, and only the volume needed reapplying.
+    if (on && !restarting) {
+      notifyAudioChanged();
+      return;
+    }
+    void p.want(on).finally(notifyAudioChanged);
+  }, [active, enabled]);
 
   /*
    * 26.2 — the offer to unblock has to be where the failure is noticed.
