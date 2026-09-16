@@ -7,7 +7,10 @@ a static page on GitHub Pages, both dialling the same `<ip>:<port>:<certhash>` a
 <img src="docs/timer-desktop.png" alt="The timer screen: today's total against the day's scheduled hours, and the current session below it" width="420">
 <img src="docs/timer-mobile.png" alt="The same screen in the mobile presentation, with a bottom tab bar" width="200">
 
-[`REQUIREMENTS.md`](REQUIREMENTS.md) is the specification, and it is **append-only**: items keep
+[`REQUIREMENTS.md`](REQUIREMENTS.md) is the specification. It holds what the product must do for
+the person using it, not how it does it — its own **What belongs here** states the two questions
+an item has to pass, and why layout, code organisation and bug stories are not requirements. It
+is **append-only**: items keep
 their numbers forever, superseded ones are struck through rather than edited, and new sections are
 added rather than folded into old ones. That is what makes a reference to `6.10` safe to write down
 and never revisit. Nearly every comment in this codebase cites one.

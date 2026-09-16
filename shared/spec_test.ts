@@ -99,3 +99,71 @@ Deno.test({
     );
   },
 });
+
+/**
+ * A requirement states a need, and the document's own **What belongs here** says what that rules
+ * out. Two parts of it are mechanically checkable, and this is a ratchet over both.
+ *
+ * **A ratchet rather than a limit, because the document does not pass yet.** It opened at 387 items
+ * with a median of 67 characters, none longer than 172, and not one naming a source file. Eight days
+ * later it held 598, of which 52 run past 250 characters and one names a `.ts` file — almost all of
+ * them requirements with the story of a bug still attached. Failing outright would mean either
+ * fixing 52 items in the commit that adds the check, or not adding the check; a ceiling that can
+ * only fall lets the cleanup happen in its own time and stops the number climbing meanwhile.
+ *
+ * 250 rather than 172, which was the original document's true maximum: the point is to catch a
+ * paragraph, not to relitigate items that are merely long. Lower it as the count comes down.
+ *
+ * Neither number is the real rule — a 240-character item prescribing a layout is just as misfiled.
+ * These are the parts a test can see.
+ */
+const LONG_ITEMS_CEILING = 52;
+const FILE_NAMING_CEILING = 1;
+
+function specItems(): { id: string; body: string }[] {
+  const text = Deno.readTextFileSync(SPEC);
+  const out: { id: string; body: string }[] = [];
+  for (const m of text.matchAll(/^(\d+)\.(\d+)\.\s+(.*?)(?=\n\d+\.\d+\.|\n## |(?![\s\S]))/gms)) {
+    const [, section, item, body] = m;
+    if (!section || !item || body === undefined) continue;
+    out.push({ id: `${section}.${item}`, body: body.replace(/\s+/g, " ").trim() });
+  }
+  return out;
+}
+
+Deno.test({
+  name: "no more long items than there were, so the paragraphs can only go down",
+  fn() {
+    const long = specItems().filter((i) => i.body.length > 250);
+    assertEquals(
+      long.length <= LONG_ITEMS_CEILING,
+      true,
+      `${long.length} items run past 250 characters, up from ${LONG_ITEMS_CEILING}: ` +
+        `${
+          long.slice(-5).map((i) => i.id).join(", ")
+        }. An item that long is usually a requirement ` +
+        `with its bug story still attached — keep the first sentence and put the rest in the ` +
+        `commit message and the comment beside the code. See "What belongs here".`,
+    );
+    // And when the cleanup lands, the ceiling comes down with it rather than staying slack.
+    assertEquals(
+      long.length >= LONG_ITEMS_CEILING - 5,
+      true,
+      `${long.length} long items against a ceiling of ${LONG_ITEMS_CEILING} — lower the ceiling to ` +
+        `${long.length} so the ground that was won cannot be given back.`,
+    );
+  },
+});
+
+Deno.test({
+  name: "and no more items naming a source file, which a requirement never needs to",
+  fn() {
+    const naming = specItems().filter((i) => /`[^`]*\.tsx?`/.test(i.body));
+    assertEquals(
+      naming.length <= FILE_NAMING_CEILING,
+      true,
+      `${naming.length} items name a source file: ${naming.map((i) => i.id).join(", ")}. ` +
+        `A requirement outlives the file that satisfies it; name the need instead.`,
+    );
+  },
+});

@@ -1,5 +1,49 @@
 # Worklog — Product Requirements
 
+## What belongs here
+
+A requirement is something the product must do for the person using it. It is written from their
+side of the screen, and it outlives any particular way of satisfying it.
+
+Two questions, and an item has to pass both:
+
+1. **Would this still be a requirement if no bug had ever been filed?** If it exists because
+   something broke, it is a fix. Its home is the commit message and the test that stops it coming
+   back — both permanent, and neither claiming to be a promise to anybody.
+2. **Would it survive the product being redesigned and rewritten in another language?** A need
+   survives a new visual language and a new stack. A tab, a spacing, a disabled control, a mask and
+   a field's widget do not.
+
+So these do not belong, however true they are:
+
+- **How a screen looks.** "Show the bill-to block as a visually set-apart block" is a designer's
+  answer to "the client must be able to see who the invoice is billed to". Write the second.
+- **How the code is organised.** One-definition rules, dead-code rules, complexity bounds. A
+  reviewer or a test enforces those, and `tools/repo_test.ts` already enforces several.
+- **How something is tested.** What a harness must cover is a property of the harness.
+- **A rule that already exists.** A bug proving an existing item was not honoured means the item was
+  right. Fix the code and cite it; do not restate it with a new number.
+- **The incident.** What broke, when, and how it was found is the commit message's job.
+
+**A section is a conceptual category** — an area of the product, like Time tracking or Invoice
+lifecycle. Never a date, a release, or a round of review. An item goes in the section it is *about*,
+however it was found; a new section is earned by the product growing a new area, and by nothing
+else.
+
+**Length is the tell.** The 387 items this document opened with had a median of 67 characters and
+none longer than 172 — nobody ever needed more to state a requirement. An item running to a
+paragraph is usually a requirement with its bug story still attached. Keep the first sentence.
+
+Writing the reasoning down is *right* — it is why this codebase's comments are worth reading. It
+belongs beside the code it explains, where somebody who needs it will find it, rather than under a
+number that hundreds of citations point at.
+
+**This was learned the hard way.** The document opened at 387 items and reached 598 in eight days.
+Everything above is what the additions turned out to be: in a random sample of them, over half
+prescribed layout, code organisation or testing practice, or restated a rule that already existed —
+and 180 of the 211 sat in five sections named "first pass", "Second review", "Third review",
+"Fourth review". None of that broke a rule, because until now every rule here was about form.
+
 ## Conventions
 
 This document is **append-only**. Sections are append-only, and so is the list inside each section.
