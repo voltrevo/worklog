@@ -228,12 +228,13 @@ export function Invoices() {
           busy={busy}
           vanished={invoices !== undefined && !invoices.some((i) => i.id === editing.id)}
           onCancel={() => setEditing(undefined)}
-          onSave={async (lines, number, override, taxRate, paymentOverride) => {
+          onSave={async (lines, number, override, taxRate, paymentOverride, bonusLine) => {
             await act(() =>
               call({
                 t: "invoice-update",
                 id: editing.id,
                 lines,
+                bonusLine,
                 number,
                 config: override,
                 taxRate,

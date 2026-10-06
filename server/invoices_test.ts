@@ -18,6 +18,7 @@ import {
 } from "./invoices.ts";
 
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
+import { bonusLineFor } from "../shared/invoice.ts";
 
 /** Every string field blanked, to see the whole list at once. */
 const BLANK = {
@@ -533,4 +534,42 @@ Deno.test("27.51 -- an invoice is dated where the person is, not where the serve
   // 10.2–10.4 — four weeks on, then forward to a Monday. 2027-04-01 is a Thursday.
   assertEquals(issued.snapshot?.dueDate, "2027-04-05");
   db.close();
+});
+
+/*
+ * 9.9, 9.10 — a bonus set on one invoice appears on it, and the next month's starts from it.
+ *
+ * Every piece of this existed except the one a person uses: the PDF drew a bonus table, the server
+ * carried the previous invoice's amount forward, and nothing on any screen could set one — so the
+ * amount was always nought and the carry-forward carried nought. The seeder wrote a bonus straight
+ * into the config, which is why every screenshot and the sample PDF showed one anyway. This drives
+ * the path the draft editor now takes: an edit carrying a bonus line.
+ */
+Deno.test("9.9, 9.10 -- a bonus set on a draft is on it, and the next month starts from it", () => {
+  const db = fresh();
+  work(db, "2026-09-03", 2);
+  const sept = createDraft(db, { period: "2026-09", preparedOn: "2026-10-01" }, T0);
+  assertEquals(sept.draft.bonusLine, null, "no bonus until somebody sets one");
+
+  const edited = updateDraft(db, sept.id, { bonusLine: bonusLineFor(25_000) }, T0 + 1);
+  assertEquals(edited.draft.bonusLine?.amountMinor, 25_000, "the edit put a bonus on the draft");
+  assertEquals(edited.draft.bonusMinor, 25_000, "and the draft's bonus figure follows it");
+  assertEquals(
+    edited.draft.subtotalMinor,
+    edited.draft.workSubtotalMinor + 25_000,
+    "8.22 — the invoice total includes it and the work total does not",
+  );
+
+  work(db, "2026-10-02", 3);
+  const oct = createDraft(db, { period: "2026-10", preparedOn: "2026-11-01" }, T0 + 2);
+  assertEquals(oct.draft.bonusLine?.amountMinor, 25_000, "9.10 — the next invoice starts from it");
+
+  const cleared = updateDraft(db, oct.id, { bonusLine: null }, T0 + 3);
+  assertEquals(cleared.draft.bonusLine, null, "and it can be taken off again");
+});
+
+Deno.test("9.21 -- a bonus row with no Team/Project configured says General", () => {
+  assertEquals(bonusLineFor(100, "")?.teamProject, "General", "the settings default is empty");
+  assertEquals(bonusLineFor(100, "Retainer")?.teamProject, "Retainer");
+  assertEquals(bonusLineFor(0, "Retainer"), null, "no amount is no row, not a zero row");
 });

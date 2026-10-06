@@ -20,6 +20,7 @@
 
 import { type ReactNode, useRef, useState } from "react";
 import {
+  bonusLineFor,
   type InvoiceConfigOverride,
   OVERRIDABLE,
   PAYMENT_OVERRIDABLE,
@@ -173,12 +174,24 @@ export function InvoiceEditor(
       override: InvoiceConfigOverride,
       taxRate: number,
       paymentOverride: PaymentOverride,
+      bonusLine: InvoiceLine | null,
     ) => Promise<void>;
     onCancel: () => void;
   },
 ) {
   const [rows, setRows] = useState<Draft[]>(invoice.draft.lines.map(toDraft));
   const [number, setNumber] = useState(invoice.draft.number);
+  /*
+   * 9.9 — this invoice's monthly bonus, empty for none.
+   *
+   * The server already took it on creation and carried the previous invoice's forward (9.10), and
+   * the PDF already drew it in its own table (8.19); nothing on any screen could set it, so every
+   * bonus was nought and the carry-forward carried nought for ever. Here because 9.9 says *per
+   * invoice*: a setting would make one month's bonus every month's.
+   */
+  const [bonus, setBonus] = useState(
+    invoice.draft.bonusLine ? (invoice.draft.bonusLine.amountMinor / 100).toFixed(2) : "",
+  );
   const [problem, setProblem] = useState<string>();
   // 25.12. Blank means "whatever the settings say", which is why these start from the stored
   // override and not from the configured values — prefilling them would turn every field into an
@@ -215,7 +228,7 @@ export function InvoiceEditor(
    * worth a dialog.
    */
   const initial = useRef<string>(undefined);
-  const shape = JSON.stringify([rows, number, override, pay, taxRate]);
+  const shape = JSON.stringify([rows, number, override, pay, taxRate, bonus]);
   initial.current ??= shape;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const leave = () => {
@@ -249,6 +262,15 @@ export function InvoiceEditor(
       return setProblem("a tax rate is a percentage under 100");
     }
 
+    const bonusAmount = bonus.trim() === "" ? 0 : parseNumber(bonus);
+    if (bonusAmount === undefined) return setProblem("the bonus is not a number");
+    if (bonusAmount < 0) return setProblem("a bonus cannot be negative");
+    // Keeps the row's own Team/Project if it had one, so an edit to the amount does not move it.
+    const bonusLine = bonusLineFor(
+      Math.round(bonusAmount * 100),
+      invoice.draft.bonusLine?.teamProject ?? config?.bonusTeamProject,
+    );
+
     const lines: InvoiceLine[] = [];
     for (const row of rows) {
       const result = fromDraft(row);
@@ -258,7 +280,7 @@ export function InvoiceEditor(
     setProblem(undefined);
     // Sent whole, blanks included: an emptied box means "go back to following the settings", and
     // omitting it would mean "leave the override as it was", which is the opposite.
-    await onSave(lines, number.trim(), override, percent / 100, pay);
+    await onSave(lines, number.trim(), override, percent / 100, pay, bonusLine);
   };
 
   /*
@@ -424,6 +446,19 @@ export function InvoiceEditor(
               : `Work rows total ${money(total, currency)}`}
           </span>
         </div>
+
+        <label className="field" style={{ maxWidth: 260 }}>
+          Monthly bonus ({currency})
+          <input
+            inputMode="decimal"
+            placeholder="none"
+            value={bonus}
+            onChange={(e) => setBonus(e.target.value)}
+          />
+          <span className="faint">
+            Its own table above the work. Next month's invoice starts from this amount.
+          </span>
+        </label>
 
         <div className="stack" style={{ gap: 10 }}>
           <button

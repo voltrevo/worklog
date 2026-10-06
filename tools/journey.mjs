@@ -1200,6 +1200,39 @@ async function main() {
   );
 
   /*
+   * 9.9 — a bonus can be set on an invoice from the screen.
+   *
+   * It could not be. The PDF drew a bonus table and the server carried the amount forward, and no
+   * screen had a field for it — so a real install never produced a bonus row, while every
+   * screenshot showed one because the seeder writes the amount straight into the config. That is
+   * this run's fixture too, so the draft opens already holding the seeded bonus, and the check is
+   * that the editor shows it and that a changed one survives the round trip.
+   */
+  await draftRow.getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.locator(".linetable").waitFor({ timeout: 15_000 });
+  const bonusBox = desktop.page.getByLabel(/^Monthly bonus/);
+  check(
+    "9.9 — the draft editor shows the invoice's bonus",
+    (await bonusBox.inputValue()) === "250.00",
+    `the field read ${JSON.stringify(await bonusBox.inputValue())}`,
+  );
+  await bonusBox.fill("312.50");
+  await desktop.page.getByRole("button", { name: "Save the draft" }).click();
+  await until(
+    "bonus saved",
+    desktop.page,
+    async (p) => (await p.locator(".linetable").count()) === 0,
+  );
+  await draftRow.getByRole("button", { name: "Edit lines" }).click();
+  await desktop.page.locator(".linetable").waitFor({ timeout: 15_000 });
+  check(
+    "and a changed bonus is what the invoice holds after saving",
+    (await desktop.page.getByLabel(/^Monthly bonus/).inputValue()) === "312.50",
+    `reopened with ${JSON.stringify(await desktop.page.getByLabel(/^Monthly bonus/).inputValue())}`,
+  );
+  await desktop.page.getByRole("button", { name: "Discard these changes" }).click();
+
+  /*
    * 27.40 — and the same question as 27.38, of the editor that holds invoice lines.
    *
    * It lived inside its row and a row is keyed by invoice id, so deleting the invoice on another

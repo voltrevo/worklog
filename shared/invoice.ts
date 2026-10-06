@@ -276,14 +276,25 @@ export function buildLines(opts: BuildOptions): InvoiceLine[] {
  * day, and putting a made-up date in it would make it sort and read like work.
  */
 export function buildBonusLine(opts: BuildOptions): InvoiceLine | null {
-  if (opts.bonusMinor === 0) return null;
+  return bonusLineFor(opts.bonusMinor, opts.bonusTeamProject);
+}
+
+/**
+ * 9.9, 9.21 — the bonus row for an amount, or `null` for none.
+ *
+ * Shared by the server, which builds it when a draft is made, and by the draft editor, which builds
+ * it when somebody sets the amount — so the two cannot disagree about what a bonus row looks like.
+ * An empty Team/Project falls back to "General" as 9.21 says; the settings default is `""`.
+ */
+export function bonusLineFor(amountMinor: number, teamProject?: string): InvoiceLine | null {
+  if (amountMinor === 0) return null;
   return {
     date: null,
     description: "Monthly bonus",
-    teamProject: opts.bonusTeamProject ?? "General",
+    teamProject: teamProject || "General",
     hours: null,
     rateMinor: null,
-    amountMinor: opts.bonusMinor,
+    amountMinor,
   };
 }
 
