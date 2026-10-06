@@ -190,13 +190,23 @@ export const MIGRATIONS: readonly Migration[] = [
     id: 4,
     name: "draft-generated-settings",
     sql: `
-      -- 11.29. The settings a draft's document was first generated with, so that viewing it again
-      -- serves the same document rather than re-rendering it against whatever the settings say
-      -- now. NULL until the draft is first generated, and set back to NULL when the draft itself
-      -- is edited, which is the one thing allowed to change it. Its own column for the same reason
+      -- 11.30. The settings an invoice was made with, so regenerating it never picks up whatever
+      -- the settings say now. Captured when the invoice is created; NULL only for one made before
+      -- this column existed, which captures them on its first view. Its own column for the same reason
       -- as \`config_json\`: it holds the payment block, and nothing that builds a wire object
       -- names it.
       ALTER TABLE invoice ADD COLUMN draft_settings_json TEXT;
+    `,
+  },
+  {
+    id: 5,
+    name: "invoice-generator-version",
+    sql: `
+      -- 11.31. Which version of the invoice generator made this invoice. An invoice is regenerated
+      -- from what was captured when it was made, so a later change to *how* invoices are generated
+      -- would silently change one nobody edited. Existing rows were all made by version 1, which
+      -- is the only version there has been.
+      ALTER TABLE invoice ADD COLUMN generator_version INTEGER NOT NULL DEFAULT 1;
     `,
   },
 ];

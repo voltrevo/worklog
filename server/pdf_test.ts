@@ -10,7 +10,7 @@
 
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { buildDraft } from "@worklog/shared/invoice";
+import { buildDraft, INVOICE_GENERATOR_VERSION } from "@worklog/shared/invoice";
 import { DEFAULTS, type InvoiceConfig } from "./config.ts";
 import { allText, formatDate, invoiceContent, money, periodRange } from "./invoiceContent.ts";
 import { renderInvoicePdf, renderInvoicePdfChecked, typedLines } from "./pdf.ts";
@@ -347,5 +347,37 @@ Deno.test("a render is deterministic, a second apart", async () => {
     new TextDecoder("latin1").decode(first) === new TextDecoder("latin1").decode(second),
     true,
     "two renders of one draft differ",
+  );
+});
+
+/*
+ * 11.31 — what this version of the invoice generator renders, so a change to it cannot go unseen.
+ *
+ * An invoice is regenerated from what was captured when it was made, and that only reproduces it
+ * while the generator stays the same. A change to the layout, the arithmetic or the wording would
+ * silently alter every existing invoice the next time one is regenerated — which is the edit-free
+ * change 11.30 forbids. So the generator's output for a fixed invoice is recorded here.
+ *
+ * When this fails, the generator's output changed, and somebody has to decide which of two things
+ * that is. If invoices already made should keep looking as they did — a breaking change — bump
+ * `INVOICE_GENERATOR_VERSION`: older invoices then stay viewable but can no longer be edited, and
+ * new ones use the new generator. If the change is deliberately meant to reach existing invoices,
+ * record the new hash. Either way it is a choice, not something that happens by accident.
+ */
+const GENERATED: Record<number, string> = {
+  1: "cc18a162ee9f97e0c7a3f7542ee0e419b6c5022c1f74bbdefadc435d82b246df",
+};
+
+Deno.test("11.31 -- the invoice generator renders what its version recorded", async () => {
+  const bytes = await renderInvoicePdf(draftWith(3), CONFIG);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
+  const hex = [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
+  assertEquals(
+    hex,
+    GENERATED[INVOICE_GENERATOR_VERSION],
+    `the invoice generator's output changed under version ${INVOICE_GENERATOR_VERSION}. Existing ` +
+      "invoices would regenerate differently. Bump INVOICE_GENERATOR_VERSION if they must keep " +
+      "their old form (they become read-only), or record this hash if the change is meant to " +
+      "reach them. See the comment above this test.",
   );
 });

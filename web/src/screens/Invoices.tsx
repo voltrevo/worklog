@@ -23,6 +23,7 @@ import { monthOf, shiftMonth, today } from "@worklog/shared/dates";
 import { bytesFromBase64, saveFile } from "../download.ts";
 import { isDesktop } from "../desktop.ts";
 import { invoiceNeeds, needsSentence } from "../invoiceNeeds.ts";
+import { INVOICE_GENERATOR_VERSION } from "@worklog/shared/invoice";
 import { useNav, usePresentation } from "../App.tsx";
 import { documentFor } from "@worklog/shared/invoice";
 import type {
@@ -81,6 +82,18 @@ export function Invoices() {
    * deletion there is no id to look up.
    */
   const [editing, setEditing] = useState<StoredInvoiceWire>();
+  /*
+   * 11.30 — what the settings now say differently from the ones the open invoice was made with.
+   * Asked when the editor opens, because it is about that invoice, and names only.
+   */
+  const [drift, setDrift] = useState<string[]>();
+  useEffect(() => {
+    setDrift(undefined);
+    if (!editing) return;
+    void call({ t: "invoice-settings-drift", id: editing.id })
+      .then((r) => setDrift((r as { fields: string[] }).fields))
+      .catch(() => setDrift([]));
+  }, [editing?.id]);
   const canWrite = useCanWrite();
 
   const load = async () => {
@@ -225,16 +238,26 @@ export function Invoices() {
         <InvoiceEditor
           invoice={editing}
           config={config}
+          drift={drift}
           busy={busy}
           vanished={invoices !== undefined && !invoices.some((i) => i.id === editing.id)}
           onCancel={() => setEditing(undefined)}
-          onSave={async (lines, number, override, taxRate, paymentOverride, bonusLine) => {
+          onSave={async (
+            lines,
+            number,
+            override,
+            taxRate,
+            paymentOverride,
+            bonusLine,
+            invoiceDate,
+          ) => {
             await act(() =>
               call({
                 t: "invoice-update",
                 id: editing.id,
                 lines,
                 bonusLine,
+                invoiceDate,
                 number,
                 config: override,
                 taxRate,
@@ -397,10 +420,27 @@ function InvoiceRow(
         </button>
 
         {canWrite && invoice.status === "draft" && (
-          /* 25.11 — the draft's own rows, not the work's. */
-          <button className="btn" type="button" onClick={onEdit}>
-            Edit lines
-          </button>
+          /*
+           * 25.11 — the draft's own rows, not the work's. 11.31 — and not at all for an invoice
+           * an older generator made: an edit regenerates it, and this generator would not
+           * regenerate it as the one that made it did. Disabled with the reason (25.2).
+           */
+          invoice.generatorVersion < INVOICE_GENERATOR_VERSION
+            ? (
+              <button
+                className="btn"
+                type="button"
+                disabled
+                title="Made by an older version of the invoice generator, so editing it would change more than the edit. It can still be viewed and issued; make a new invoice to change it."
+              >
+                Edit lines
+              </button>
+            )
+            : (
+              <button className="btn" type="button" onClick={onEdit}>
+                Edit lines
+              </button>
+            )
         )}
         {canWrite && (
           <>

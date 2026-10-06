@@ -549,16 +549,16 @@ Deno.test({
 });
 
 Deno.test({
-  name: "11.29 -- a draft's document is kept from its first generation until the draft is edited",
+  name: "11.30 -- an invoice regenerates as it was made, changing only what was edited on it",
   async fn() {
     /*
-     * A draft was re-rendered on every view against the settings as they stood at that moment, so
-     * one nobody had touched changed its letterhead whenever the settings did, and what somebody
-     * looked at was not necessarily what they would issue.
+     * Everything that goes into an invoice is captured when it is made — its lines, its dates and
+     * the settings — so regenerating it reproduces it, and settings changed later never reach it.
      *
-     * Renders are deterministic, so a second view returning the same bytes would prove nothing on
-     * its own — a fresh render would match too. What proves the file was kept is the settings
-     * changing in between: a re-render would then differ.
+     * Renders are deterministic, so "the same bytes again" alone cannot tell a stored file from a
+     * fresh render; the file on disk is altered to tell them apart. And the strongest form of the
+     * rule is the no-op edit: it throws the stored file away, and the regenerated one must be
+     * byte-for-byte the invoice that was made.
      */
     const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "draftdoc-" });
     await Deno.mkdir(`${dir}/notes`, { recursive: true });
@@ -583,67 +583,58 @@ Deno.test({
         .pdfBase64;
     const rename = (fromName: string) =>
       setConfig(ctx.db, "invoice", { ...COMPLETE_INVOICE_CONFIG, fromName }, NOW);
+    const drift = async () =>
+      ((await call(ctx, admin, { t: "invoice-settings-drift", id: draft.id })) as {
+        fields: string[];
+      }).fields;
 
+    assertEquals(
+      draftSettingsFor(ctx.db, draft.id)?.fromName,
+      COMPLETE_INVOICE_CONFIG.fromName,
+      "the settings were captured when it was made, before anybody viewed it",
+    );
+    rename("Renamed Before Viewing");
     const first = await pdf();
     assertEquals(
       draftSettingsFor(ctx.db, draft.id)?.fromName,
       COMPLETE_INVOICE_CONFIG.fromName,
-      "the first view kept the settings it was generated with",
+      "so a change made before the first view does not reach it either",
     );
+    assertEquals(await drift(), ["fromName"], "and the editor can say what differs");
 
-    rename("Renamed Ltd");
-    assertEquals(await pdf(), first, "a settings change does not reach a draft already generated");
-
-    /*
-     * And it is *stored*, not regenerated. Stable bytes alone cannot tell the two apart: a render
-     * from the kept settings is deterministic and matches. So the file on disk is altered, and the
-     * next view must hand back the altered bytes — which only reading the file can do.
-     */
-    const path = draft.id && getInvoice(ctx.db, draft.id)?.pdfPath;
+    // Stored, not regenerated: alter the file, and the next view must hand back the alteration.
+    const path = getInvoice(ctx.db, draft.id)?.pdfPath;
     const marked = new TextEncoder().encode("%PDF-marked-by-the-test");
     await Deno.writeFile(`${dir}/${path}`, marked);
-    assertEquals(
-      fromBase64(await pdf()),
-      marked,
-      "the second view served the file the first one stored, rather than rendering again",
-    );
+    assertEquals(fromBase64(await pdf()), marked, "the second view served the stored file");
 
-    // An edit that changes no line still counts: it is the person deciding to look again.
+    // A no-op edit throws the stored file away; what regenerates is exactly the invoice it was.
     await call(ctx, admin, { t: "invoice-update", id: draft.id, number: draft.number });
-    const afterEdit = await pdf();
-    assertNotEquals(afterEdit, first, "editing the draft lets it pick up today's settings");
-    assertEquals(draftSettingsFor(ctx.db, draft.id)?.fromName, "Renamed Ltd");
+    assertEquals(await pdf(), first, "regenerating reproduces the invoice, byte for byte");
 
-    // What is issued is what was looked at, not whatever the settings say by then.
-    rename("A Third Name");
+    // A real edit changes what was edited, and the settings still do not come along with it.
+    await call(ctx, admin, { t: "invoice-update", id: draft.id, invoiceDate: "2026-10-02" });
+    assertNotEquals(await pdf(), first, "the edited date is on the document");
+    assertEquals(draftSettingsFor(ctx.db, draft.id)?.fromName, COMPLETE_INVOICE_CONFIG.fromName);
+
+    // Issued as viewed: the captured settings, and the date as edited rather than as issued.
     await call(ctx, admin, {
       t: "invoice-issue",
       id: draft.id,
       clock: { today: TODAY, nowMinutes: 0 },
     });
-    assertEquals(
-      frozenConfigFor(ctx.db, draft.id)?.fromName,
-      "Renamed Ltd",
-      "issued under the settings the draft was generated with",
-    );
+    assertEquals(frozenConfigFor(ctx.db, draft.id)?.fromName, COMPLETE_INVOICE_CONFIG.fromName);
+    assertEquals(getInvoice(ctx.db, draft.id)?.snapshot?.invoiceDate, "2026-10-02");
 
-    // Reverted, it is a draft again, and it keeps the document that was issued until it is edited.
+    // Reverted, it keeps the document that was issued.
     const issued = await pdf();
     await call(ctx, admin, { t: "invoice-revert-issue", id: draft.id });
     assertEquals(await pdf(), issued, "a reverted draft serves the document that was issued");
-    assertEquals(
-      draftSettingsFor(ctx.db, draft.id)?.fromName,
-      "Renamed Ltd",
-      "and keeps the settings that document was made with, not today's",
-    );
-    await call(ctx, admin, { t: "invoice-update", id: draft.id, number: draft.number });
-    assertNotEquals(await pdf(), issued, "until it is edited, which regenerates it");
-    assertEquals(draftSettingsFor(ctx.db, draft.id)?.fromName, "A Third Name");
     assertEquals(getInvoice(ctx.db, draft.id)?.status, "draft");
   },
 });
 
-Deno.test("11.29 -- a draft issued without being viewed still keeps the issued file on revert", async () => {
+Deno.test("11.30 -- a draft issued without being viewed still keeps the issued file on revert", async () => {
   // The other branch of the revert's `COALESCE`: nothing was kept as a draft, so the settings the
   // issued file was made with are the ones it inherits.
   const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "draftdoc2-" });

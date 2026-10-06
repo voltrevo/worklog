@@ -21,6 +21,7 @@
 import { type ReactNode, useRef, useState } from "react";
 import {
   bonusLineFor,
+  dueDateFor,
   type InvoiceConfigOverride,
   OVERRIDABLE,
   PAYMENT_OVERRIDABLE,
@@ -29,7 +30,7 @@ import {
 } from "@worklog/shared/invoice";
 import type { InvoiceLine } from "@worklog/shared/invoice";
 import type { PublicInvoiceConfig, StoredInvoiceWire } from "@worklog/shared/protocol";
-import { money, parseNumber } from "../format.ts";
+import { money, parseNumber, shortDate } from "../format.ts";
 import { Sheet } from "./Sheet.tsx";
 import { Dialog } from "./Dialog.tsx";
 
@@ -46,6 +47,19 @@ const PAYMENT_LABELS: Record<keyof PaymentOverride, string> = {
   payBsb: "BSB",
   payAccountNumber: "Account number",
   payBank: "Bank",
+};
+
+/** 11.30 — names for the settings the drift notice can mention, beyond the ones a draft overrides. */
+const SETTING_LABELS: Record<string, string> = {
+  payment: "Payment details",
+  fromPhone: "Your phone",
+  currency: "Currency",
+  rateMinor: "Hourly rate",
+  taxRate: "Tax rate",
+  teamProject: "Team / Project",
+  bonusMinor: "Monthly bonus",
+  bonusTeamProject: "Team / Project for the bonus row",
+  payMethod: "Payment method",
 };
 
 const OVERRIDE_LABELS: Record<keyof InvoiceConfigOverride, string> = {
@@ -157,8 +171,10 @@ function placeholderFor(
 }
 
 export function InvoiceEditor(
-  { invoice, busy, config, vanished, onSave, onCancel }: {
+  { invoice, busy, config, drift, vanished, onSave, onCancel }: {
     invoice: StoredInvoiceWire;
+    /** 11.30 — settings that changed since this invoice was made; `undefined` while asking. */
+    drift?: string[];
     busy: boolean;
     config: PublicInvoiceConfig | undefined;
     /**
@@ -175,6 +191,7 @@ export function InvoiceEditor(
       taxRate: number,
       paymentOverride: PaymentOverride,
       bonusLine: InvoiceLine | null,
+      invoiceDate: string,
     ) => Promise<void>;
     onCancel: () => void;
   },
@@ -189,6 +206,9 @@ export function InvoiceEditor(
    * bonus was nought and the carry-forward carried nought for ever. Here because 9.9 says *per
    * invoice*: a setting would make one month's bonus every month's.
    */
+  // 10.9 — the invoice date is this invoice's to set; the due date follows it by 10.2-10.4.
+  const [invoiceDate, setInvoiceDate] = useState(invoice.draft.invoiceDate);
+  const dateReads = /^\d{4}-\d{2}-\d{2}$/.test(invoiceDate);
   const [bonus, setBonus] = useState(
     invoice.draft.bonusLine ? (invoice.draft.bonusLine.amountMinor / 100).toFixed(2) : "",
   );
@@ -228,7 +248,7 @@ export function InvoiceEditor(
    * worth a dialog.
    */
   const initial = useRef<string>(undefined);
-  const shape = JSON.stringify([rows, number, override, pay, taxRate, bonus]);
+  const shape = JSON.stringify([rows, number, override, pay, taxRate, bonus, invoiceDate]);
   initial.current ??= shape;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const leave = () => {
@@ -262,6 +282,7 @@ export function InvoiceEditor(
       return setProblem("a tax rate is a percentage under 100");
     }
 
+    if (!dateReads) return setProblem("the invoice date is not a date");
     const bonusAmount = bonus.trim() === "" ? 0 : parseNumber(bonus);
     if (bonusAmount === undefined) return setProblem("the bonus is not a number");
     if (bonusAmount < 0) return setProblem("a bonus cannot be negative");
@@ -280,7 +301,7 @@ export function InvoiceEditor(
     setProblem(undefined);
     // Sent whole, blanks included: an emptied box means "go back to following the settings", and
     // omitting it would mean "leave the override as it was", which is the opposite.
-    await onSave(lines, number.trim(), override, percent / 100, pay, bonusLine);
+    await onSave(lines, number.trim(), override, percent / 100, pay, bonusLine, invoiceDate);
   };
 
   /*
@@ -308,14 +329,50 @@ export function InvoiceEditor(
       <div className="card stack editor" style={{ gap: 14 }}>
         <div className="row between wrap">
           <h2 style={{ margin: 0 }}>Edit this draft</h2>
-          <label className="field" style={{ minWidth: 190 }}>
-            Invoice number
-            <input
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-            />
-          </label>
+          <div className="row wrap" style={{ gap: 12 }}>
+            <label className="field" style={{ minWidth: 190 }}>
+              Invoice number
+              <input
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              Invoice date
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+              />
+              <span className="faint">
+                {dateReads
+                  ? `Due ${shortDate(dueDateFor(invoiceDate))}`
+                  : "Due date follows the invoice date"}
+              </span>
+            </label>
+          </div>
         </div>
+        {
+          /*
+           * 11.30 — the settings it was made with are part of it, and changing Settings does not
+           * reach it. Said always, briefly, because the alternative is somebody fixing their
+           * address and wondering why this invoice still has the old one; and when something has
+           * changed, said by name.
+           */
+        }
+        <p className="notice" style={{ margin: 0 }}>
+          This invoice keeps the settings it was made with; later changes in Settings don't reach
+          it. {drift && drift.length > 0 && (
+            <>
+              Changed in Settings since:{" "}
+              <strong>
+                {drift.map((k) =>
+                  OVERRIDE_LABELS[k as keyof InvoiceConfigOverride] ?? SETTING_LABELS[k] ?? k
+                ).join(", ")}
+              </strong>. To change one on this invoice, use "Settings for this invoice only" below.
+            </>
+          )}
+        </p>
         <p className="muted" style={{ margin: 0 }}>
           These lines were copied from the work in {invoice.period}{" "}
           when the draft was made. Changing them here changes this invoice and nothing else — the

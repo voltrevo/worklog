@@ -90,6 +90,7 @@ import {
   markPaid,
   paymentOverrideFor,
   revertIssue,
+  settingsDriftFor,
   type StoredInvoice,
   unmarkPaid,
   updateDraft,
@@ -687,8 +688,10 @@ export async function handle(
 
     case "invoice-issue": {
       requireInvoiceConfig(db);
-      // 27.51 — the day the person issuing it is on, not the day the server is on.
-      const issued = issue(db, req.id, now, req.clock.today);
+      // `req.clock` is no longer read: the dates were captured when the invoice was made and are
+      // edited on the draft (10.9, 11.30). A frontend still sends it, because a newer frontend can
+      // be talking to an older server, and that one still stamps the date at issuance.
+      const issued = issue(db, req.id, now);
 
       /*
        * 24.30 — freeze the *document*, not only the data.
@@ -737,14 +740,23 @@ export async function handle(
     case "invoice-delete": {
       const gone = getInvoice(db, req.id);
       const { pdfPath } = deleteInvoice(db, req.id);
-      if (pdfPath && ctx.dataDir) {
-        await Deno.remove(`${ctx.dataDir}/${pdfPath}`).catch(() => {
+      // Its deterministic path as well as the recorded one: an edit forgets the path (11.30) while
+      // the file is still there to be overwritten, so a draft edited and never viewed again would
+      // otherwise leave a document with the payment block on it behind.
+      const file = pdfPath ?? pdfPathFor(req.id);
+      if (ctx.dataDir) {
+        await Deno.remove(`${ctx.dataDir}/${file}`).catch(() => {
           // Already gone. The row is what mattered and it is deleted.
         });
       }
       ctx.log("warn", "invoice", "deleted", { number: gone?.number ?? req.id });
       broadcast(ctx, { e: "changed", area: "invoices" });
       return { deleted: true };
+    }
+
+    case "invoice-settings-drift": {
+      if (!getInvoice(db, req.id)) throw new Refused("no-such-invoice", `no invoice ${req.id}`);
+      return { fields: settingsDriftFor(db, req.id) };
     }
 
     case "invoice-mark-paid": {
@@ -781,11 +793,11 @@ export async function handle(
       // 24.30 — an issued invoice has a file, and the file is the invoice. Read it back rather
       // than re-rendering: re-rendering is how a frozen document quietly changes.
       /*
-       * 11.29 — and so does a draft, once it has been generated. It used to be re-rendered on
+       * 11.30 — and so does a draft, once it has been generated. It used to be re-rendered on
        * every view against the settings as they stood at that moment, so a draft nobody had
-       * touched changed its letterhead whenever the settings did, and what was looked at was not
-       * necessarily what would be issued. Now the first view keeps the file and the settings it
-       * was made with, and only editing the draft lets it change.
+       * touched changed its letterhead whenever the settings did. Now the settings are captured
+       * when it is made, the first view stores the file, and an edit discards the file so the
+       * next view regenerates it — from the same captured data plus the edit, and nothing else.
        */
       const kept = invoice.status === "draft" ? draftSettingsFor(db, invoice.id) : undefined;
       const frozen = invoice.pdfPath && (invoice.status !== "draft" || kept)

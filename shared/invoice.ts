@@ -190,6 +190,17 @@ export function defaultInvoiceNumber(period: string): string {
  * four weeks from October. That is what 10.1 says, and it is the reading that matches how the date
  * is used — it is when payment is expected, counted from when the bill went out.
  */
+/**
+ * 11.31 — the version of the invoice generator: everything between captured data and the PDF.
+ *
+ * Bump it for any change after which regenerating an existing invoice would not produce the
+ * invoice it was. An invoice made by an older version can still be viewed — its stored file is
+ * served — but not edited, because an edit regenerates it and the result would differ in ways the
+ * person did not ask for. `server/pdf_test.ts` records what this version renders and fails when
+ * the output changes, which is the moment to decide whether to bump it.
+ */
+export const INVOICE_GENERATOR_VERSION = 1;
+
 export function dueDateFor(preparedOn: DateString): DateString {
   return weeksThenMonday(preparedOn, 4);
 }

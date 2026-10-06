@@ -468,6 +468,7 @@ Deno.test("every request type has a role, so a new one cannot be added by accide
     "invoice-revert-issue",
     "invoice-delete",
     "invoice-pdf",
+    "invoice-settings-drift",
     "config-get",
     "config-set",
     "logs",

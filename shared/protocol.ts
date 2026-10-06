@@ -180,6 +180,12 @@ export type Request =
   | { t: "invoice-revert-issue"; id: string }
   /** 24.28 — an invoice is deletable, along with any PDF it froze. */
   | { t: "invoice-delete"; id: string }
+  /**
+   * 11.30 — which settings now differ from the ones this invoice was made with, so the editor can
+   * say why it does not show them. Names only: the payment block never crosses the wire, so its
+   * fields are reported as the one group `payment`.
+   */
+  | { t: "invoice-settings-drift"; id: string }
   | { t: "invoice-pdf"; id: string }
   | { t: "config-get" }
   | {
@@ -327,6 +333,8 @@ export interface InvoiceEdit {
    */
   lines?: InvoiceLine[];
   bonusLine?: InvoiceLine | null;
+  /** 10.9 — the invoice date; the due date follows it. */
+  invoiceDate?: DateString;
   number?: string;
   /** 25.12 — this draft's exceptions to the settings. Sent whole; `{}` clears them. */
   config?: InvoiceConfigOverride;
@@ -391,6 +399,11 @@ export interface StoredInvoiceWire {
    * values live in a column no wire object names; this is the flag a masked field needs.
    */
   paymentOverridden?: boolean;
+  /**
+   * 11.31 — which invoice generator made it. Below `INVOICE_GENERATOR_VERSION` it can be viewed
+   * and not edited, because an edit would regenerate it differently from the one that was made.
+   */
+  generatorVersion: number;
 }
 
 /**
@@ -506,6 +519,7 @@ export const REQUIRED_ROLE: Partial<Record<Request["t"], AccessRole>> = {
   "subscribe": "read",
   "client-error": "read",
   "invoice-pdf": "read",
+  "invoice-settings-drift": "read",
 
   "timer-start": "write",
   "timer-stop": "write",

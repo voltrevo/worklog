@@ -10,7 +10,7 @@
  * past. Neither is redundant — one produces a sentence, the other produces a guarantee.
  */
 
-import type { DateString, Instant, InvoiceStatus } from "@worklog/shared/types";
+import type { Instant, InvoiceStatus } from "@worklog/shared/types";
 import type { InvoiceEdit } from "@worklog/shared/protocol";
 import {
   appliedOverride,
@@ -19,6 +19,7 @@ import {
   canIssue,
   defaultInvoiceNumber,
   dueDateFor,
+  INVOICE_GENERATOR_VERSION,
   type InvoiceDraft,
   type InvoiceRecord,
   type InvoiceSnapshot,
@@ -28,7 +29,7 @@ import {
 } from "@worklog/shared/invoice";
 import { today } from "@worklog/shared/dates";
 import { type Db, transact } from "./db.ts";
-import { getConfig, type InvoiceConfig } from "./config.ts";
+import { getConfig, type InvoiceConfig, SENSITIVE_INVOICE_FIELDS } from "./config.ts";
 import { entriesInMonth, Refused } from "./work.ts";
 
 interface Row {
@@ -46,11 +47,17 @@ interface Row {
    * string past. The values have their own reader, which nothing serialises.
    */
   override_secrets_json: string | null;
+  generator_version: number;
 }
 
 function toRecord(
   row: Row,
-): InvoiceRecord & { draft: InvoiceDraft; pdfPath?: string; paymentOverridden: boolean } {
+): InvoiceRecord & {
+  draft: InvoiceDraft;
+  pdfPath?: string;
+  paymentOverridden: boolean;
+  generatorVersion: number;
+} {
   return {
     id: row.id,
     period: row.period,
@@ -68,6 +75,7 @@ function toRecord(
      * point that reads this column into something a handler returns.
      */
     paymentOverridden: row.override_secrets_json !== null,
+    generatorVersion: Number(row.generator_version),
   };
 }
 
@@ -101,12 +109,12 @@ export function frozenConfigFor(db: Db, id: string): InvoiceConfig | undefined {
 }
 
 /**
- * 11.29 — the settings a draft's document was first generated with, or `undefined` if it has not
- * been generated since it was made or last edited.
+ * 11.30 — the settings an invoice was made with, captured when it was created.
  *
- * While this is set, the file at `pdf_path` is that draft's document and is served as it is. It is
- * the marker rather than `pdf_path` itself, because the path stays pointed at the old file across
- * an edit: the next render overwrites it in place, and deleting the invoice still finds it.
+ * Every regeneration of the invoice uses these, never the settings as they stand now, so a change
+ * to the settings does not reach it. An edit does not replace them either: changing a line is not
+ * a request for today's letterhead. `undefined` only for a draft made before settings were
+ * captured at creation, which captures them on its first view instead.
  */
 export function draftSettingsFor(db: Db, id: string): InvoiceConfig | undefined {
   const row = db.prepare("SELECT draft_settings_json FROM invoice WHERE id = ?").get(id) as
@@ -117,7 +125,35 @@ export function draftSettingsFor(db: Db, id: string): InvoiceConfig | undefined 
     : undefined;
 }
 
-/** 11.29 — record that a draft's document was generated, and with which settings. */
+/**
+ * 11.30 — the settings that now differ from the ones this invoice was made with.
+ *
+ * Settings never reach an existing invoice, so somebody who has just fixed their address and is
+ * looking at a draft that still shows the old one needs to be told why. Names only, and the payment
+ * block as the single group `payment`, because its values never cross the wire (20.1). A field this
+ * draft overrides is left out: the override wins whatever the settings say, so it is not a
+ * difference anybody would see.
+ */
+export function settingsDriftFor(db: Db, id: string): string[] {
+  const invoice = getInvoice(db, id);
+  const captured = draftSettingsFor(db, id) ?? frozenConfigFor(db, id);
+  if (!invoice || !captured) return [];
+  const now = getConfig(db, "invoice") as unknown as Record<string, unknown>;
+  const then = captured as unknown as Record<string, unknown>;
+  const overridden = new Set(
+    Object.entries(invoice.draft.config ?? {}).filter(([, v]) => v).map(([k]) => k),
+  );
+  const sensitive = new Set<string>(SENSITIVE_INVOICE_FIELDS);
+  const out = new Set<string>();
+  for (const key of new Set([...Object.keys(now), ...Object.keys(then)])) {
+    if (overridden.has(key)) continue;
+    if (JSON.stringify(now[key] ?? "") === JSON.stringify(then[key] ?? "")) continue;
+    out.add(sensitive.has(key) ? "payment" : key);
+  }
+  return [...out].sort();
+}
+
+/** 11.30 — record that a draft's document was generated, and with which settings. */
 export function keepDraftDocument(
   db: Db,
   id: string,
@@ -132,7 +168,7 @@ export function keepDraftDocument(
 
 const SELECT =
   `SELECT id, period, number, status, draft_json, snapshot_json, pdf_path, issued_at, paid_at,
-          override_secrets_json
+          override_secrets_json, generator_version
    FROM invoice`;
 
 export function listInvoices(db: Db): StoredInvoice[] {
@@ -225,9 +261,22 @@ export function createDraft(db: Db, input: DraftInput, now: Instant = Date.now()
 
     const id = crypto.randomUUID();
     db.prepare(
-      `INSERT INTO invoice (id, period, number, status, draft_json, created_at, updated_at)
-       VALUES (?, ?, ?, 'draft', ?, ?, ?)`,
-    ).run(id, input.period, draft.number, JSON.stringify(draft), now, now);
+      // 11.30 — the settings it is made with are part of what it is, captured now rather than
+      // read again later, so a change to the settings never reaches an existing invoice. And
+      // 11.31 — which generator made it, so a later breaking change can be recognised.
+      `INSERT INTO invoice (id, period, number, status, draft_json, draft_settings_json,
+                            generator_version, created_at, updated_at)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.period,
+      draft.number,
+      JSON.stringify(draft),
+      JSON.stringify(cfg),
+      INVOICE_GENERATOR_VERSION,
+      now,
+      now,
+    );
     return getInvoice(db, id)!;
   });
 }
@@ -285,6 +334,18 @@ export function updateDraft(
     if (number.length > 80) {
       throw new Refused("number-too-long", "an invoice number is at most 80 characters");
     }
+    // 11.31 — an edit regenerates the invoice, and this generator would not regenerate it as the
+    // one that made it did. Viewing it still serves the file it was made with.
+    if (current.generatorVersion < INVOICE_GENERATOR_VERSION) {
+      throw new Refused(
+        "generated-by-older-version",
+        `invoice ${current.number} was made by an older version of the invoice generator, and ` +
+          "editing it would change more than the edit. Make a new invoice for this month instead.",
+      );
+    }
+    if (edit.invoiceDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(edit.invoiceDate)) {
+      throw new Refused("bad-date", `${JSON.stringify(edit.invoiceDate)} is not a date`);
+    }
     if (edit.taxRate !== undefined && !(edit.taxRate >= 0 && edit.taxRate < 1)) {
       // A rate outside this is a percentage somebody typed into a fraction field, and silently
       // billing 250% tax is 25.3 at its most expensive.
@@ -307,13 +368,18 @@ export function updateDraft(
       number,
       ...(edit.currency !== undefined ? { currency: edit.currency } : {}),
       ...(edit.taxRate !== undefined ? { taxRate: edit.taxRate } : {}),
+      // 10.9 — the date is the person's to set, and the due date follows it by 10.2-10.4. Neither
+      // moves on its own: a draft's dates change only when somebody changes this one.
+      ...(edit.invoiceDate !== undefined
+        ? { invoiceDate: edit.invoiceDate, dueDate: dueDateFor(edit.invoiceDate) }
+        : {}),
       ...(edit.config !== undefined ? { config: edit.config } : {}),
     }, edit);
-    // 11.29 — editing the draft is the one thing that changes its document, so the one it was
-    // generated with is no longer it. The next view regenerates, with the settings as they are then.
+    // 11.30 — editing is the one thing that changes an invoice's document, so the stored file is
+    // no longer it; the next view regenerates from what was captured plus this edit. The captured
+    // settings stay: an edit to a line is not a request for today's letterhead.
     db.prepare(
-      `UPDATE invoice SET number = ?, draft_json = ?, draft_settings_json = NULL, updated_at = ?
-       WHERE id = ?`,
+      "UPDATE invoice SET number = ?, draft_json = ?, pdf_path = NULL, updated_at = ? WHERE id = ?",
     ).run(number, JSON.stringify(draft), now, id);
     return getInvoice(db, id)!;
   });
@@ -328,23 +394,14 @@ export function updateDraft(
  * the last possible moment — the one action after which nothing can be undone. What you saw on the
  * screen is what gets frozen.
  *
- * The due date is still recomputed, and only here: 10.7 says a draft's due date moves with the day
- * it is prepared, 10.8 says an issued one never moves again, and this is where the two meet.
- */
-/**
- * @param issuedOn the calendar day of the person issuing it (27.51).
- *
- * Required, and not defaulted to `today()`, because that default *was* the bug: this stamps
- * `invoiceDate` and the due date derived from it onto a document, and 10.8 freezes both at this
- * moment. Read from the server's clock they were the date wherever the server happens to run — a
- * container in UTC, most often — so anybody east of it issuing before mid-morning got yesterday.
- * `invoice-create` three cases away already took the device's `clock.today`; issuance did not.
+ * The dates are not touched here. 10.9 puts them in the person's hands on the draft and 11.30 says
+ * nothing else moves them, so issuing freezes the dates the draft already has rather than stamping
+ * the day it happens to be issued.
  */
 export function issue(
   db: Db,
   id: string,
   now: Instant,
-  issuedOn: DateString,
 ): StoredInvoice {
   return transact(db, () => {
     const current = getInvoice(db, id);
@@ -358,11 +415,9 @@ export function issue(
       throw new Refused("not-a-draft", `invoice ${current.number} is already ${current.status}`);
     }
 
-    const refreshed = recomputeDraft({
-      ...current.draft,
-      invoiceDate: issuedOn,
-      dueDate: dueDateFor(issuedOn),
-    }, {});
+    // 11.30 — issuing does not restamp the dates. They were captured when the invoice was made
+    // and are edited on the draft (10.9), so what is issued is what was viewed.
+    const refreshed = recomputeDraft(current.draft, {});
 
     const verdict = canIssue(refreshed, listInvoices(db).filter((i) => i.id !== id));
     if (!verdict.ok) {
@@ -379,7 +434,7 @@ export function issue(
     // that was sent rather than as one wearing today's letterhead. Resolved here, override and
     // all (25.12), because that is what the renderer was handed.
     const frozenConfig: InvoiceConfig = {
-      // 11.29 — the settings the draft was generated with, so what is issued is what was looked
+      // 11.30 — the settings the draft was generated with, so what is issued is what was looked
       // at; the current ones only for a draft nobody generated before issuing it.
       ...(draftSettingsFor(db, id) ?? getConfig(db, "invoice")),
       ...appliedOverride(refreshed.config),
@@ -471,7 +526,7 @@ export function revertIssue(db: Db, id: string, now: Instant = Date.now()): Stor
    * the status first. `pdf_path` survives for the same reason and is not served while the status
    * is draft; a re-issue overwrites that file.
    */
-  // 11.29 — the issued file stays this draft's document until the draft is edited, so a revert
+  // 11.30 — the issued file stays this draft's document until the draft is edited, so a revert
   // changes the status and not the document. The settings that file was made with become the
   // draft's kept settings; `COALESCE` because a draft generated before it was issued already has
   // them, and they are the ones the issued document was built from.
