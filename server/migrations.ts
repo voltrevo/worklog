@@ -186,4 +186,17 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE invoice ADD COLUMN override_secrets_json TEXT;
     `,
   },
+  {
+    id: 4,
+    name: "draft-generated-settings",
+    sql: `
+      -- 11.29. The settings a draft's document was first generated with, so that viewing it again
+      -- serves the same document rather than re-rendering it against whatever the settings say
+      -- now. NULL until the draft is first generated, and set back to NULL when the draft itself
+      -- is edited, which is the one thing allowed to change it. Its own column for the same reason
+      -- as \`config_json\`: it holds the payment block, and nothing that builds a wire object
+      -- names it.
+      ALTER TABLE invoice ADD COLUMN draft_settings_json TEXT;
+    `,
+  },
 ];

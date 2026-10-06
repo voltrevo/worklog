@@ -81,9 +81,11 @@ import {
   attachPdf,
   createDraft,
   deleteInvoice,
+  draftSettingsFor,
   frozenConfigFor,
   getInvoice,
   issue,
+  keepDraftDocument,
   listInvoices,
   markPaid,
   paymentOverrideFor,
@@ -778,7 +780,15 @@ export async function handle(
 
       // 24.30 — an issued invoice has a file, and the file is the invoice. Read it back rather
       // than re-rendering: re-rendering is how a frozen document quietly changes.
-      const frozen = invoice.status !== "draft" && invoice.pdfPath
+      /*
+       * 11.29 — and so does a draft, once it has been generated. It used to be re-rendered on
+       * every view against the settings as they stood at that moment, so a draft nobody had
+       * touched changed its letterhead whenever the settings did, and what was looked at was not
+       * necessarily what would be issued. Now the first view keeps the file and the settings it
+       * was made with, and only editing the draft lets it change.
+       */
+      const kept = invoice.status === "draft" ? draftSettingsFor(db, invoice.id) : undefined;
+      const frozen = invoice.pdfPath && (invoice.status !== "draft" || kept)
         ? await Deno.readFile(`${ctx.dataDir}/${invoice.pdfPath}`).catch(() => undefined)
         : undefined;
 
@@ -819,12 +829,17 @@ export async function handle(
         }
         // 24.30 — the settings it went out under, where those were kept. Only a draft, or an
         // invoice issued before that column existed, falls back to the current ones.
-        const frozenConfig = frozenConfigFor(db, invoice.id);
-        if (!frozenConfig) requireInvoiceConfig(db);
+        // A draft is rendered from the settings it was first generated with, or from today's if
+        // this is that first time. `config_json` is an issued invoice's, and a reverted draft
+        // still carries one, so it is not consulted for a draft at all.
+        const isDraft = invoice.status === "draft";
+        const frozenConfig = isDraft ? undefined : frozenConfigFor(db, invoice.id);
+        if (!frozenConfig && !kept) requireInvoiceConfig(db);
+        const settings = kept ?? getConfig(db, "invoice");
         // A draft has no frozen settings, so its payment override is applied here; an issued one
         // already had it folded in at issuance and must not have today's applied over the top.
         const config = frozenConfig ?? {
-          ...getConfig(db, "invoice"),
+          ...settings,
           ...appliedPaymentOverride(paymentOverrideFor(db, invoice.id)),
         };
         /*
@@ -851,7 +866,8 @@ export async function handle(
         // directly and so wrote the invoice PDF — the file with the bank details printed on it —
         // at the umask, 0644 on an ordinary box, while the note audio beside it was 0600.
         await writeUnderData(ctx.dataDir, relative, bytes);
-        attachPdf(db, invoice.id, relative, now);
+        if (isDraft) keepDraftDocument(db, invoice.id, relative, settings, now);
+        else attachPdf(db, invoice.id, relative, now);
         ctx.log("info", "invoice", "rendered a PDF", {
           number: invoice.number,
           bytes: bytes.length,

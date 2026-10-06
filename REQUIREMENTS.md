@@ -343,6 +343,7 @@ The product is intentionally narrow. Multi-project UI, transcription, accounting
 11.26. MUST NOT block issuance on the warnings of 11.24 or 11.25.
 11.27. MUST warn when the work an issued invoice was built from no longer adds up to the hours it states, whether an entry was shortened or deleted.
 11.28. MUST NOT block anything on the warning of 11.27, per 11.26; and MUST NOT report an addition under 11.27 as well as under 11.25, since one event should not arrive as two warnings.
+11.29. MUST keep a draft's document as it was first generated until the draft itself is edited, so that what is viewed is what is issued.
 
 ## 12. Server logging & diagnostics
 

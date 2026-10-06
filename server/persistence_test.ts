@@ -36,7 +36,7 @@ import type { WorkEntry } from "@worklog/shared/types";
 import { open } from "./db.ts";
 import { ChallengeStore } from "./access.ts";
 import { getConfig, setConfig } from "./config.ts";
-import { frozenConfigFor, getInvoice } from "./invoices.ts";
+import { draftSettingsFor, frozenConfigFor, getInvoice } from "./invoices.ts";
 import { renderInvoicePdf } from "./pdf.ts";
 import { COMPLETE_INVOICE_CONFIG } from "./fixtures.ts";
 import { loggerFor, query as queryLogs } from "./logs.ts";
@@ -545,5 +545,101 @@ Deno.test({
 
     ctx.db.close();
     await Deno.remove(dir, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "11.29 -- a draft's document is kept from its first generation until the draft is edited",
+  async fn() {
+    /*
+     * A draft was re-rendered on every view against the settings as they stood at that moment, so
+     * one nobody had touched changed its letterhead whenever the settings did, and what somebody
+     * looked at was not necessarily what they would issue.
+     *
+     * Renders are deterministic, so a second view returning the same bytes would prove nothing on
+     * its own — a fresh render would match too. What proves the file was kept is the settings
+     * changing in between: a re-render would then differ.
+     */
+    const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "draftdoc-" });
+    await Deno.mkdir(`${dir}/notes`, { recursive: true });
+    await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+    const ctx = context(dir);
+    setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+    const admin = session(ctx, "s1");
+    await claimAdmin(ctx, admin);
+    await call(ctx, admin, {
+      t: "entry-add",
+      date: TODAY,
+      durationMs: 3_600_000,
+      billingTag: "Product Development",
+    });
+    const draft = await call(ctx, admin, {
+      t: "invoice-create",
+      period: "2026-09",
+      clock: { today: TODAY, nowMinutes: 0 },
+    }) as StoredInvoiceWire;
+    const pdf = async () =>
+      ((await call(ctx, admin, { t: "invoice-pdf", id: draft.id })) as { pdfBase64: string })
+        .pdfBase64;
+    const rename = (fromName: string) =>
+      setConfig(ctx.db, "invoice", { ...COMPLETE_INVOICE_CONFIG, fromName }, NOW);
+
+    const first = await pdf();
+    assertEquals(
+      draftSettingsFor(ctx.db, draft.id)?.fromName,
+      COMPLETE_INVOICE_CONFIG.fromName,
+      "the first view kept the settings it was generated with",
+    );
+
+    rename("Renamed Ltd");
+    assertEquals(await pdf(), first, "a settings change does not reach a draft already generated");
+
+    /*
+     * And it is *stored*, not regenerated. Stable bytes alone cannot tell the two apart: a render
+     * from the kept settings is deterministic and matches. So the file on disk is altered, and the
+     * next view must hand back the altered bytes — which only reading the file can do.
+     */
+    const path = draft.id && getInvoice(ctx.db, draft.id)?.pdfPath;
+    const marked = new TextEncoder().encode("%PDF-marked-by-the-test");
+    await Deno.writeFile(`${dir}/${path}`, marked);
+    assertEquals(
+      fromBase64(await pdf()),
+      marked,
+      "the second view served the file the first one stored, rather than rendering again",
+    );
+
+    // An edit that changes no line still counts: it is the person deciding to look again.
+    await call(ctx, admin, { t: "invoice-update", id: draft.id, number: draft.number });
+    const afterEdit = await pdf();
+    assertNotEquals(afterEdit, first, "editing the draft lets it pick up today's settings");
+    assertEquals(draftSettingsFor(ctx.db, draft.id)?.fromName, "Renamed Ltd");
+
+    // What is issued is what was looked at, not whatever the settings say by then.
+    rename("A Third Name");
+    await call(ctx, admin, {
+      t: "invoice-issue",
+      id: draft.id,
+      clock: { today: TODAY, nowMinutes: 0 },
+    });
+    assertEquals(
+      frozenConfigFor(ctx.db, draft.id)?.fromName,
+      "Renamed Ltd",
+      "issued under the settings the draft was generated with",
+    );
+
+    // Reverted, it is a draft again, and the file on disk is the issued one — not its document.
+    await call(ctx, admin, { t: "invoice-revert-issue", id: draft.id });
+    assertEquals(
+      draftSettingsFor(ctx.db, draft.id),
+      undefined,
+      "reverting forgets the old document",
+    );
+    await pdf();
+    assertEquals(
+      draftSettingsFor(ctx.db, draft.id)?.fromName,
+      "A Third Name",
+      "and the next view generates it afresh",
+    );
+    assertEquals(getInvoice(ctx.db, draft.id)?.status, "draft");
   },
 });

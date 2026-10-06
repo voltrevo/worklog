@@ -100,6 +100,36 @@ export function frozenConfigFor(db: Db, id: string): InvoiceConfig | undefined {
   return row?.config_json ? JSON.parse(row.config_json) as InvoiceConfig : undefined;
 }
 
+/**
+ * 11.29 — the settings a draft's document was first generated with, or `undefined` if it has not
+ * been generated since it was made or last edited.
+ *
+ * While this is set, the file at `pdf_path` is that draft's document and is served as it is. It is
+ * the marker rather than `pdf_path` itself, because the path stays pointed at the old file across
+ * an edit: the next render overwrites it in place, and deleting the invoice still finds it.
+ */
+export function draftSettingsFor(db: Db, id: string): InvoiceConfig | undefined {
+  const row = db.prepare("SELECT draft_settings_json FROM invoice WHERE id = ?").get(id) as
+    | { draft_settings_json: string | null }
+    | undefined;
+  return row?.draft_settings_json
+    ? JSON.parse(row.draft_settings_json) as InvoiceConfig
+    : undefined;
+}
+
+/** 11.29 — record that a draft's document was generated, and with which settings. */
+export function keepDraftDocument(
+  db: Db,
+  id: string,
+  path: string,
+  settings: InvoiceConfig,
+  now: Instant = Date.now(),
+): void {
+  db.prepare(
+    "UPDATE invoice SET pdf_path = ?, draft_settings_json = ?, updated_at = ? WHERE id = ?",
+  ).run(path, JSON.stringify(settings), now, id);
+}
+
 const SELECT =
   `SELECT id, period, number, status, draft_json, snapshot_json, pdf_path, issued_at, paid_at,
           override_secrets_json
@@ -279,8 +309,12 @@ export function updateDraft(
       ...(edit.taxRate !== undefined ? { taxRate: edit.taxRate } : {}),
       ...(edit.config !== undefined ? { config: edit.config } : {}),
     }, edit);
-    db.prepare("UPDATE invoice SET number = ?, draft_json = ?, updated_at = ? WHERE id = ?")
-      .run(number, JSON.stringify(draft), now, id);
+    // 11.29 — editing the draft is the one thing that changes its document, so the one it was
+    // generated with is no longer it. The next view regenerates, with the settings as they are then.
+    db.prepare(
+      `UPDATE invoice SET number = ?, draft_json = ?, draft_settings_json = NULL, updated_at = ?
+       WHERE id = ?`,
+    ).run(number, JSON.stringify(draft), now, id);
     return getInvoice(db, id)!;
   });
 }
@@ -345,7 +379,9 @@ export function issue(
     // that was sent rather than as one wearing today's letterhead. Resolved here, override and
     // all (25.12), because that is what the renderer was handed.
     const frozenConfig: InvoiceConfig = {
-      ...getConfig(db, "invoice"),
+      // 11.29 — the settings the draft was generated with, so what is issued is what was looked
+      // at; the current ones only for a draft nobody generated before issuing it.
+      ...(draftSettingsFor(db, id) ?? getConfig(db, "invoice")),
       ...appliedOverride(refreshed.config),
       ...appliedPaymentOverride(paymentOverrideFor(db, id)),
     };
@@ -435,8 +471,12 @@ export function revertIssue(db: Db, id: string, now: Instant = Date.now()): Stor
    * the status first. `pdf_path` survives for the same reason and is not served while the status
    * is draft; a re-issue overwrites that file.
    */
-  db.prepare("UPDATE invoice SET status = 'draft', issued_at = NULL, updated_at = ? WHERE id = ?")
-    .run(now, id);
+  // The file at `pdf_path` is the issued document, stamped with the issuance just taken back, so it
+  // is not this draft's document (11.29). Cleared, so the next view generates the draft afresh.
+  db.prepare(
+    `UPDATE invoice SET status = 'draft', issued_at = NULL, draft_settings_json = NULL,
+     updated_at = ? WHERE id = ?`,
+  ).run(now, id);
   return getInvoice(db, id)!;
 }
 
