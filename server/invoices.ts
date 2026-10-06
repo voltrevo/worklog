@@ -471,11 +471,13 @@ export function revertIssue(db: Db, id: string, now: Instant = Date.now()): Stor
    * the status first. `pdf_path` survives for the same reason and is not served while the status
    * is draft; a re-issue overwrites that file.
    */
-  // The file at `pdf_path` is the issued document, stamped with the issuance just taken back, so it
-  // is not this draft's document (11.29). Cleared, so the next view generates the draft afresh.
+  // 11.29 — the issued file stays this draft's document until the draft is edited, so a revert
+  // changes the status and not the document. The settings that file was made with become the
+  // draft's kept settings; `COALESCE` because a draft generated before it was issued already has
+  // them, and they are the ones the issued document was built from.
   db.prepare(
-    `UPDATE invoice SET status = 'draft', issued_at = NULL, draft_settings_json = NULL,
-     updated_at = ? WHERE id = ?`,
+    `UPDATE invoice SET status = 'draft', issued_at = NULL,
+     draft_settings_json = COALESCE(draft_settings_json, config_json), updated_at = ? WHERE id = ?`,
   ).run(now, id);
   return getInvoice(db, id)!;
 }

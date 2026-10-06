@@ -627,19 +627,59 @@ Deno.test({
       "issued under the settings the draft was generated with",
     );
 
-    // Reverted, it is a draft again, and the file on disk is the issued one — not its document.
+    // Reverted, it is a draft again, and it keeps the document that was issued until it is edited.
+    const issued = await pdf();
     await call(ctx, admin, { t: "invoice-revert-issue", id: draft.id });
-    assertEquals(
-      draftSettingsFor(ctx.db, draft.id),
-      undefined,
-      "reverting forgets the old document",
-    );
-    await pdf();
+    assertEquals(await pdf(), issued, "a reverted draft serves the document that was issued");
     assertEquals(
       draftSettingsFor(ctx.db, draft.id)?.fromName,
-      "A Third Name",
-      "and the next view generates it afresh",
+      "Renamed Ltd",
+      "and keeps the settings that document was made with, not today's",
     );
+    await call(ctx, admin, { t: "invoice-update", id: draft.id, number: draft.number });
+    assertNotEquals(await pdf(), issued, "until it is edited, which regenerates it");
+    assertEquals(draftSettingsFor(ctx.db, draft.id)?.fromName, "A Third Name");
     assertEquals(getInvoice(ctx.db, draft.id)?.status, "draft");
   },
+});
+
+Deno.test("11.29 -- a draft issued without being viewed still keeps the issued file on revert", async () => {
+  // The other branch of the revert's `COALESCE`: nothing was kept as a draft, so the settings the
+  // issued file was made with are the ones it inherits.
+  const dir = await Deno.makeTempDir({ dir: ".tmp", prefix: "draftdoc2-" });
+  await Deno.mkdir(`${dir}/notes`, { recursive: true });
+  await Deno.mkdir(`${dir}/invoices`, { recursive: true });
+  const ctx = context(dir);
+  setConfig(ctx.db, "invoice", COMPLETE_INVOICE_CONFIG, NOW);
+  const admin = session(ctx, "s1");
+  await claimAdmin(ctx, admin);
+  await call(ctx, admin, {
+    t: "entry-add",
+    date: TODAY,
+    durationMs: 3_600_000,
+    billingTag: "Product Development",
+  });
+  const draft = await call(ctx, admin, {
+    t: "invoice-create",
+    period: "2026-09",
+    clock: { today: TODAY, nowMinutes: 0 },
+  }) as StoredInvoiceWire;
+  const pdf = async () =>
+    ((await call(ctx, admin, { t: "invoice-pdf", id: draft.id })) as { pdfBase64: string })
+      .pdfBase64;
+
+  await call(ctx, admin, {
+    t: "invoice-issue",
+    id: draft.id,
+    clock: { today: TODAY, nowMinutes: 0 },
+  });
+  const issued = await pdf();
+  setConfig(ctx.db, "invoice", { ...COMPLETE_INVOICE_CONFIG, fromName: "Changed Since" }, NOW);
+  await call(ctx, admin, { t: "invoice-revert-issue", id: draft.id });
+  assertEquals(await pdf(), issued, "the reverted draft serves the issued document");
+  assertEquals(
+    draftSettingsFor(ctx.db, draft.id)?.fromName,
+    COMPLETE_INVOICE_CONFIG.fromName,
+    "with the settings it was issued under, not the ones changed since",
+  );
 });
