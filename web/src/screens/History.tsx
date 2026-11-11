@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { useCanWrite, useStore } from "../state.tsx";
 import { usePresentation } from "../App.tsx";
-import { duration, hours, longDate, monthName, timeOfDay } from "../format.ts";
+import { duration, hours, interval, longDate, monthName } from "../format.ts";
 import { addDays } from "@worklog/shared/dates";
 import { MonthNav } from "./MonthNav.tsx";
 import { EntryEditor } from "./EntryEditor.tsx";
@@ -124,7 +124,7 @@ export function History() {
                           <span className="faint">
                             {/* 19.6 — still distinguished, just not in a column. */}
                             {e.timing
-                              ? `${timeOfDay(e.timing.startedAt)} – ${timeOfDay(e.timing.endedAt)}`
+                              ? interval(e.date, e.timing)
                               : "duration only"}
                           </span>
                         </div>
@@ -166,7 +166,7 @@ export function History() {
                               {e.timing
                                 ? (
                                   <span className="tabular">
-                                    {timeOfDay(e.timing.startedAt)} – {timeOfDay(e.timing.endedAt)}
+                                    {interval(e.date, e.timing)}
                                   </span>
                                 )
                                 : (
