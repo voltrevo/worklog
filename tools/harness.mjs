@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { serverFlags } from "./serverFlags.mjs";
 import { createServer } from "node:http";
 import { access, mkdir, readFile, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { chromium } from "playwright";
 
@@ -385,4 +386,76 @@ export async function claimAndApprove(
   await mobile.page.getByText("Today", { exact: true }).waitFor({ timeout: 30_000 });
 
   return { desktop, mobile };
+}
+
+/**
+ * A month relative to this one, as the month picker names it: `monthLabel(-1)` is last month.
+ *
+ * Read in the browser's timezone, not this process's, because the seed and the screens both work
+ * in it: near midnight on the first of a month the two can disagree about which month it is.
+ */
+export function monthLabel(offset) {
+  const [year, month] = monthLabelParts(offset);
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "long", year: "numeric" })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+/** `[year, month1To12]` of a month relative to this one, in the browser's timezone. */
+export function monthLabelParts(offset) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney",
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date());
+  const year = Number(parts.find((p) => p.type === "year")?.value);
+  const month = Number(parts.find((p) => p.type === "month")?.value);
+  const at = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return [at.getUTCFullYear(), at.getUTCMonth() + 1];
+}
+
+const SHORT_MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+
+/**
+ * The first holiday, in a month after this one, that is the only holiday in its month.
+ *
+ * Read from the snapshot the server falls back to, for the region the seed configures, so the
+ * holiday check follows the calendar instead of naming a month that becomes the past.
+ */
+export function nextLoneHoliday(region = "AU-NSW") {
+  const snapshot = JSON.parse(readFileSync(join(root, "server/data/holidays-AU.json"), "utf8"));
+  const byMonth = new Map();
+  for (const h of Object.values(snapshot).flat()) {
+    if (!h.global && !(h.counties ?? []).includes(region)) continue;
+    const month = h.date.slice(0, 7);
+    byMonth.set(month, [...(byMonth.get(month) ?? []), h]);
+  }
+  const [y, m] = monthLabelParts(0);
+  const thisMonth = `${y}-${String(m).padStart(2, "0")}`;
+  for (const month of [...byMonth.keys()].sort()) {
+    const list = byMonth.get(month);
+    if (month <= thisMonth || list.length !== 1) continue;
+    const [hy, hm, hd] = list[0].date.split("-").map(Number);
+    return {
+      month: new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "long", year: "numeric" })
+        .format(new Date(Date.UTC(hy, hm - 1, 1))),
+      name: list[0].name,
+      // 27.21's format, which is how the list under the days writes it.
+      day: `${String(hd).padStart(2, "0")} ${SHORT_MONTHS[hm - 1]} ${hy}`,
+    };
+  }
+  throw new Error(`the holiday snapshot has no future month with one holiday in ${region}`);
+}
+
+/** Step the month navigator until it shows `label`, in whichever direction that is. */
+export async function goToMonth(page, label) {
+  for (let i = 0; i < 60; i++) {
+    const showing = (await page.locator(".month-name").first().textContent())?.trim();
+    if (showing === label) return;
+    const later = new Date(`1 ${label}`) > new Date(`1 ${showing}`);
+    const buttons = page.locator(".month-name").first().locator("xpath=..")
+      .getByRole("button", { name: /^Go to / });
+    await buttons.nth(later ? 1 : 0).click();
+    await page.waitForTimeout(300);
+  }
+  throw new Error(`could not navigate to ${label}`);
 }
