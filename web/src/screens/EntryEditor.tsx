@@ -28,7 +28,14 @@ import { useRef, useState } from "react";
 import { Sheet } from "./Sheet.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useStore } from "../state.tsx";
-import { dateValue, duration, instantAt, parseDuration, timeValue } from "../format.ts";
+import {
+  dateValue,
+  daysBetween,
+  duration,
+  instantAt,
+  parseDuration,
+  timeValue,
+} from "../format.ts";
 import { addDays, today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
@@ -312,11 +319,4 @@ export function EntryEditor(
       )}
     </Sheet>
   );
-}
-
-/** Whole days from one `YYYY-MM-DD` to another, or `undefined` while either is half-typed. */
-function daysBetween(from: string, to: string): number | undefined {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  return Number.isFinite(a) && Number.isFinite(b) ? Math.round((b - a) / 86_400_000) : undefined;
 }
