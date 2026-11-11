@@ -28,8 +28,8 @@ import { useRef, useState } from "react";
 import { Sheet } from "./Sheet.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { useStore } from "../state.tsx";
-import { duration, instantAt, parseDuration, timeValue } from "../format.ts";
-import { today } from "@worklog/shared/dates";
+import { dateValue, duration, instantAt, parseDuration, timeValue } from "../format.ts";
+import { addDays, today } from "@worklog/shared/dates";
 import type { WorkEntry } from "@worklog/shared/types";
 
 type Shape = "duration" | "times";
@@ -59,6 +59,18 @@ export function EntryEditor(
   );
   const [from, setFrom] = useState(entry?.timing ? timeValue(entry.timing.startedAt) : "09:00");
   const [to, setTo] = useState(entry?.timing ? timeValue(entry.timing.endedAt) : "17:00");
+  /*
+   * The day the session ended on, which is not always the entry's date.
+   *
+   * A session that crosses midnight is filed under the day it began (2.21), so its end falls on
+   * the next one. The editor used to read both times against the entry's date: it showed an
+   * evening start and a small-hours end as though they were the same day, and refused to save the
+   * entry as it stood because its end now came before its start. Held as a date of its own so the
+   * interval on screen is the interval that is stored.
+   */
+  const [endDate, setEndDate] = useState(
+    entry?.timing ? dateValue(entry.timing.endedAt) : entry?.date ?? today(),
+  );
   const [text, setText] = useState(entry && !entry.timing ? duration(entry.durationMs) : "");
   const [problem, setProblem] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -70,7 +82,7 @@ export function EntryEditor(
    * "0.0h" halfway through typing a time. The message beside it says which half is wrong.
    */
   const started = instantAt(date, from);
-  const ended = instantAt(date, to);
+  const ended = instantAt(endDate, to);
   const spanMs = started !== undefined && ended !== undefined && ended > started
     ? ended - started
     : undefined;
@@ -83,7 +95,7 @@ export function EntryEditor(
    * form closes without a word and a half-filled one does not.
    */
   const initial = useRef<string>(undefined);
-  const filled = JSON.stringify([date, tag, shape, from, to, text]);
+  const filled = JSON.stringify([date, tag, shape, from, to, endDate, text]);
   initial.current ??= filled;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const leave = () => {
@@ -104,10 +116,13 @@ export function EntryEditor(
         return setProblem("Both times are needed, as HH:MM.");
       }
       if (ended <= started) {
-        // Deliberately not wrapped to the next day: 2.21 files a session under the day it began,
-        // and inventing a midnight crossing from two times on one date would file work somewhere
-        // nobody asked for.
-        return setProblem("The end time is not after the start time.");
+        // Deliberately not wrapped to the next day: a midnight crossing is said with the end's own
+        // date, not inferred from two times that happen to be in the wrong order.
+        return setProblem(
+          endDate === date
+            ? "The end time is not after the start time. If it ended the next day, change Ends on."
+            : "The end is not after the start.",
+        );
       }
       timing = { startedAt: started, endedAt: ended };
       durationMs = ended - started;
@@ -155,7 +170,17 @@ export function EntryEditor(
         >
           <label className="field">
             Date
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => {
+                const next = e.target.value;
+                // Moving the start moves the end with it, so a session keeps the days it spans.
+                const days = daysBetween(date, next);
+                if (days !== undefined) setEndDate(addDays(endDate, days));
+                setDate(next);
+              }}
+            />
           </label>
 
           {/* 27.20 — the same control on an existing entry as on a new one, both directions. */}
@@ -203,6 +228,12 @@ export function EntryEditor(
                 <input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
               </label>
             </div>
+          )}
+          {shape === "times" && (
+            <label className="field">
+              Ends on
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </label>
           )}
 
           <label className="field">
@@ -281,4 +312,11 @@ export function EntryEditor(
       )}
     </Sheet>
   );
+}
+
+/** Whole days from one `YYYY-MM-DD` to another, or `undefined` while either is half-typed. */
+function daysBetween(from: string, to: string): number | undefined {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.round((b - a) / 86_400_000) : undefined;
 }
