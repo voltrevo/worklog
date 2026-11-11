@@ -72,7 +72,8 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: deno task deps
+        run: |
+          deno task deps
           npx playwright install --with-deps chromium
 
       # Playwright's own Chromium, found the ordinary way. `harness.mjs` insists on being told
