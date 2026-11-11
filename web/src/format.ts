@@ -206,3 +206,23 @@ export function dateValue(instant: number): DateString {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` as DateString;
 }
+
+/** Whole days from one `YYYY-MM-DD` to another, or `undefined` while either is half-typed. */
+export function daysBetween(from: string, to: string): number | undefined {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.round((b - a) / 86_400_000) : undefined;
+}
+
+/**
+ * A timed entry's interval as `22:00 – 01:00 (+1 day)`.
+ *
+ * The suffix is the only thing on the line saying the end is not on the entry's date: a session
+ * crossing midnight is filed under the day it began (2.21), and two bare times read as one day.
+ */
+export function interval(date: DateString, timing: { startedAt: number; endedAt: number }): string {
+  const span = `${timeOfDay(timing.startedAt)} – ${timeOfDay(timing.endedAt)}`;
+  const days = daysBetween(date, dateValue(timing.endedAt)) ?? 0;
+  if (days === 0) return span;
+  return `${span} (${days > 0 ? "+" : ""}${days} day${Math.abs(days) === 1 ? "" : "s"})`;
+}
