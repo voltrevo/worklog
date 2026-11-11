@@ -20,7 +20,17 @@
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { claimAndApprove, DESKTOP, MOBILE, root, startRig, visibleText } from "./harness.mjs";
+import {
+  claimAndApprove,
+  DESKTOP,
+  goToMonth,
+  MOBILE,
+  monthLabel,
+  nextLoneHoliday,
+  root,
+  startRig,
+  visibleText,
+} from "./harness.mjs";
 
 const dataDir = join(root, ".journey-data");
 const PORT = 41778;
@@ -948,12 +958,19 @@ async function main() {
   await newInvoice.waitFor({ timeout: 15_000 });
   // 25.9 — prefilled to last month, which is the month you invoice.
   const prefilled = await monthPicker.locator("option:checked").textContent() ?? "";
-  check("25.9 — the month is prefilled to last month", prefilled === "August 2026", prefilled);
+  check(
+    "25.9 — the month is prefilled to last month",
+    prefilled === monthLabel(-1),
+    `${prefilled} (expected ${monthLabel(-1)})`,
+  );
 
-  // ...and then moved off it deliberately. The seed already ships an August draft, so every count
-  // below would be measuring two invoices and attributing it to one. September has work in it and
-  // no invoice, which is what makes "how many rows are there for this month" answerable.
-  const preparing = "September 2026";
+  // ...and then moved off it deliberately. The seed already ships a draft for last month, so every
+  // count below would be measuring two invoices and attributing it to one. This month has work in
+  // it and no invoice, which is what makes "how many rows are there for this month" answerable.
+  //
+  // Both are relative to today, as the seed is. They were written as "August 2026" and
+  // "September 2026", and the journey went red as soon as the calendar moved on.
+  const preparing = monthLabel(0);
   await monthPicker.selectOption({ label: preparing });
   await newInvoice.click();
 
@@ -2367,12 +2384,16 @@ async function main() {
    *
    * It rendered as "not a workday", indistinguishable from a weekend, so a month with four fewer
    * working hours in it looked exactly like one without — and the reason the capacity had moved
-   * was nowhere on the screen that shows the capacity. October is the month to look at: the
-   * shipped snapshot has Labour Day on the fifth, and a wrong region is the most likely thing to
+   * was nowhere on the screen that shows the capacity. A wrong region is the most likely thing to
    * be wrong here, which is what the list underneath is for.
+   *
+   * The month is the first future one with exactly one holiday in the shipped snapshot. It was
+   * October 2026, written when that was next month; once the seed filled October with work, Labour
+   * Day was drawn as a day worked, which is what a worked day is, and the check went red. A
+   * future month has no work in it, so its holiday can only be drawn as a holiday.
    */
-  await desktop.page.getByRole("button", { name: /^Go to October/ }).click();
-  await desktop.page.waitForTimeout(700);
+  const holiday = nextLoneHoliday();
+  await goToMonth(desktop.page, holiday.month);
   check(
     "27.17 — a public holiday is drawn as one, not as a day off",
     await until(
@@ -2384,12 +2405,12 @@ async function main() {
   );
   check(
     "and the month's holidays are named below the days",
-    (await desktop.page.getByText("Labour Day").count()) > 0 &&
-      (await desktop.page.getByText("05 Oct 2026").count()) > 0,
-    await visibleText(desktop.page),
+    (await desktop.page.getByText(holiday.name).count()) > 0 &&
+      (await desktop.page.getByText(holiday.day).count()) > 0,
+    `${holiday.name}, ${holiday.day}: ${await visibleText(desktop.page)}`,
   );
-  await desktop.page.getByRole("button", { name: /^Go to September/ }).click();
-  await desktop.page.waitForTimeout(700);
+  // Back to this month, which is the one with work in it and so the one that can be ahead.
+  await goToMonth(desktop.page, monthLabel(0));
 
   // 24.41 — the two bars, which are the pacing screen's whole answer now. Checked as *fills*
   // rather than as text: the claim is that being ahead is visible as an offset between them, and a

@@ -10,7 +10,17 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { claimAndApprove, DESKTOP, MOBILE, root, startRig, visibleText } from "./harness.mjs";
+import {
+  claimAndApprove,
+  DESKTOP,
+  goToMonth,
+  MOBILE,
+  monthLabel,
+  nextLoneHoliday,
+  root,
+  startRig,
+  visibleText,
+} from "./harness.mjs";
 
 const outDir = join(root, "docs");
 /** Captured for the validation, not for the repository. Gitignored. */
@@ -117,14 +127,15 @@ async function main() {
    * 27.17, 27.34 — a month with a public holiday in it, which the current month has not got.
    *
    * `.day.holiday`, `.swatch.holiday` and `.holidaylist` exist for exactly one state and the walk
-   * never entered it: every picture is of the seeded month. October 2026 has Labour Day in AU-NSW,
-   * which is the region the seed configures.
+   * never entered it: every picture is of the seeded month. The month is the first future one with
+   * a holiday in the shipped snapshot, for the region the seed configures; it was October 2026
+   * until October was seeded with work, and a worked day is drawn as worked.
    */
   await desktop.page.getByRole("button", { name: "Pacing", exact: true }).click();
-  await desktop.page.getByRole("button", { name: /Go to October 2026/ }).click();
+  await goToMonth(desktop.page, nextLoneHoliday().month);
   await desktop.page.locator(".day.holiday").first().waitFor({ timeout: 20_000 });
   await shot(desktop.page, "pacing-holiday-desktop");
-  await desktop.page.getByRole("button", { name: /Go to September 2026/ }).click();
+  await goToMonth(desktop.page, monthLabel(0));
 
   /*
    * 27.34 — the invoice editor, which nothing had ever photographed.
@@ -352,7 +363,10 @@ async function main() {
   await bare.close();
 
   const dead = [...seenSelectors]
-    .filter((selector) => !matchedSelectors.has(selector) && !UNPHOTOGRAPHED.has(selector))
+    .filter((selector) =>
+      !matchedSelectors.has(selector) && !UNPHOTOGRAPHED.has(selector) &&
+      !CALENDAR_DEPENDENT.has(selector)
+    )
     .sort();
   // The other direction too: an excuse for a selector that no longer exists, or that has started
   // matching, is a line nobody will delete unless something says so.
@@ -456,17 +470,28 @@ const MAX_SHOT_HEIGHT = 6_000;
 const UNPHOTOGRAPHED = new Map([
   [".audio-blocked", "the banner for a loop the browser refused to autoplay (14.16)"],
   [".bar span.over", "today's bar past its scheduled hours"],
-  [".barline .bar > span.bad", "a pacing bar behind its target; the seeded month is ahead"],
   [".brand .dot.bad", "the connection dot when the server is gone"],
   [".brand .dot.warn", "the connection dot while reconnecting"],
   [".day.missed", "a past workday with nothing recorded; the seed fills every one"],
   [".dropzone.over", "a file being dragged over the audio drop target"],
   [".notice.bad", "a failed save; every save in this walk succeeds"],
-  [
-    ".pill.warn",
-    "an issued invoice seen by a read-only device — a writable one gets a <select>, not a pill",
-  ],
   ["i.swatch.missed", "the legend entry for .day.missed, and 27.32 shows only present states"],
+]);
+
+/**
+ * Selectors for ahead and behind, which the walk enters or not depending on the date it runs.
+ *
+ * The seed fills last month and this month up to today, so whether the month is ahead of its
+ * target, and whether today is over its hours, depends on the day of the month. This list was
+ * written in September, when the seeded month was ahead and today was over its hours; in November
+ * it is behind and today is not, and these four swap between matched and unmatched. Neither half
+ * of the check can say anything about them, so they are left out of both.
+ */
+const CALENDAR_DEPENDENT = new Map([
+  [".barline .bar > span.bad", "a pacing bar behind its target"],
+  [".barline .bar > span.good", "a pacing bar ahead of its target"],
+  [".pill.good", "today over its hours, or the month ahead (also a paid invoice)"],
+  [".pill.warn", "the month behind (also an issued invoice seen by a read-only device)"],
 ]);
 
 const seenSelectors = new Set();
